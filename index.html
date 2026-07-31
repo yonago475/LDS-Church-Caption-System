@@ -682,6 +682,7 @@
         let currentRoomId = null;
         let viewerReconnectTimer = null;
         let reconnectAttemptCount = 0;
+        let recognitionRestartTimer = null; // 音声認識自動再接続用タイマー
 
         // ログダウンロード用の文字起こし履歴バッファ
         const transcriptHistory = [];
@@ -759,11 +760,11 @@
             checkMode();
             setupFontSizeButton();
             setupBulkDictionaryEvents();
-            setupJsonBackupEvents(); // JSONバックアップ機能
+            setupJsonBackupEvents();
             setupAudioGuideToggle();
             setupSingleDictionaryForm();
             setupDictListDelegation();
-            setupHostLogDelegation(); // ログからのワンタップ辞書登録
+            setupHostLogDelegation();
 
             if (refreshAudioDevicesBtn) {
                 refreshAudioDevicesBtn.onclick = initAudioDeviceSelector;
@@ -1103,7 +1104,7 @@
             });
         }
 
-        // ==================== ログからのワンタップ辞書登録 ====================
+        // ログからのワンタップ辞書登録
         function setupHostLogDelegation() {
             hostTranscriptLog.addEventListener('click', function(e) {
                 const addDictBtn = e.target.closest('.log-add-dict-btn');
@@ -1114,7 +1115,6 @@
                     editingKey.value = '';
                     dictVal.focus();
 
-                    // 親要素までスクロール
                     dictKey.scrollIntoView({ behavior: 'smooth', block: 'center' });
                 }
             });
@@ -1214,7 +1214,7 @@
             };
         }
 
-        // ==================== 辞書 JSON ファイルのバックアップ & 復元 ====================
+        // 辞書 JSON ファイルのバックアップ & 復元
         function setupJsonBackupEvents() {
             exportJsonBtn.onclick = function() {
                 const jsonStr = JSON.stringify(churchDictionary, null, 2);
@@ -1372,7 +1372,7 @@
             });
         }
 
-        // ==================== 音声認識エンジン ====================
+        // ==================== 音声認識エンジン（無音タイムアウト no-speech 自動継続対応） ====================
         function initSpeechRecognition() {
             const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
             
@@ -1386,19 +1386,32 @@
             recognition.interimResults = true;
             recognition.lang = 'ja-JP';
 
+            function safeStartRecognition() {
+                if (!isRecognizing) return;
+                try {
+                    recognition.start();
+                } catch (e) {
+                    if (e.name !== 'InvalidStateError') {
+                        if (recognitionRestartTimer) clearTimeout(recognitionRestartTimer);
+                        recognitionRestartTimer = setTimeout(() => {
+                            if (isRecognizing) safeStartRecognition();
+                        }, 300);
+                    }
+                }
+            }
+
             recognition.onstart = function() {
                 isRecognizing = true;
                 updateSpeechUI(true);
             };
 
             recognition.onend = function() {
+                // 無言タイムアウト等で終了した場合でも、音声認識中モードであれば自動再スタート
                 if (isRecognizing) {
-                    try {
-                        recognition.start();
-                    } catch (e) {
-                        isRecognizing = false;
-                        updateSpeechUI(false);
-                    }
+                    if (recognitionRestartTimer) clearTimeout(recognitionRestartTimer);
+                    recognitionRestartTimer = setTimeout(() => {
+                        safeStartRecognition();
+                    }, 200);
                 } else {
                     updateSpeechUI(false);
                 }
@@ -1410,6 +1423,9 @@
                     isRecognizing = false;
                     updateSpeechUI(false);
                     interimText.textContent = 'マイクへのアクセス許可が必要です。ブラウザのマイク権限を許可してください。';
+                } else if (event.error === 'no-speech') {
+                    // no-speech（無音タイムアウト）が発生しても停止せず待機状態を維持
+                    interimText.textContent = '（音声入力を待機中...）';
                 }
             };
 
@@ -1448,13 +1464,12 @@
             toggleRecognitionBtn.onclick = function() {
                 if (isRecognizing) {
                     isRecognizing = false;
-                    recognition.stop();
+                    if (recognitionRestartTimer) clearTimeout(recognitionRestartTimer);
+                    try { recognition.stop(); } catch(e){}
+                    updateSpeechUI(false);
                 } else {
-                    try {
-                        recognition.start();
-                    } catch (e) {
-                        console.error('Start error:', e);
-                    }
+                    isRecognizing = true;
+                    safeStartRecognition();
                 }
             };
 
