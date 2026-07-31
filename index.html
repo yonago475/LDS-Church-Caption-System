@@ -1,0 +1,1732 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>末日聖徒イエス・キリスト教会 リアルタイム多言語字幕システム</title>
+    <!-- Tailwind CSS for UI Styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- PeerJS for Real-time P2P Communication -->
+    <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+    <!-- QRCode.js for Generating Room QR Codes -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <!-- FontAwesome for Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        }
+        .caption-scroll {
+            scroll-behavior: smooth;
+        }
+    </style>
+</head>
+<body class="bg-slate-100 min-h-screen text-slate-800 flex flex-col">
+
+    <header class="bg-indigo-900 text-white shadow-md sticky top-0 z-50">
+        <div class="max-w-6xl mx-auto px-4 py-3 flex justify-between items-center">
+            <div class="flex items-center space-x-3">
+                <i class="fa-solid fa-church text-amber-400 text-xl"></i>
+                <div>
+                    <h1 class="text-base sm:text-lg font-bold leading-tight">リアルタイム多言語字幕配信</h1>
+                    <p class="text-xs text-indigo-200">The Church of Jesus Christ of Latter-day Saints</p>
+                </div>
+            </div>
+            <!-- Mode Indicator Badge -->
+            <div id="modeBadge" class="text-xs px-3 py-1 rounded-full font-medium bg-indigo-800 text-indigo-100 border border-indigo-700">
+                初期化中...
+            </div>
+        </div>
+    </header>
+
+    <main class="flex-1 max-w-6xl w-full mx-auto p-4 flex flex-col gap-6">
+
+        <!-- Local File Warning Banner -->
+        <div id="localFileWarning" class="hidden bg-amber-500 text-white p-4 rounded-2xl shadow-md border border-amber-600 flex items-start gap-3">
+            <i class="fa-solid fa-triangle-exclamation text-2xl shrink-0 mt-0.5"></i>
+            <div class="text-xs leading-relaxed">
+                <p class="font-bold text-sm mb-1">【ご注意】現在ローカルファイル（file://）として開かれています</p>
+                <p>スマートフォンからQRコードを読み取って字幕を受信するには、このファイルをGitHub PagesやVercelなどの無料Webサーバー（https://）上に配置する必要があります。</p>
+            </div>
+        </div>
+
+        <!-- ==================== HOST MODE (PC View) ==================== -->
+        <div id="hostSection" class="hidden flex-col gap-6">
+            
+            <!-- Top Dashboard Card -->
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <!-- Controls & Audio Status -->
+                <div class="lg:col-span-2 bg-white rounded-2xl p-6 shadow-sm border border-slate-200 flex flex-col justify-between">
+                    <div>
+                        <div class="flex justify-between items-start mb-4">
+                            <div>
+                                <h2 class="text-lg font-bold text-slate-900 mb-1">ホストコントロール（PC側）</h2>
+                                <p class="text-sm text-slate-500">USBキャプチャ・ミキサー入力・またはPC再生音（YouTube等）を選択して開始してください。</p>
+                            </div>
+                            <div class="flex items-center space-x-2">
+                                <span id="broadcastPauseBadge" class="hidden px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-800 border border-amber-300 animate-pulse">
+                                    <i class="fa-solid fa-pause mr-1"></i> 配信ポーズ中
+                                </span>
+                                <span id="speechStatus" class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-600">
+                                    <span class="w-2 h-2 mr-1.5 rounded-full bg-slate-400"></span> 停止中
+                                </span>
+                            </div>
+                        </div>
+
+                        <!-- Audio Device Selector & Level Meter -->
+                        <div class="bg-indigo-50/60 p-3.5 rounded-xl border border-indigo-100 mb-4 space-y-2">
+                            <div class="flex justify-between items-center">
+                                <label for="audioDeviceSelect" class="text-xs font-bold text-indigo-900 flex items-center">
+                                    <i class="fa-solid fa-plug-circle-bolt mr-1.5 text-indigo-600"></i> 音声入力ソース（マイク / USB / PC内音声）
+                                </label>
+                                <button id="togglePcAudioGuideBtn" type="button" class="text-xs text-indigo-600 hover:text-indigo-800 font-semibold underline flex items-center">
+                                    <i class="fa-solid fa-circle-question mr-1"></i> YouTubeなどのPC音声を拾うには？
+                                </button>
+                            </div>
+                            
+                            <div class="flex gap-2">
+                                <select id="audioDeviceSelect" class="flex-1 px-3 py-2 border border-slate-300 rounded-lg text-xs bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none text-slate-800 font-medium">
+                                    <option value="">デバイスを読み込み中...</option>
+                                </select>
+                                <button id="refreshAudioDevicesBtn" type="button" class="px-3 py-2 bg-indigo-100 hover:bg-indigo-200 text-indigo-800 font-semibold text-xs rounded-lg transition-colors flex items-center shrink-0" title="デバイス一覧を更新">
+                                    <i class="fa-solid fa-rotate-right mr-1"></i> 更新
+                                </button>
+                            </div>
+
+                            <!-- Audio Level Meter -->
+                            <div class="flex items-center space-x-2 pt-1">
+                                <span class="text-[11px] text-slate-500 font-medium shrink-0">入力レベル:</span>
+                                <div class="flex-1 bg-slate-200 rounded-full h-2.5 overflow-hidden">
+                                    <div id="audioLevelBar" class="bg-emerald-500 h-full w-0 transition-all duration-75"></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- PC Audio Setup Guide Box (Collapsible) -->
+                        <div id="pcAudioGuideBox" class="hidden mb-4 p-3.5 bg-amber-50 rounded-xl border border-amber-200 text-xs text-amber-900 space-y-2">
+                            <div class="font-bold text-amber-950 flex items-center">
+                                <i class="fa-solid fa-circle-info mr-1.5 text-amber-600"></i> YouTubeなどPCで再生される音声を翻訳する設定手順
+                            </div>
+                            <ol class="list-decimal list-inside space-y-1 text-amber-900 leading-relaxed pl-1">
+                                <li>Windowsの画面右下にある<strong>スピーカーアイコンを右クリック</strong> ➔ <strong>「サウンドの設定」</strong>を開きます。</li>
+                                <li>サウンドの設定画面で<strong>「録音」</strong>タブを開き、空欄部分を右クリックして<strong>「無効なデバイスの表示」にチェック</strong>を入れます。</li>
+                                <li><strong>「ステレオ ミキサー」</strong>（Stereo Mix）が表示されたら右クリックして<strong>「有効」</strong>にします。</li>
+                                <li>このアプリの「音声入力ソース」ドロップダウンで<strong>「ステレオミキサー」</strong>を選択します。</li>
+                                <li class="text-amber-800 italic">（※ステレオミキサーが無い場合は、無料の「VB-Audio Virtual Cable」をインストールして選択してください）</li>
+                            </ol>
+                        </div>
+
+                        <!-- Main Action Buttons -->
+                        <div class="flex flex-wrap gap-3 my-4">
+                            <button id="toggleRecognitionBtn" class="flex-1 sm:flex-initial inline-flex items-center justify-center px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-xl shadow-sm transition-all text-sm">
+                                <i class="fa-solid fa-play mr-2" id="playIcon"></i>
+                                <span id="recognizeBtnText">音声認識スタート</span>
+                            </button>
+
+                            <!-- 配信一時停止ボタン -->
+                            <button id="togglePauseBtn" class="inline-flex items-center justify-center px-4 py-3 bg-amber-500 hover:bg-amber-600 text-white font-semibold rounded-xl shadow-sm transition-all text-sm">
+                                <i class="fa-solid fa-pause mr-2" id="pauseIcon"></i>
+                                <span id="pauseBtnText">配信一時停止</span>
+                            </button>
+
+                            <button id="clearTranscriptsBtn" class="inline-flex items-center justify-center px-4 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium rounded-xl transition-all text-sm">
+                                <i class="fa-solid fa-trash-can mr-2"></i> 表示クリア
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Live Interim Output Box -->
+                    <div class="mt-4 p-4 bg-slate-50 rounded-xl border border-slate-200">
+                        <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider block mb-1">現在の入力音声（リアルタイム補正中）</span>
+                        <p id="interimText" class="text-base text-indigo-900 font-medium italic min-h-[1.5rem]">「▶ 音声認識スタート」を押して発話してください...</p>
+                    </div>
+                </div>
+
+                <div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-200 flex flex-col items-center text-center justify-center">
+                    <h3 class="text-sm font-bold text-slate-800 mb-2">聴講者用 QRコード</h3>
+                    <p class="text-xs text-slate-500 mb-4">スマホでかざすだけで字幕を表示できます</p>
+
+                    <!-- QR Code Canvas Container -->
+                    <div id="qrcode" class="p-2 bg-white rounded-xl shadow-inner border border-slate-100 flex items-center justify-center min-h-[140px] min-w-[140px]"></div>
+
+                    <div class="mt-3 w-full">
+                        <p class="text-xs text-slate-400 mb-1">ルームID:</p>
+                        <code id="roomIdDisplay" class="bg-slate-100 text-slate-800 px-3 py-1 rounded text-xs font-mono select-all font-bold block truncate">接続待機中...</code>
+                    </div>
+
+                    <!-- 接続者数カウンター -->
+                    <div class="mt-3 w-full pt-3 border-t border-slate-100">
+                        <div class="flex items-center justify-center space-x-2">
+                            <i class="fa-solid fa-mobile-screen text-indigo-500"></i>
+                            <span class="text-sm font-bold text-slate-700">接続中: <span id="viewerCountDisplay" class="text-indigo-600">0</span> 台</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+                <div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-200 flex flex-col">
+                    <div class="flex items-center justify-between mb-3">
+                        <h3 class="text-base font-bold text-slate-900">
+                            <i class="fa-solid fa-book-bookmark text-indigo-600 mr-2"></i>教会用語カスタム辞書
+                        </h3>
+                        <span id="dictCountBadge" class="text-xs px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 font-bold">0件</span>
+                    </div>
+
+                    <p class="text-xs text-slate-500 mb-3">
+                        誤変換されやすい「音/ひらがな」を正しい「教会用語」に自動置換します。
+                    </p>
+
+                    <!-- Bulk & Backup Actions Panel -->
+                    <div class="flex flex-wrap gap-1.5 mb-4">
+                        <button id="loadPresetBtn" type="button" class="flex-1 py-1.5 px-2 bg-amber-50 hover:bg-amber-100 text-amber-800 font-medium text-xs rounded-lg transition-colors border border-amber-200 flex items-center justify-center">
+                            <i class="fa-solid fa-wand-magic-sparkles mr-1 text-amber-600"></i> 教会標準100語一括読み込み
+                        </button>
+                        <button id="toggleBulkAreaBtn" type="button" class="py-1.5 px-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium text-xs rounded-lg transition-colors border border-slate-200">
+                            <i class="fa-solid fa-file-import mr-1"></i> テキスト一括
+                        </button>
+                    </div>
+
+                    <!-- JSON Backup & Restore Actions -->
+                    <div class="flex gap-1.5 mb-4">
+                        <button id="exportJsonBtn" type="button" class="flex-1 py-1 px-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-semibold text-[11px] rounded-lg transition-colors border border-indigo-200 flex items-center justify-center">
+                            <i class="fa-solid fa-file-export mr-1"></i> 辞書JSON保存
+                        </button>
+                        <button id="importJsonBtn" type="button" class="flex-1 py-1 px-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-[11px] rounded-lg transition-colors border border-slate-200 flex items-center justify-center">
+                            <i class="fa-solid fa-file-arrow-up mr-1"></i> JSON読込
+                        </button>
+                        <input type="file" id="jsonFileInput" accept=".json" class="hidden">
+                    </div>
+
+                    <!-- Bulk Text Input Area -->
+                    <div id="bulkArea" class="hidden flex-col gap-2 mb-4 p-3 bg-slate-50 rounded-xl border border-slate-200">
+                        <label class="block text-[11px] font-semibold text-slate-600">
+                            一括入力（1行ごとに <code>誤変換,正しい表記</code> または <code>誤変換:正しい表記</code>）
+                        </label>
+                        <textarea id="bulkTextInput" rows="4" placeholder="せいさん,聖餐&#10;しんけん,神権&#10;かんちょう,管長" class="w-full p-2 text-xs font-mono border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none"></textarea>
+                        <div class="flex gap-2">
+                            <button id="applyBulkBtn" type="button" class="flex-1 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs rounded-lg transition-colors">
+                                一括登録を実行
+                            </button>
+                            <button id="exportDictBtn" type="button" class="py-1.5 px-3 bg-slate-200 hover:bg-slate-300 text-slate-700 font-semibold text-xs rounded-lg transition-colors">
+                                テキスト抽出
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Single Term Form -->
+                    <form id="addDictForm" class="space-y-3 mb-4">
+                        <input type="hidden" id="editingKey" value="">
+                        <div class="grid grid-cols-2 gap-2">
+                            <div>
+                                <label class="block text-[11px] font-medium text-slate-600 mb-1">誤変換・読み</label>
+                                <input type="text" id="dictKey" placeholder="せいさん" required class="w-full px-2.5 py-1.5 text-xs border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+                            </div>
+                            <div>
+                                <label class="block text-[11px] font-medium text-slate-600 mb-1">正しい用語</label>
+                                <input type="text" id="dictVal" placeholder="聖餐" required class="w-full px-2.5 py-1.5 text-xs border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+                            </div>
+                        </div>
+                        <div class="flex gap-2">
+                            <button id="saveDictBtn" type="submit" class="flex-1 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-semibold text-xs rounded-lg transition-colors border border-indigo-200">
+                                <i class="fa-solid fa-plus mr-1" id="saveDictIcon"></i> <span id="saveDictBtnText">単語を追加</span>
+                            </button>
+                            <button id="cancelEditBtn" type="button" class="hidden py-1.5 px-3 bg-slate-100 hover:bg-slate-200 text-slate-600 font-semibold text-xs rounded-lg transition-colors border border-slate-200">
+                                キャンセル
+                            </button>
+                            <button id="clearAllDictBtn" type="button" class="py-1.5 px-3 bg-red-50 hover:bg-red-100 text-red-600 font-semibold text-xs rounded-lg transition-colors border border-red-200">
+                                全消去
+                            </button>
+                        </div>
+                    </form>
+
+                    <!-- Dictionary List Container (イベント委譲で XSS 対策済み) -->
+                    <div class="flex-1 overflow-y-auto max-h-60 pr-1 space-y-1.5 border-t border-slate-100 pt-3" id="dictList">
+                        <!-- Items injected dynamically -->
+                    </div>
+                </div>
+
+                <div class="lg:col-span-2 bg-white rounded-2xl p-6 shadow-sm border border-slate-200 flex flex-col h-[520px]">
+                    <div class="flex justify-between items-center mb-4">
+                        <h3 class="text-base font-bold text-slate-900">
+                            <i class="fa-solid fa-list-check text-indigo-600 mr-2"></i>日本語文字起こしログ（補正後）
+                        </h3>
+                        <div class="flex items-center space-x-2">
+                            <button id="downloadTranscriptBtn" class="inline-flex items-center px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-semibold text-xs rounded-lg transition-colors border border-emerald-200" title="文字起こしログを保存">
+                                <i class="fa-solid fa-download mr-1"></i> ログ保存
+                            </button>
+                            <span class="text-xs text-slate-400">配信中のログ</span>
+                        </div>
+                    </div>
+
+                    <div id="hostTranscriptLog" class="flex-1 overflow-y-auto caption-scroll bg-slate-50 rounded-xl p-4 space-y-3 border border-slate-200">
+                        <p class="text-xs text-slate-400 text-center italic my-auto">ここに発話された内容が正しい単語に置換されて記録されます...</p>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
+        <!-- ==================== VIEWER MODE (Smartphone View) ==================== -->
+        <div id="viewerSection" class="hidden flex-col gap-4 flex-1">
+
+            <!-- Language & View Settings Controls -->
+            <div class="bg-white rounded-2xl p-4 shadow-sm border border-slate-200 flex flex-wrap items-center justify-between gap-3">
+                <div class="flex items-center space-x-2">
+                    <i class="fa-solid fa-language text-indigo-600 text-xl"></i>
+                    <span class="text-xs font-semibold text-slate-500 uppercase tracking-wider">表示言語 / Language</span>
+                </div>
+                
+                <select id="targetLangSelect" class="p-2 border border-slate-300 rounded-xl text-sm bg-white focus:ring-2 focus:ring-indigo-500 font-semibold text-slate-800 shadow-sm">
+                    <option value="en">English (英語)</option>
+                    <option value="tl">Tagalog (タガログ語)</option>
+                    <option value="zh-CN">中文 简体 (中国語 簡体字)</option>
+                    <option value="zh-TW">中文 繁體 (中国語 繁体字)</option>
+                    <option value="pt">Português (ポルトガル語)</option>
+                    <option value="es">Español (スペイン語)</option>
+                    <option value="ko">한국語 (韓国語)</option>
+                    <option value="ja">日本語 (補正済み原文)</option>
+                </select>
+            </div>
+
+            <!-- Viewer Captions Feed -->
+            <div class="bg-slate-900 rounded-2xl p-5 shadow-lg flex-1 flex flex-col justify-between min-h-[60vh]">
+                
+                <!-- Caption Output Stream -->
+                <div id="viewerCaptionFeed" class="overflow-y-auto caption-scroll flex-1 space-y-4 pr-1">
+                    <div class="text-slate-400 text-sm text-center italic py-10">
+                        <i class="fa-solid fa-tower-broadcast text-3xl mb-3 block text-slate-600"></i>
+                        ホストからの音声配信を待機しています...<br>
+                        <span class="text-xs text-slate-500">Waiting for live speech stream...</span>
+                    </div>
+                </div>
+
+                <!-- Footer Status Bar -->
+                <div class="mt-4 pt-3 border-t border-slate-800 flex justify-between items-center text-xs text-slate-400 flex-wrap gap-2">
+                    <div class="flex items-center space-x-2">
+                        <span id="peerConnectionStatus" class="w-2 h-2 rounded-full bg-amber-400"></span>
+                        <span id="peerStatusText">接続中...</span>
+                    </div>
+
+                    <div class="flex items-center space-x-2">
+                        <!-- 画面スリープ防止トグルボタン -->
+                        <button id="wakeLockBtn" class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-xs flex items-center transition-colors border border-slate-700">
+                            <i class="fa-solid fa-lightbulb text-amber-400 mr-1.5" id="wakeLockIcon"></i>
+                            <span id="wakeLockText">スリープ防止: ON</span>
+                        </button>
+
+                        <button id="fontSizeBtn" class="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-xs border border-slate-700">
+                            文字サイズ: 中
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+    </main>
+
+    <script>
+        // ==================== 100語規模の標準教会用語辞書プリセット (日本語音声認識→日本語正式用語) ====================
+        const DEFAULT_DICTIONARY = {
+            // --- 組織・役職・機能 ---
+            "せいさんかい": "聖餐会",
+            "精算会": "聖餐会",
+            "清算会": "聖餐会",
+            "かんちょう": "管長",
+            "館長": "管長",
+            "官長": "管長",
+            "かんとく": "監督",
+            "ふじょきょうかい": "扶助協会",
+            "扶助教会": "扶助協会",
+            "あいのこ": "扶助協会",
+            "しょとうきょうかい": "初等協会",
+            "初等教会": "初等協会",
+            "しようとうきょうかい": "初等協会",
+            "にちようがっこう": "日曜学校",
+            "ちょうろうていいんかい": "長老定員会",
+            "わーど": "ワード",
+            "すてーく": "ステーク",
+            "ステーキ": "ステーク",
+            "すてく": "ステーク",
+            "せんきょうし": "宣教師",
+            "ちょうろう": "長老",
+            "だいさいし": "大祭司",
+            "しつじ": "執事",
+            "じゅうにしと": "十二使徒",
+            "12使徒": "十二使徒",
+            "しちじゅうにん": "七十人",
+            "70人": "七十人",
+            "しゅくふくし": "祝福師",
+            "てんどうぶ": "伝道部",
+            "伝導部": "伝道部",
+            "てんどうぶかんちょう": "伝道部管長",
+
+            // --- 聖典・書籍 ---
+            "もるもんしょ": "モルモン書",
+            "モルモン初": "モルモン書",
+            "きょうぎとせいやく": "教義と聖約",
+            "競技と誓約": "教義と聖約",
+            "協議と誓約": "教義と聖約",
+            "こうかのしんじゅ": "高価な真珠",
+            "高価の真珠": "高価な真珠",
+            "効果の真珠": "高価な真珠",
+            "せいてん": "聖典",
+            "晴天": "聖典",
+            "青天": "聖典",
+            "きゅうやくせいしょ": "旧約聖書",
+            "しんやくせいしょ": "新約聖書",
+
+            // --- 儀式・教理・概念 ---
+            "せいさん": "聖餐",
+            "精算": "聖餐",
+            "清算": "聖餐",
+            "しんけん": "神権",
+            "真剣": "神権",
+            "神件": "神権",
+            "ばぷてすま": "バプテスマ",
+            "バプテス間": "バプテスマ",
+            "あかない": "贖い",
+            "赤ない": "贖い",
+            "あがな(": "贖い",
+            "あかし": "証",
+            "明かし": "証",
+            "ふくいん": "福音",
+            "服員": "福音",
+            "あんそくじつ": "安息日",
+            "暗息日": "安息日",
+            "しんでん": "神殿",
+            "心電": "神殿",
+            "せいれい": "聖霊",
+            "精霊": "聖霊",
+            "えいせい": "永生",
+            "衛生": "永生",
+            "てんのちち": "天の父",
+            "えんだうめんと": "エンダウメント",
+            "ふういん": "封印",
+            "しゅういち": "什一",
+            "十イチ": "什一",
+            "拾一": "什一",
+            "十一": "什一",
+            "ちえのことば": "知恵の言葉",
+            "ふぁみりーひすとりー": "ファミリーヒストリー",
+            "ふっかつ": "復活",
+            "しょうえい": "昇栄",
+            "すくいのおけいかく": "救いの計画",
+            "れいのおや": "霊の親",
+            "かみさま": "神様",
+            "いいえすきりすと": "イエス・キリスト",
+            "イエスキリスト": "イエス・キリスト",
+            "あーめん": "アーメン",
+            "だんじきあかしかい": "断食証会",
+            "断食証会": "断食証会",
+            "そうたいかい": "総大会",
+            "すてーくたいかい": "ステーク大会",
+            "せみなりー": "セミナリー",
+            "いんすてぃちゅーと": "インスティテュート"
+        };
+
+        // ==================== 多言語教会用語辞書 (翻訳後テキストの後置換補正) ====================
+        const TARGET_GLOSSARY = {
+            "en": {
+                "communion": "Sacrament",
+                "eucharist": "Sacrament",
+                "lord's supper": "Sacrament",
+                "priesthood authority": "Priesthood",
+                "relief association": "Relief Society",
+                "elementary school": "Primary",
+                "primary school": "Primary",
+                "sunday school": "Sunday School",
+                "mormon book": "Book of Mormon",
+                "doctrine & covenants": "Doctrine and Covenants",
+                "pearl of great price": "Pearl of Great Price",
+                "general conference": "General Conference",
+                "fast & testimony": "Fast and Testimony",
+                "word of wisdom": "Word of Wisdom",
+                "family history": "Family History",
+                "plan of salvation": "Plan of Salvation",
+                "baptism": "Baptism",
+                "atonement": "Atonement",
+                "testimony": "Testimony",
+                "gospel": "Gospel",
+                "scriptures": "Scriptures",
+                "sabbath": "Sabbath",
+                "temple": "Temple",
+                "endowment": "Endowment",
+                "sealing": "Sealing",
+                "tithing": "Tithing",
+                "holy spirit": "Holy Ghost",
+                "eternal life": "Eternal Life",
+                "missionary": "Missionary",
+                "elder": "Elder",
+                "high priest": "High Priest",
+                "deacon": "Deacon",
+                "twelve apostles": "Twelve Apostles",
+                "seventy": "Seventy",
+                "heavenly father": "Heavenly Father",
+                "patriarch": "Patriarch"
+            },
+            "tl": {
+                "banal na komunyon": "Banal na Hapunan",
+                "komunyon": "Banal na Hapunan",
+                "pari": "Priesthood",
+                "samahan ng tulong": "Relief Society",
+                "elementarya": "Primary",
+                "linggong paaralan": "Linggong Paaralan",
+                "aklat ng mormon": "Aklat ni Mormon",
+                "mga doktrina at mga tipan": "Doktrina at mga Tipan",
+                "doktrina at mga tipan": "Doktrina at mga Tipan",
+                "pangkalahatang kumperensya": "Pangkalahatang Kumperensya",
+                "salita ng karunungan": "Salita ng Karunungan",
+                "binyag": "Binyag",
+                "pagbabayad-sala": "Pagbabayad-sala",
+                "patotoo": "Patotoo",
+                "ebanghelyo": "Ebanghelyo",
+                "mga banal na kasulatan": "Banal na Kasulatan",
+                "sabado": "Araw ng Pamamahinga",
+                "templo": "Templo",
+                "ikapu": "Ikapu",
+                "banal na espiritu": "Espiritu Santo",
+                "buhay na walang hanggan": "Buhay na Walang Hanggan",
+                "misyoner": "Misyunaryo",
+                "matanda": "Elder",
+                "dakilang saserdote": "High Priest",
+                "diakono": "Deacon",
+                "labindalawang apostol": "Labindalawang Apostol",
+                "pitumpu": "Pitumpu",
+                "ama sa langit": "Ama sa Langit",
+                "patriyarka": "Patriyarka"
+            },
+            "zh-CN": {
+                "圣餐": "圣餐",
+                "神权": "神权",
+                "会长": "管长",
+                "慈助会": "慈助会",
+                "初级会": "初级会",
+                "主日学": "主日学",
+                "摩尔门经": "摩尔门经",
+                "教义和圣约": "教义和圣约",
+                "无价珍珠": "高价珍珠",
+                "总大会": "总大会",
+                "智慧语": "智慧语",
+                "家谱": "家谱历史",
+                "洗礼": "洗礼",
+                "赎罪": "赎罪",
+                "见证": "见证",
+                "福音": "福音",
+                "经文": "经文",
+                "安息日": "安息日",
+                "圣殿": "圣殿",
+                "十一奉献": "什一奉献",
+                "圣灵": "圣灵",
+                "永生": "永生",
+                "传教士": "传教士",
+                "长老": "长老",
+                "大祭司": "大祭司",
+                "执事": "执事",
+                "十二使徒": "十二使徒",
+                "七十员": "七十员",
+                "天父": "天父",
+                "祝福师": "祝福师"
+            },
+            "zh-TW": {
+                "聖餐": "聖餐",
+                "神權": "神權",
+                "會長": "管長",
+                "慈助會": "慈助會",
+                "初級會": "初級會",
+                "主日學": "主日學",
+                "摩爾門經": "摩爾門經",
+                "教義和聖約": "教義和聖約",
+                "無價珍珠": "高價珍珠",
+                "總大會": "總大會",
+                "智慧語": "智慧語",
+                "家譜": "家譜歷史",
+                "洗禮": "洗禮",
+                "贖罪": "贖罪",
+                "見證": "見證",
+                "福音": "福音",
+                "經文": "經文",
+                "安息日": "安息日",
+                "聖殿": "聖殿",
+                "十一奉獻": "什一奉獻",
+                "聖靈": "聖靈",
+                "永生": "永生",
+                "傳教士": "傳教士",
+                "長老": "長老",
+                "大祭司": "大祭司",
+                "執事": "執事",
+                "十二使徒": "十二使徒",
+                "七十員": "七十員",
+                "天父": "天父",
+                "祝福師": "祝福師"
+            },
+            "pt": {
+                "comunhão": "Sacramento",
+                "eucaristia": "Sacramento",
+                "sacerdócio": "Sacerdócio",
+                "sociedade de socorro": "Sociedade de Socorro",
+                "primária": "Primária",
+                "escola dominical": "Escola Dominical",
+                "livro de mórmon": "Livro de Mórmon",
+                "doutrina e convênios": "Doutrina e Convênios",
+                "pérola de grande valor": "Pérola de Grande Valor",
+                "conferência geral": "Conferência Geral",
+                "palavra de sabedoria": "Palavra de Sabedoria",
+                "história da família": "História da Família",
+                "batismo": "Batismo",
+                "expiação": "Expiação",
+                "testemunho": "Testemunho",
+                "evangelho": "Evangelho",
+                "escrituras": "Escrituras",
+                "dia do senhor": "Dia do Senhor",
+                "templo": "Templo",
+                "dízimo": "Dízimo",
+                "espírito santo": "Espírito Santo",
+                "vida eterna": "Vida Eterna",
+                "missionário": "Missionário",
+                "élder": "Élder",
+                "sumo sacerdote": "Sumo Sacerdote",
+                "diácono": "Diácono",
+                "doze apóstolos": "Doze Apóstolos",
+                "setenta": "Setenta",
+                "pai celestial": "Pai Celestial",
+                "patriarca": "Patriarca"
+            },
+            "es": {
+                "comunión": "Santa Cena",
+                "eucaristía": "Santa Cena",
+                "sacerdocio": "Sacerdocio",
+                "sociedad de socorro": "Sociedad de Socorro",
+                "primaria": "Primaria",
+                "escuela dominical": "Escuela Dominical",
+                "libro de mormón": "Libro de Mormón",
+                "doctrina y convenios": "Doctrina y Convenios",
+                "perla de gran precio": "Perla de Gran Precio",
+                "conferencia general": "Conferencia General",
+                "palabra de sabiduría": "Palabra de Sabiduría",
+                "historia familiar": "Historia Familiar",
+                "bautismo": "Bautismo",
+                "expiación": "Expiación",
+                "testimonio": "Testimonio",
+                "evangelio": "Evangelio",
+                "escrituras": "Escrituras",
+                "día de reposo": "Día de Reposo",
+                "templo": "Templo",
+                "diezmo": "Diezmo",
+                "espíritu santo": "Espíritu Santo",
+                "vida eterna": "Vida Eterna",
+                "misionero": "Misionero",
+                "élder": "Élder",
+                "sumo sacerdote": "Sumo Sacerdote",
+                "diácono": "Diácono",
+                "doce apóstoles": "Doce Apóstoles",
+                "setenta": "Setenta",
+                "padre celestial": "Padre Celestial",
+                "patriarca": "Patriarca"
+            },
+            "ko": {
+                "성찬식": "성찬",
+                "신권": "신권",
+                "상호봉사회": "상호봉사회",
+                "초등회": "초등회",
+                "주일학교": "주일학교",
+                "몰몬경": "몰몬경",
+                "교리와 성약": "교리와 성약",
+                "값진 보주": "값진 보주",
+                "연대회": "연대회",
+                "지혜의 말씀": "지혜의 말씀",
+                "침례": "침례",
+                "속죄": "속죄",
+                "간증": "간증",
+                "복음": "복음",
+                "경전": "경전",
+                "안식일": "안식일",
+                "성전": "성전",
+                "십일조": "십일조",
+                "성령": "성령",
+                "영생": "영생",
+                "선교사": "선교사",
+                "장로": "장로",
+                "대제사": "대제사",
+                "집사": "집사",
+                "십이사도": "십이사도",
+                "칠십인": "칠십인",
+                "하나님 아버지": "하나님 아버지",
+                "축복사": "축복사"
+            }
+        };
+
+        // ==================== アプリケーション状態変数 ====================
+        let churchDictionary = {};
+        let peer = null;
+        let peerConnections = [];
+        let hostConnection = null;
+        let isHost = true;
+        let isRecognizing = false;
+        let isBroadcastPaused = false;
+        let recognition = null;
+        let currentFontSizeIndex = 1;
+        const fontClasses = ["text-base", "text-xl", "text-3xl"];
+        const fontSizeNames = ["文字サイズ: 小", "文字サイズ: 中", "文字サイズ: 大"];
+
+        let audioContext = null;
+        let mediaStreamSource = null;
+        let analyser = null;
+        let animFrameId = null;
+
+        // 画面スリープ防止・自動再接続用状態
+        let wakeLockObj = null;
+        let isWakeLockEnabled = true;
+        let currentRoomId = null;
+        let viewerReconnectTimer = null;
+        let reconnectAttemptCount = 0;
+
+        // ログダウンロード用の文字起こし履歴バッファ
+        const transcriptHistory = [];
+
+        // ==================== DOM要素参照 ====================
+        const hostSection = document.getElementById('hostSection');
+        const viewerSection = document.getElementById('viewerSection');
+        const modeBadge = document.getElementById('modeBadge');
+        const localFileWarning = document.getElementById('localFileWarning');
+
+        const toggleRecognitionBtn = document.getElementById('toggleRecognitionBtn');
+        const recognizeBtnText = document.getElementById('recognizeBtnText');
+        const playIcon = document.getElementById('playIcon');
+        const speechStatus = document.getElementById('speechStatus');
+        const interimText = document.getElementById('interimText');
+        const hostTranscriptLog = document.getElementById('hostTranscriptLog');
+        const clearTranscriptsBtn = document.getElementById('clearTranscriptsBtn');
+        const downloadTranscriptBtn = document.getElementById('downloadTranscriptBtn');
+
+        const togglePauseBtn = document.getElementById('togglePauseBtn');
+        const pauseBtnText = document.getElementById('pauseBtnText');
+        const pauseIcon = document.getElementById('pauseIcon');
+        const broadcastPauseBadge = document.getElementById('broadcastPauseBadge');
+
+        const audioDeviceSelect = document.getElementById('audioDeviceSelect');
+        const refreshAudioDevicesBtn = document.getElementById('refreshAudioDevicesBtn');
+        const audioLevelBar = document.getElementById('audioLevelBar');
+        const togglePcAudioGuideBtn = document.getElementById('togglePcAudioGuideBtn');
+        const pcAudioGuideBox = document.getElementById('pcAudioGuideBox');
+
+        const qrcodeContainer = document.getElementById('qrcode');
+        const roomIdDisplay = document.getElementById('roomIdDisplay');
+        const viewerCountDisplay = document.getElementById('viewerCountDisplay');
+
+        const dictList = document.getElementById('dictList');
+        const dictCountBadge = document.getElementById('dictCountBadge');
+        const addDictForm = document.getElementById('addDictForm');
+        const dictKey = document.getElementById('dictKey');
+        const dictVal = document.getElementById('dictVal');
+        const editingKey = document.getElementById('editingKey');
+        const saveDictBtnText = document.getElementById('saveDictBtnText');
+        const saveDictIcon = document.getElementById('saveDictIcon');
+        const cancelEditBtn = document.getElementById('cancelEditBtn');
+        const clearAllDictBtn = document.getElementById('clearAllDictBtn');
+
+        const loadPresetBtn = document.getElementById('loadPresetBtn');
+        const toggleBulkAreaBtn = document.getElementById('toggleBulkAreaBtn');
+        const bulkArea = document.getElementById('bulkArea');
+        const bulkTextInput = document.getElementById('bulkTextInput');
+        const applyBulkBtn = document.getElementById('applyBulkBtn');
+        const exportDictBtn = document.getElementById('exportDictBtn');
+
+        // JSON Backup / Restore
+        const exportJsonBtn = document.getElementById('exportJsonBtn');
+        const importJsonBtn = document.getElementById('importJsonBtn');
+        const jsonFileInput = document.getElementById('jsonFileInput');
+
+        const targetLangSelect = document.getElementById('targetLangSelect');
+        const viewerCaptionFeed = document.getElementById('viewerCaptionFeed');
+        const peerConnectionStatus = document.getElementById('peerConnectionStatus');
+        const peerStatusText = document.getElementById('peerStatusText');
+        const fontSizeBtn = document.getElementById('fontSizeBtn');
+
+        const wakeLockBtn = document.getElementById('wakeLockBtn');
+        const wakeLockIcon = document.getElementById('wakeLockIcon');
+        const wakeLockText = document.getElementById('wakeLockText');
+
+        // ==================== 初期化 ====================
+        window.onload = function() {
+            if (window.location.protocol === 'file:') {
+                localFileWarning.classList.remove('hidden');
+            }
+
+            loadDictionary();
+            checkMode();
+            setupFontSizeButton();
+            setupBulkDictionaryEvents();
+            setupJsonBackupEvents(); // JSONバックアップ機能
+            setupAudioGuideToggle();
+            setupSingleDictionaryForm();
+            setupDictListDelegation();
+            setupHostLogDelegation(); // ログからのワンタップ辞書登録
+
+            if (refreshAudioDevicesBtn) {
+                refreshAudioDevicesBtn.onclick = initAudioDeviceSelector;
+            }
+
+            if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
+                navigator.mediaDevices.addEventListener('devicechange', initAudioDeviceSelector);
+            }
+        };
+
+        function checkMode() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const roomId = urlParams.get('room');
+
+            if (roomId) {
+                isHost = false;
+                currentRoomId = roomId;
+                hostSection.classList.add('hidden');
+                hostSection.classList.remove('flex');
+                viewerSection.classList.remove('hidden');
+                viewerSection.classList.add('flex');
+
+                modeBadge.textContent = "聴講者モード（字幕受信中）";
+                modeBadge.className = "text-xs px-3 py-1 rounded-full font-medium bg-emerald-800 text-emerald-100 border border-emerald-700";
+
+                restoreViewerLanguage();
+                setupWakeLock();
+                initPeerViewer(roomId);
+            } else {
+                isHost = true;
+                viewerSection.classList.add('hidden');
+                viewerSection.classList.remove('flex');
+                hostSection.classList.remove('hidden');
+                hostSection.classList.add('flex');
+
+                modeBadge.textContent = "ホスト配信モード（PC）";
+                modeBadge.className = "text-xs px-3 py-1 rounded-full font-medium bg-indigo-800 text-indigo-100 border border-indigo-700";
+
+                setupPauseBroadcastButton();
+                setupDownloadButton();
+                initPeerHost();
+                initAudioDeviceSelector();
+                initSpeechRecognition();
+            }
+        }
+
+        // ==================== 言語選択の localStorage 記憶 ====================
+        function restoreViewerLanguage() {
+            const savedLang = localStorage.getItem('lds_caption_lang');
+            if (savedLang) {
+                const options = targetLangSelect.options;
+                for (let i = 0; i < options.length; i++) {
+                    if (options[i].value === savedLang) {
+                        targetLangSelect.selectedIndex = i;
+                        break;
+                    }
+                }
+            }
+
+            targetLangSelect.addEventListener('change', function() {
+                localStorage.setItem('lds_caption_lang', this.value);
+            });
+        }
+
+        // ==================== 画面スリープ防止 (Screen Wake Lock API) ====================
+        function setupWakeLock() {
+            if ('wakeLock' in navigator) {
+                requestWakeLock();
+                
+                document.addEventListener('visibilitychange', () => {
+                    if (document.visibilityState === 'visible' && isWakeLockEnabled) {
+                        requestWakeLock();
+                    }
+                });
+
+                wakeLockBtn.onclick = function() {
+                    isWakeLockEnabled = !isWakeLockEnabled;
+                    if (isWakeLockEnabled) {
+                        requestWakeLock();
+                    } else {
+                        releaseWakeLock();
+                    }
+                };
+            } else {
+                wakeLockText.textContent = "スリープ防止: 未対応";
+                wakeLockBtn.classList.add('opacity-50', 'cursor-not-allowed');
+                wakeLockIcon.className = "fa-solid fa-lightbulb text-slate-500 mr-1.5";
+            }
+        }
+
+        async function requestWakeLock() {
+            try {
+                if ('wakeLock' in navigator) {
+                    wakeLockObj = await navigator.wakeLock.request('screen');
+                    wakeLockText.textContent = "スリープ防止: ON";
+                    wakeLockIcon.className = "fa-solid fa-lightbulb text-amber-400 mr-1.5";
+                    wakeLockBtn.className = "px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-amber-300 rounded text-xs flex items-center transition-colors border border-amber-500/40";
+                }
+            } catch (err) {
+                console.warn('Wake Lock request failed:', err);
+            }
+        }
+
+        function releaseWakeLock() {
+            if (wakeLockObj) {
+                wakeLockObj.release();
+                wakeLockObj = null;
+            }
+            wakeLockText.textContent = "スリープ防止: OFF";
+            wakeLockIcon.className = "fa-solid fa-lightbulb text-slate-500 mr-1.5";
+            wakeLockBtn.className = "px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-400 rounded text-xs flex items-center transition-colors border border-slate-700";
+        }
+
+        // ==================== 配信一時停止コントロール ====================
+        function setupPauseBroadcastButton() {
+            togglePauseBtn.onclick = function() {
+                isBroadcastPaused = !isBroadcastPaused;
+                if (isBroadcastPaused) {
+                    broadcastPauseBadge.classList.remove('hidden');
+                    togglePauseBtn.className = 'inline-flex items-center justify-center px-4 py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-xl shadow-sm transition-all text-sm';
+                    pauseIcon.className = 'fa-solid fa-play mr-2';
+                    pauseBtnText.textContent = '配信再開';
+                } else {
+                    broadcastPauseBadge.classList.add('hidden');
+                    togglePauseBtn.className = 'inline-flex items-center justify-center px-4 py-3 bg-amber-500 hover:bg-amber-600 text-white font-semibold rounded-xl shadow-sm transition-all text-sm';
+                    pauseIcon.className = 'fa-solid fa-pause mr-2';
+                    pauseBtnText.textContent = '配信一時停止';
+                }
+            };
+        }
+
+        // ==================== 文字起こしログのダウンロード ====================
+        function setupDownloadButton() {
+            downloadTranscriptBtn.onclick = function() {
+                if (transcriptHistory.length === 0) {
+                    alert('ダウンロードできるログがありません。音声認識を開始して発話を記録してください。');
+                    return;
+                }
+
+                const dateStr = new Date().toLocaleDateString('ja-JP', { year: 'numeric', month: '2-digit', day: '2-digit' }).replace(/\//g, '-');
+                const header = `末日聖徒イエス・キリスト教会 字幕ログ\nエクスポート日時: ${new Date().toLocaleString('ja-JP')}\n${'='.repeat(50)}\n\n`;
+
+                let body = '';
+                transcriptHistory.forEach(entry => {
+                    const statusMark = entry.paused ? ' [⏸️ 未配信]' : '';
+                    body += `[${entry.time}]${statusMark} ${entry.text}\n`;
+                });
+
+                const blob = new Blob([header + body], { type: 'text/plain;charset=utf-8' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `字幕ログ_${dateStr}.txt`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            };
+        }
+
+        function setupAudioGuideToggle() {
+            if (togglePcAudioGuideBtn && pcAudioGuideBox) {
+                togglePcAudioGuideBtn.onclick = function() {
+                    pcAudioGuideBox.classList.toggle('hidden');
+                };
+            }
+        }
+
+        // ==================== 音声デバイス選択 & レベルメーター ====================
+        async function initAudioDeviceSelector() {
+            try {
+                await navigator.mediaDevices.getUserMedia({ audio: true });
+                const devices = await navigator.mediaDevices.enumerateDevices();
+                const audioInputs = devices.filter(device => device.kind === 'audioinput');
+
+                audioDeviceSelect.innerHTML = '';
+
+                if (audioInputs.length === 0) {
+                    audioDeviceSelect.innerHTML = '<option value="">利用可能なマイク/入力が見つかりません</option>';
+                    return;
+                }
+
+                audioInputs.forEach((device, index) => {
+                    const option = document.createElement('option');
+                    option.value = device.deviceId;
+                    let label = device.label || `マイク / 音声入力 ${index + 1}`;
+                    
+                    if (label.includes('ステレオ ミキサー') || label.includes('Stereo Mix') || label.includes('CABLE Output')) {
+                        label = `🎵 【PC内部音声（YouTube等）】 ${label}`;
+                    }
+                    option.textContent = label;
+                    audioDeviceSelect.appendChild(option);
+                });
+
+                startAudioLevelMonitor(audioInputs[0].deviceId);
+
+                audioDeviceSelect.onchange = function() {
+                    startAudioLevelMonitor(this.value);
+                };
+
+            } catch (err) {
+                console.warn('Audio device access error:', err);
+                audioDeviceSelect.innerHTML = '<option value="">マイク・音声デバイスの許可が必要です</option>';
+            }
+        }
+
+        async function startAudioLevelMonitor(deviceId) {
+            try {
+                if (animFrameId) cancelAnimationFrame(animFrameId);
+                if (audioContext) audioContext.close();
+
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    audio: deviceId ? { deviceId: { exact: deviceId } } : true
+                });
+
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                analyser = audioContext.createAnalyser();
+                analyser.fftSize = 256;
+                mediaStreamSource = audioContext.createMediaStreamSource(stream);
+                mediaStreamSource.connect(analyser);
+
+                const dataArray = new Uint8Array(analyser.frequencyBinCount);
+
+                function updateMeter() {
+                    analyser.getByteFrequencyData(dataArray);
+                    let sum = 0;
+                    for (let i = 0; i < dataArray.length; i++) {
+                        sum += dataArray[i];
+                    }
+                    const average = sum / dataArray.length;
+                    const level = Math.min(100, Math.round((average / 128) * 100));
+                    
+                    audioLevelBar.style.width = level + '%';
+                    animFrameId = requestAnimationFrame(updateMeter);
+                }
+
+                updateMeter();
+            } catch (err) {
+                console.warn('Audio level monitor error:', err);
+            }
+        }
+
+        // ==================== 教会用語辞書管理 ====================
+        function loadDictionary() {
+            const saved = localStorage.getItem('lds_church_dict');
+            if (saved) {
+                try {
+                    churchDictionary = JSON.parse(saved);
+                } catch (e) {
+                    churchDictionary = { ...DEFAULT_DICTIONARY };
+                }
+            } else {
+                churchDictionary = { ...DEFAULT_DICTIONARY };
+                saveDictionary();
+            }
+            renderDictionaryList();
+        }
+
+        function saveDictionary() {
+            localStorage.setItem('lds_church_dict', JSON.stringify(churchDictionary));
+            renderDictionaryList();
+        }
+
+        function renderDictionaryList() {
+            dictList.innerHTML = '';
+            const keys = Object.keys(churchDictionary);
+            dictCountBadge.textContent = `${keys.length}件`;
+
+            if (keys.length === 0) {
+                dictList.innerHTML = '<p class="text-xs text-slate-400 text-center italic py-4">辞書が空です。「単語を追加」または「一括読み込み」を行ってください。</p>';
+                return;
+            }
+
+            keys.forEach(key => {
+                const val = churchDictionary[key];
+                const item = document.createElement('div');
+                item.className = 'flex items-center justify-between p-2 bg-slate-50 hover:bg-slate-100 rounded-lg text-xs border border-slate-200 transition-colors';
+
+                const textContainer = document.createElement('div');
+                textContainer.className = 'truncate mr-2';
+
+                const keySpan = document.createElement('span');
+                keySpan.className = 'font-mono text-slate-500';
+                keySpan.textContent = key;
+
+                const arrowIcon = document.createElement('i');
+                arrowIcon.className = 'fa-solid fa-arrow-right text-[10px] text-slate-400 mx-1';
+
+                const valSpan = document.createElement('span');
+                valSpan.className = 'font-bold text-indigo-900';
+                valSpan.textContent = val;
+
+                textContainer.appendChild(keySpan);
+                textContainer.appendChild(arrowIcon);
+                textContainer.appendChild(valSpan);
+
+                const btnContainer = document.createElement('div');
+                btnContainer.className = 'flex items-center space-x-1 shrink-0';
+
+                const editBtn = document.createElement('button');
+                editBtn.type = 'button';
+                editBtn.className = 'text-indigo-600 hover:text-indigo-800 p-1 rounded hover:bg-indigo-50 dict-edit-btn';
+                editBtn.title = '編集';
+                editBtn.dataset.key = key;
+                editBtn.dataset.val = val;
+                editBtn.innerHTML = '<i class="fa-solid fa-pen-to-square"></i>';
+
+                const deleteBtn = document.createElement('button');
+                deleteBtn.type = 'button';
+                deleteBtn.className = 'text-red-500 hover:text-red-700 p-1 rounded hover:bg-red-50 dict-delete-btn';
+                deleteBtn.title = '削除';
+                deleteBtn.dataset.key = key;
+                deleteBtn.innerHTML = '<i class="fa-solid fa-trash-can"></i>';
+
+                btnContainer.appendChild(editBtn);
+                btnContainer.appendChild(deleteBtn);
+
+                item.appendChild(textContainer);
+                item.appendChild(btnContainer);
+                dictList.appendChild(item);
+            });
+        }
+
+        function setupDictListDelegation() {
+            dictList.addEventListener('click', function(e) {
+                const editBtn = e.target.closest('.dict-edit-btn');
+                if (editBtn) {
+                    editDictItem(editBtn.dataset.key, editBtn.dataset.val);
+                    return;
+                }
+
+                const deleteBtn = e.target.closest('.dict-delete-btn');
+                if (deleteBtn) {
+                    deleteDictItem(deleteBtn.dataset.key);
+                    return;
+                }
+            });
+        }
+
+        // ==================== ログからのワンタップ辞書登録 ====================
+        function setupHostLogDelegation() {
+            hostTranscriptLog.addEventListener('click', function(e) {
+                const addDictBtn = e.target.closest('.log-add-dict-btn');
+                if (addDictBtn) {
+                    const text = addDictBtn.dataset.text;
+                    dictKey.value = text;
+                    dictVal.value = '';
+                    editingKey.value = '';
+                    dictVal.focus();
+
+                    // 親要素までスクロール
+                    dictKey.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }
+            });
+        }
+
+        function editDictItem(key, val) {
+            dictKey.value = key;
+            dictVal.value = val;
+            editingKey.value = key;
+            saveDictBtnText.textContent = "単語を更新";
+            saveDictIcon.className = "fa-solid fa-check mr-1";
+            cancelEditBtn.classList.remove('hidden');
+            dictKey.focus();
+        }
+
+        function deleteDictItem(key) {
+            delete churchDictionary[key];
+            saveDictionary();
+            resetDictForm();
+        }
+
+        function resetDictForm() {
+            dictKey.value = '';
+            dictVal.value = '';
+            editingKey.value = '';
+            saveDictBtnText.textContent = "単語を追加";
+            saveDictIcon.className = "fa-solid fa-plus mr-1";
+            cancelEditBtn.classList.add('hidden');
+        }
+
+        function setupSingleDictionaryForm() {
+            addDictForm.onsubmit = function(e) {
+                e.preventDefault();
+                const k = dictKey.value.trim();
+                const v = dictVal.value.trim();
+                const oldK = editingKey.value;
+
+                if (!k || !v) return;
+
+                if (oldK && oldK !== k) {
+                    delete churchDictionary[oldK];
+                }
+
+                churchDictionary[k] = v;
+                saveDictionary();
+                resetDictForm();
+            };
+
+            cancelEditBtn.onclick = resetDictForm;
+
+            clearAllDictBtn.onclick = function() {
+                if (Object.keys(churchDictionary).length === 0) return;
+                churchDictionary = {};
+                saveDictionary();
+                resetDictForm();
+            };
+        }
+
+        function setupBulkDictionaryEvents() {
+            loadPresetBtn.onclick = function() {
+                churchDictionary = { ...churchDictionary, ...DEFAULT_DICTIONARY };
+                saveDictionary();
+            };
+
+            toggleBulkAreaBtn.onclick = function() {
+                bulkArea.classList.toggle('hidden');
+            };
+
+            applyBulkBtn.onclick = function() {
+                const text = bulkTextInput.value.trim();
+                if (!text) return;
+
+                const lines = text.split('\n');
+                let count = 0;
+                lines.forEach(line => {
+                    const parts = line.split(/[,:]/);
+                    if (parts.length >= 2) {
+                        const k = parts[0].trim();
+                        const v = parts[1].trim();
+                        if (k && v) {
+                            churchDictionary[k] = v;
+                            count++;
+                        }
+                    }
+                });
+
+                if (count > 0) {
+                    saveDictionary();
+                    bulkTextInput.value = '';
+                    bulkArea.classList.add('hidden');
+                }
+            };
+
+            exportDictBtn.onclick = function() {
+                const lines = Object.keys(churchDictionary).map(k => `${k},${churchDictionary[k]}`);
+                bulkTextInput.value = lines.join('\n');
+            };
+        }
+
+        // ==================== 辞書 JSON ファイルのバックアップ & 復元 ====================
+        function setupJsonBackupEvents() {
+            exportJsonBtn.onclick = function() {
+                const jsonStr = JSON.stringify(churchDictionary, null, 2);
+                const blob = new Blob([jsonStr], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = '教会用語辞書_バックアップ.json';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            };
+
+            importJsonBtn.onclick = function() {
+                jsonFileInput.click();
+            };
+
+            jsonFileInput.onchange = function(e) {
+                const file = e.target.files[0];
+                if (!file) return;
+
+                const reader = new FileReader();
+                reader.onload = function(evt) {
+                    try {
+                        const imported = JSON.parse(evt.target.result);
+                        if (typeof imported === 'object' && imported !== null) {
+                            churchDictionary = { ...churchDictionary, ...imported };
+                            saveDictionary();
+                            alert(`辞書データ（${Object.keys(imported).length}件）をインポートしました！`);
+                        }
+                    } catch (err) {
+                        alert('JSONファイルの読み込みに失敗しました。正しいフォーマットか確認してください。');
+                    }
+                };
+                reader.readAsText(file);
+                jsonFileInput.value = '';
+            };
+        }
+
+        function replaceChurchTerms(text) {
+            if (!text || Object.keys(churchDictionary).length === 0) return text;
+            let result = text;
+            const keys = Object.keys(churchDictionary).sort((a, b) => b.length - a.length);
+
+            for (const key of keys) {
+                if (!key) continue;
+                const val = churchDictionary[key];
+                const regex = new RegExp(escapeRegExp(key), 'gi');
+                result = result.replace(regex, val);
+            }
+            return result;
+        }
+
+        function escapeRegExp(string) {
+            return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        }
+
+        // ==================== 接続者数カウンターの更新 ====================
+        function updateViewerCount() {
+            const activeCount = peerConnections.filter(c => c.open).length;
+            if (viewerCountDisplay) {
+                viewerCountDisplay.textContent = activeCount;
+            }
+        }
+
+        // ==================== Peer ID 固定化 & PeerJS Host ====================
+        function initPeerHost() {
+            const savedPeerId = localStorage.getItem('lds_caption_peer_id');
+
+            if (savedPeerId) {
+                peer = new Peer(savedPeerId);
+            } else {
+                peer = new Peer();
+            }
+
+            peer.on('open', function(id) {
+                localStorage.setItem('lds_caption_peer_id', id);
+                roomIdDisplay.textContent = id;
+                generateQRCode(id);
+            });
+
+            peer.on('connection', function(conn) {
+                peerConnections.push(conn);
+                updateViewerCount();
+
+                conn.on('open', function() {
+                    updateViewerCount();
+                });
+
+                conn.on('close', function() {
+                    peerConnections = peerConnections.filter(c => c !== conn);
+                    updateViewerCount();
+                });
+            });
+
+            peer.on('disconnected', function() {
+                console.warn('Host Peer disconnected from signaling server. Reconnecting...');
+                peer.reconnect();
+            });
+
+            peer.on('error', function(err) {
+                console.error('PeerJS Host Error:', err);
+
+                if (err.type === 'unavailable-id') {
+                    console.warn('Saved Peer ID is unavailable. Generating a new one...');
+                    localStorage.removeItem('lds_caption_peer_id');
+                    peer.destroy();
+                    peer = new Peer();
+                    peer.on('open', function(id) {
+                        localStorage.setItem('lds_caption_peer_id', id);
+                        roomIdDisplay.textContent = id;
+                        generateQRCode(id);
+                    });
+                    peer.on('connection', function(conn) {
+                        peerConnections.push(conn);
+                        updateViewerCount();
+                        conn.on('open', function() { updateViewerCount(); });
+                        conn.on('close', function() {
+                            peerConnections = peerConnections.filter(c => c !== conn);
+                            updateViewerCount();
+                        });
+                    });
+                    peer.on('disconnected', function() { peer.reconnect(); });
+                    peer.on('error', function(e) { console.error('PeerJS Host Fallback Error:', e); });
+                }
+            });
+        }
+
+        function generateQRCode(peerId) {
+            qrcodeContainer.innerHTML = '';
+            let baseUrl = window.location.href.split('?')[0];
+            if (baseUrl.startsWith('file://')) {
+                baseUrl = 'https://example.com/lds-caption/';
+            }
+            const viewerUrl = `${baseUrl}?room=${peerId}`;
+
+            new QRCode(qrcodeContainer, {
+                text: viewerUrl,
+                width: 130,
+                height: 130,
+                colorDark : "#1e1b4b",
+                colorLight : "#ffffff",
+                correctLevel : QRCode.CorrectLevel.M
+            });
+        }
+
+        function broadcastToViewers(data) {
+            if (isBroadcastPaused) return;
+
+            peerConnections.forEach(conn => {
+                if (conn.open) {
+                    conn.send(data);
+                }
+            });
+        }
+
+        // ==================== 音声認識エンジン ====================
+        function initSpeechRecognition() {
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            
+            if (!SpeechRecognition) {
+                interimText.textContent = 'お使いのブラウザはWeb Speech APIに対応していません。Google ChromeまたはMicrosoft Edgeをご利用ください。';
+                return;
+            }
+
+            recognition = new SpeechRecognition();
+            recognition.continuous = true;
+            recognition.interimResults = true;
+            recognition.lang = 'ja-JP';
+
+            recognition.onstart = function() {
+                isRecognizing = true;
+                updateSpeechUI(true);
+            };
+
+            recognition.onend = function() {
+                if (isRecognizing) {
+                    try {
+                        recognition.start();
+                    } catch (e) {
+                        isRecognizing = false;
+                        updateSpeechUI(false);
+                    }
+                } else {
+                    updateSpeechUI(false);
+                }
+            };
+
+            recognition.onerror = function(event) {
+                console.warn('Speech recognition error:', event.error);
+                if (event.error === 'not-allowed') {
+                    isRecognizing = false;
+                    updateSpeechUI(false);
+                    interimText.textContent = 'マイクへのアクセス許可が必要です。ブラウザのマイク権限を許可してください。';
+                }
+            };
+
+            recognition.onresult = function(event) {
+                let interimTranscript = '';
+                let finalTranscript = '';
+
+                for (let i = event.resultIndex; i < event.results.length; ++i) {
+                    const transcript = event.results[i][0].transcript;
+                    if (event.results[i].isFinal) {
+                        finalTranscript += transcript;
+                    } else {
+                        interimTranscript += transcript;
+                    }
+                }
+
+                if (interimTranscript) {
+                    const correctedInterim = replaceChurchTerms(interimTranscript);
+                    interimText.textContent = correctedInterim;
+                }
+
+                if (finalTranscript) {
+                    const correctedFinal = replaceChurchTerms(finalTranscript);
+                    interimText.textContent = '（次の音声入力を待機中...）';
+                    
+                    appendHostTranscript(correctedFinal);
+
+                    broadcastToViewers({
+                        type: 'caption',
+                        text: correctedFinal,
+                        timestamp: new Date().toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+                    });
+                }
+            };
+
+            toggleRecognitionBtn.onclick = function() {
+                if (isRecognizing) {
+                    isRecognizing = false;
+                    recognition.stop();
+                } else {
+                    try {
+                        recognition.start();
+                    } catch (e) {
+                        console.error('Start error:', e);
+                    }
+                }
+            };
+
+            clearTranscriptsBtn.onclick = function() {
+                hostTranscriptLog.innerHTML = '<p class="text-xs text-slate-400 text-center italic my-auto">ログをクリアしました</p>';
+                transcriptHistory.length = 0;
+            };
+        }
+
+        function updateSpeechUI(active) {
+            if (active) {
+                speechStatus.className = 'inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800';
+                speechStatus.innerHTML = '<span class="w-2 h-2 mr-1.5 rounded-full bg-emerald-500 animate-pulse"></span> 音声認識中';
+                toggleRecognitionBtn.className = 'flex-1 sm:flex-initial inline-flex items-center justify-center px-6 py-3 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-xl shadow-sm transition-all text-sm';
+                playIcon.className = 'fa-solid fa-square mr-2';
+                recognizeBtnText.textContent = '音声認識ストップ';
+            } else {
+                speechStatus.className = 'inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-600';
+                speechStatus.innerHTML = '<span class="w-2 h-2 mr-1.5 rounded-full bg-slate-400"></span> 停止中';
+                toggleRecognitionBtn.className = 'flex-1 sm:flex-initial inline-flex items-center justify-center px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-xl shadow-sm transition-all text-sm';
+                playIcon.className = 'fa-solid fa-play mr-2';
+                recognizeBtnText.textContent = '音声認識スタート';
+            }
+        }
+
+        // ログへの追加（ワンタップ辞書登録ボタン「➕ 辞書登録」付き）
+        function appendHostTranscript(text) {
+            const emptyMsg = hostTranscriptLog.querySelector('p');
+            if (emptyMsg && emptyMsg.classList.contains('italic')) {
+                hostTranscriptLog.innerHTML = '';
+            }
+
+            const timeStr = new Date().toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+            const wasPaused = isBroadcastPaused;
+
+            transcriptHistory.push({
+                time: timeStr,
+                text: text,
+                paused: wasPaused
+            });
+
+            const item = document.createElement('div');
+
+            const safeText = escapeHtml(text);
+
+            if (wasPaused) {
+                item.className = 'bg-slate-200/70 p-3 rounded-lg border border-slate-300 shadow-sm opacity-70';
+                item.innerHTML = `
+                    <div class="flex justify-between items-center mb-1">
+                        <span class="text-[10px] text-slate-400">${timeStr}</span>
+                        <div class="flex items-center space-x-2">
+                            <button type="button" class="text-[10px] text-indigo-600 hover:text-indigo-800 font-semibold log-add-dict-btn" data-text="${safeText}" title="この単語を辞書登録">
+                                <i class="fa-solid fa-plus-circle"></i> 辞書登録
+                            </button>
+                            <span class="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 font-semibold border border-amber-200">⏸️ 未配信</span>
+                        </div>
+                    </div>
+                    <div class="text-sm text-slate-500 font-medium">${safeText}</div>
+                `;
+            } else {
+                item.className = 'bg-white p-3 rounded-lg border border-slate-200 shadow-sm';
+                item.innerHTML = `
+                    <div class="flex justify-between items-center mb-1">
+                        <span class="text-[10px] text-slate-400">${timeStr}</span>
+                        <button type="button" class="text-[10px] text-indigo-600 hover:text-indigo-800 font-semibold log-add-dict-btn" data-text="${safeText}" title="この単語を辞書登録">
+                            <i class="fa-solid fa-plus-circle"></i> 辞書登録
+                        </button>
+                    </div>
+                    <div class="text-sm text-slate-800 font-medium">${safeText}</div>
+                `;
+            }
+
+            hostTranscriptLog.appendChild(item);
+            hostTranscriptLog.scrollTop = hostTranscriptLog.scrollHeight;
+        }
+
+        // ==================== 指数バックオフ付き自動再接続 (Viewer) ====================
+        function initPeerViewer(roomId) {
+            peer = new Peer();
+
+            peer.on('open', function() {
+                connectToHost(roomId);
+            });
+
+            peer.on('error', function(err) {
+                console.error('Viewer Peer Error:', err);
+                scheduleViewerReconnect();
+            });
+
+            peer.on('disconnected', function() {
+                console.warn('Viewer Peer disconnected from signaling server. Reconnecting...');
+                peer.reconnect();
+            });
+        }
+
+        function connectToHost(roomId) {
+            if (hostConnection) {
+                try { hostConnection.close(); } catch(e){}
+            }
+
+            hostConnection = peer.connect(roomId);
+
+            hostConnection.on('open', function() {
+                reconnectAttemptCount = 0;
+                if (viewerReconnectTimer) clearTimeout(viewerReconnectTimer);
+
+                peerConnectionStatus.className = 'w-2 h-2 rounded-full bg-emerald-400';
+                peerStatusText.textContent = 'ホストに接続完了';
+
+                if (viewerCaptionFeed.querySelector('.italic')) {
+                    viewerCaptionFeed.innerHTML = `
+                        <div class="text-emerald-400 text-xs text-center italic py-4 border-b border-slate-800">
+                            <i class="fa-solid fa-circle-check mr-1"></i> 配信に接続しました。字幕を待機中...
+                        </div>
+                    `;
+                }
+            });
+
+            hostConnection.on('data', async function(data) {
+                if (data.type === 'caption') {
+                    await handleIncomingCaption(data.text, data.timestamp);
+                }
+            });
+
+            hostConnection.on('close', function() {
+                console.warn('Host connection closed. Attempting auto reconnect...');
+                scheduleViewerReconnect();
+            });
+        }
+
+        function scheduleViewerReconnect() {
+            reconnectAttemptCount++;
+            const delay = Math.min(30000, 3000 * Math.pow(2, reconnectAttemptCount - 1));
+            const delaySec = Math.round(delay / 1000);
+
+            peerConnectionStatus.className = 'w-2 h-2 rounded-full bg-amber-400 animate-pulse';
+            peerStatusText.textContent = `再接続を試行中... (${reconnectAttemptCount}回目 / ${delaySec}秒後)`;
+
+            if (viewerReconnectTimer) clearTimeout(viewerReconnectTimer);
+
+            viewerReconnectTimer = setTimeout(() => {
+                if (currentRoomId) {
+                    connectToHost(currentRoomId);
+                }
+            }, delay);
+        }
+
+        async function handleIncomingCaption(japaneseText, timestamp) {
+            const targetLang = targetLangSelect.value;
+            let translatedText = japaneseText;
+
+            if (targetLang !== 'ja') {
+                translatedText = await translateText(japaneseText, targetLang);
+            }
+
+            appendViewerCaption(translatedText, japaneseText, timestamp);
+        }
+
+        // ==================== タイムアウト付き翻訳 & 多言語用語補正 ====================
+        async function translateText(text, targetLang) {
+            const TRANSLATE_TIMEOUT_MS = 5000;
+            let rawTranslation = text;
+
+            try {
+                const controller1 = new AbortController();
+                const timer1 = setTimeout(() => controller1.abort(), TRANSLATE_TIMEOUT_MS);
+
+                const myMemoryUrl = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=ja|${targetLang}&de=lds.church.caption@example.com`;
+                const res = await fetch(myMemoryUrl, { signal: controller1.signal });
+                clearTimeout(timer1);
+
+                const data = await res.json();
+                if (data && data.responseData && data.responseData.translatedText) {
+                    rawTranslation = data.responseData.translatedText;
+                    return applyTargetGlossary(rawTranslation, targetLang);
+                }
+            } catch (err) {
+                if (err.name === 'AbortError') {
+                    console.warn('MyMemory translation timed out');
+                } else {
+                    console.warn('MyMemory Translation failed:', err);
+                }
+            }
+
+            try {
+                const controller2 = new AbortController();
+                const timer2 = setTimeout(() => controller2.abort(), TRANSLATE_TIMEOUT_MS);
+
+                const fallbackUrl = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=ja&tl=${targetLang}&dt=t&q=${encodeURIComponent(text)}`;
+                const res = await fetch(fallbackUrl, { signal: controller2.signal });
+                clearTimeout(timer2);
+
+                const data = await res.json();
+                if (data && data[0]) {
+                    rawTranslation = data[0].map(item => item[0]).join('');
+                    return applyTargetGlossary(rawTranslation, targetLang);
+                }
+            } catch (err) {
+                if (err.name === 'AbortError') {
+                    console.warn('Google Translate proxy timed out');
+                } else {
+                    console.error('All translation attempts failed:', err);
+                }
+            }
+
+            return applyTargetGlossary(rawTranslation, targetLang);
+        }
+
+        function applyTargetGlossary(text, lang) {
+            if (!text || !TARGET_GLOSSARY[lang]) return text;
+            let result = text;
+            const dict = TARGET_GLOSSARY[lang];
+            const keys = Object.keys(dict).sort((a, b) => b.length - a.length);
+
+            for (const key of keys) {
+                const val = dict[key];
+                const regex = new RegExp(escapeRegExp(key), 'gi');
+                result = result.replace(regex, val);
+            }
+            return result;
+        }
+
+        // ==================== Viewer 字幕表示 ====================
+        function appendViewerCaption(translatedText, originalText, timestamp) {
+            const emptyMsg = viewerCaptionFeed.querySelector('.italic');
+            if (emptyMsg) {
+                viewerCaptionFeed.innerHTML = '';
+            }
+
+            const currentSizeClass = fontClasses[currentFontSizeIndex];
+            const item = document.createElement('div');
+            item.className = 'bg-slate-800/80 p-4 rounded-xl border border-slate-700/60 shadow-md backdrop-blur-sm transition-all';
+            
+            const isJapaneseMode = targetLangSelect.value === 'ja';
+
+            item.innerHTML = `
+                <div class="flex justify-between items-center text-[10px] text-slate-400 mb-1.5 border-b border-slate-700/40 pb-1">
+                    <span><i class="fa-solid fa-globe mr-1 text-indigo-400"></i> ${escapeHtml(targetLangSelect.options[targetLangSelect.selectedIndex].text)}</span>
+                    <span>${timestamp || ''}</span>
+                </div>
+                <div class="${currentSizeClass} font-semibold text-white leading-relaxed">
+                    ${escapeHtml(translatedText)}
+                </div>
+                ${!isJapaneseMode ? `<div class="text-xs text-slate-400 mt-2 italic font-normal">${escapeHtml(originalText)}</div>` : ''}
+            `;
+
+            viewerCaptionFeed.appendChild(item);
+            viewerCaptionFeed.scrollTop = viewerCaptionFeed.scrollHeight;
+        }
+
+        function setupFontSizeButton() {
+            fontSizeBtn.onclick = function() {
+                currentFontSizeIndex = (currentFontSizeIndex + 1) % fontClasses.length;
+                fontSizeBtn.textContent = fontSizeNames[currentFontSizeIndex];
+                
+                const captionTexts = viewerCaptionFeed.querySelectorAll('.font-semibold.text-white');
+                captionTexts.forEach(el => {
+                    fontClasses.forEach(cls => el.classList.remove(cls));
+                    el.classList.add(fontClasses[currentFontSizeIndex]);
+                });
+            };
+        }
+
+        function escapeHtml(str) {
+            if (!str) return '';
+            return str
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
+        }
+    </script>
+</body>
+</html>
