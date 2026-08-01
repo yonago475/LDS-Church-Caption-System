@@ -18,6 +18,7 @@
         }
         .caption-scroll {
             scroll-behavior: smooth;
+            -webkit-overflow-scrolling: touch;
         }
     </style>
 </head>
@@ -269,10 +270,10 @@
         </div>
 
         <!-- ==================== VIEWER MODE (Smartphone View) ==================== -->
-        <div id="viewerSection" class="hidden flex-col gap-4 flex-1">
+        <div id="viewerSection" class="hidden flex-col gap-4 flex-1 min-h-0 h-[calc(100vh-6rem)]">
 
             <!-- Language & View Settings Controls -->
-            <div class="bg-white rounded-2xl p-4 shadow-sm border border-slate-200 flex flex-wrap items-center justify-between gap-3">
+            <div class="bg-white rounded-2xl p-4 shadow-sm border border-slate-200 flex flex-wrap items-center justify-between gap-3 shrink-0">
                 <div class="flex items-center space-x-2">
                     <i class="fa-solid fa-language text-indigo-600 text-xl"></i>
                     <span class="text-xs font-semibold text-slate-500 uppercase tracking-wider">表示言語 / Language</span>
@@ -290,11 +291,11 @@
                 </select>
             </div>
 
-            <!-- Viewer Captions Feed -->
-            <div class="bg-slate-900 rounded-2xl p-5 shadow-lg flex-1 flex flex-col justify-between min-h-[60vh] relative">
+            <!-- Viewer Captions Feed Container -->
+            <div class="bg-slate-900 rounded-2xl p-5 shadow-lg flex-1 flex flex-col justify-between min-h-0 relative overflow-hidden">
                 
-                <!-- Caption Output Stream -->
-                <div id="viewerCaptionFeed" class="overflow-y-auto caption-scroll flex-1 space-y-4 pr-1">
+                <!-- Caption Output Stream (スマホ用スワイプ・スクロール対応) -->
+                <div id="viewerCaptionFeed" class="overflow-y-auto caption-scroll flex-1 space-y-4 pr-1 min-h-0 touch-pan-y" style="-webkit-overflow-scrolling: touch;">
                     <div class="text-slate-400 text-sm text-center italic py-10">
                         <i class="fa-solid fa-tower-broadcast text-3xl mb-3 block text-slate-600"></i>
                         ホストからの音声配信を待機しています...<br>
@@ -309,7 +310,7 @@
                 </button>
 
                 <!-- Footer Status Bar -->
-                <div class="mt-4 pt-3 border-t border-slate-800 flex justify-between items-center text-xs text-slate-400 flex-wrap gap-2">
+                <div class="mt-4 pt-3 border-t border-slate-800 flex justify-between items-center text-xs text-slate-400 flex-wrap gap-2 shrink-0">
                     <div class="flex items-center space-x-2">
                         <span id="peerConnectionStatus" class="w-2 h-2 rounded-full bg-amber-400"></span>
                         <span id="peerStatusText">接続中...</span>
@@ -702,7 +703,6 @@
                 "聖殿": "聖殿",
                 "十一奉獻": "什一奉獻",
                 "聖靈": "聖靈",
-                "永生": "永生",
                 "傳教士": "傳教士",
                 "長老": "長老",
                 "大祭司": "大祭司",
@@ -895,7 +895,7 @@
 
         const targetLangSelect = document.getElementById('targetLangSelect');
         const viewerCaptionFeed = document.getElementById('viewerCaptionFeed');
-        const scrollToBottomBtn = document.getElementById('scrollToBottomBtn'); // 最新へ戻る浮遊ボタン
+        const scrollToBottomBtn = document.getElementById('scrollToBottomBtn');
         const peerConnectionStatus = document.getElementById('peerConnectionStatus');
         const peerStatusText = document.getElementById('peerStatusText');
         const fontSizeBtn = document.getElementById('fontSizeBtn');
@@ -919,7 +919,7 @@
             setupSingleDictionaryForm();
             setupDictListDelegation();
             setupHostLogDelegation();
-            setupViewerScrollEvents(); // スクロール検知イベント登録
+            setupViewerScrollEvents();
 
             if (refreshAudioDevicesBtn) {
                 refreshAudioDevicesBtn.onclick = initAudioDeviceSelector;
@@ -973,7 +973,6 @@
             viewerCaptionFeed.addEventListener('scroll', function() {
                 const distanceToBottom = viewerCaptionFeed.scrollHeight - viewerCaptionFeed.scrollTop - viewerCaptionFeed.clientHeight;
                 
-                // 一番下から40px以上上にスクロールしている場合は過去ログ読破モード
                 if (distanceToBottom > 40) {
                     isUserScrolledUp = true;
                     scrollToBottomBtn.classList.remove('hidden');
@@ -1923,8 +1922,7 @@
                 .replace(/&/g, "&amp;")
                 .replace(/</g, "&lt;")
                 .replace(/>/g, "&gt;")
-                .replace(/"/g, "&quot;")
-                .replace(/'/g, "&#039;");
+                .replace(/"/g, "&#039;");
         }
     </script>
 </body>
