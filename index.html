@@ -25,7 +25,7 @@
             height: 100vh;
             height: 100dvh;
             overflow: hidden;
-            touch-action: none;
+            overscroll-behavior: none;
         }
         body.viewer-mode main {
             height: calc(100vh - 3.5rem);
@@ -323,27 +323,39 @@
                     </div>
                 </div>
 
-                <!-- 「最新のカードへ」浮遊ボタン (上にスクロールした時のみ表示) -->
-                <button id="latestCardBtn" class="hidden absolute bottom-14 right-5 px-3.5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-full shadow-lg text-xs font-semibold transition-all items-center space-x-1.5 border border-indigo-300/50 active:scale-95 z-30" style="display: none;">
-                    <i class="fa-solid fa-chevron-down text-amber-300"></i>
-                    <span>最新へ ⬇</span>
-                </button>
+                <!-- Floating Navigation Control (カード前後移動・最新復帰コントローラー) -->
+                <div class="absolute bottom-12 right-4 flex flex-col gap-2 z-30">
+                    <button id="prevCardBtn" type="button" class="px-3.5 py-2 bg-indigo-900/90 hover:bg-indigo-800 text-indigo-100 rounded-full shadow-lg text-xs font-semibold backdrop-blur-md transition-all flex items-center space-x-1.5 border border-indigo-400/40 active:scale-95">
+                        <i class="fa-solid fa-chevron-up text-amber-300"></i>
+                        <span>前のカードへ</span>
+                    </button>
+                    <button id="latestCardBtn" type="button" class="px-3.5 py-2 bg-indigo-600/95 hover:bg-indigo-500 text-white rounded-full shadow-lg text-xs font-semibold backdrop-blur-md transition-all items-center space-x-1.5 border border-indigo-300/50 active:scale-95" style="display: none;">
+                        <i class="fa-solid fa-angles-down text-amber-300"></i>
+                        <span>最新へ ⬇</span>
+                    </button>
+                </div>
 
                 <!-- Footer Status Bar -->
                 <div class="mt-2 pt-2 border-t border-slate-800 flex justify-between items-center text-xs text-slate-400 flex-wrap gap-2 shrink-0">
                     <div class="flex items-center space-x-2">
                         <span id="peerConnectionStatus" class="w-2 h-2 rounded-full bg-amber-400"></span>
                         <span id="peerStatusText">接続中...</span>
+                        <span class="text-[11px] text-slate-500 ml-1">（全 <span id="totalCardsCount" class="text-indigo-400 font-bold">0</span> 件）</span>
                     </div>
 
                     <div class="flex items-center space-x-2">
+                        <!-- 自動スクロール追従トグルボタン -->
+                        <button id="autoScrollToggleBtn" type="button" class="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-[11px] flex items-center transition-colors border border-slate-700">
+                            📜 自動追従: <span id="autoScrollStateText" class="text-emerald-400 font-bold ml-1">ON</span>
+                        </button>
+
                         <!-- 画面スリープ防止トグルボタン -->
-                        <button id="wakeLockBtn" class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-xs flex items-center transition-colors border border-slate-700">
-                            <i class="fa-solid fa-lightbulb text-amber-400 mr-1.5" id="wakeLockIcon"></i>
+                        <button id="wakeLockBtn" class="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-[11px] flex items-center transition-colors border border-slate-700">
+                            <i class="fa-solid fa-lightbulb text-amber-400 mr-1" id="wakeLockIcon"></i>
                             <span id="wakeLockText">スリープ防止: ON</span>
                         </button>
 
-                        <button id="fontSizeBtn" class="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-xs border border-slate-700">
+                        <button id="fontSizeBtn" class="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-[11px] border border-slate-700">
                             文字サイズ: 中
                         </button>
                     </div>
@@ -857,6 +869,8 @@
         // スクロール判定（過去ログ読破時の自動スクロール制御）
         let isUserScrolledUp = false;
         let isProgrammaticScroll = false; // ボタン操作中のスクロールイベント干渉を防止
+        let viewerCardCount = 0; // 蓄積カード枚数カウンタ
+        let isAutoScrollEnabled = true; // 新着字幕受信時の自動最下部スクロール許可
 
         // ログダウンロード用の文字起こし履歴バッファ
         const transcriptHistory = [];
@@ -964,7 +978,7 @@
                 viewerSection.classList.remove('hidden');
                 viewerSection.classList.add('flex');
 
-                modeBadge.textContent = "聴講者モード（字幕受信中）";
+                modeBadge.textContent = "聴講者モード v1.2.0（全カード保存中）";
                 modeBadge.className = "text-xs px-3 py-1 rounded-full font-medium bg-emerald-800 text-emerald-100 border border-emerald-700";
 
                 restoreViewerLanguage();
@@ -989,29 +1003,69 @@
             }
         }
 
-        // ==================== スクロール検知 & 最新へ戻るボタン制御 ====================
+        // ==================== スクロール検知 & カード移動ボタン制御 ====================
         function setupViewerScrollEvents() {
-            if (!viewerCaptionFeed || !latestCardBtn) return;
+            const prevCardBtn = document.getElementById('prevCardBtn');
+            const latestCardBtn = document.getElementById('latestCardBtn');
+            const autoScrollToggleBtn = document.getElementById('autoScrollToggleBtn');
+            const autoScrollStateText = document.getElementById('autoScrollStateText');
+            if (!viewerCaptionFeed) return;
 
             // 指でスクロールした時に「最新へ」ボタンの表示/非表示を制御
             viewerCaptionFeed.addEventListener('scroll', function() {
                 var distanceToBottom = viewerCaptionFeed.scrollHeight - viewerCaptionFeed.scrollTop - viewerCaptionFeed.clientHeight;
                 
-                if (distanceToBottom > 60) {
+                if (distanceToBottom > 50) {
                     isUserScrolledUp = true;
-                    latestCardBtn.style.display = 'flex';
+                    if (latestCardBtn) latestCardBtn.style.display = 'flex';
                 } else {
                     isUserScrolledUp = false;
-                    latestCardBtn.style.display = 'none';
+                    if (latestCardBtn) latestCardBtn.style.display = 'none';
                 }
             });
 
+            // 自動追従ON/OFF切替ボタン
+            if (autoScrollToggleBtn && autoScrollStateText) {
+                autoScrollToggleBtn.onclick = function() {
+                    isAutoScrollEnabled = !isAutoScrollEnabled;
+                    if (isAutoScrollEnabled) {
+                        autoScrollStateText.textContent = 'ON';
+                        autoScrollStateText.className = 'text-emerald-400 font-bold ml-1';
+                    } else {
+                        autoScrollStateText.textContent = 'OFF';
+                        autoScrollStateText.className = 'text-amber-400 font-bold ml-1';
+                    }
+                };
+            }
+
+            // 「⬆️ 前のカードへ」ボタン押下時
+            if (prevCardBtn) {
+                prevCardBtn.onclick = function() {
+                    isUserScrolledUp = true;
+                    if (latestCardBtn) latestCardBtn.style.display = 'flex';
+
+                    const currentScroll = viewerCaptionFeed.scrollTop;
+                    const cards = viewerCaptionFeed.querySelectorAll('.caption-card');
+                    let targetTop = Math.max(0, currentScroll - 160);
+
+                    for (let i = cards.length - 1; i >= 0; i--) {
+                        if (cards[i].offsetTop < currentScroll - 10) {
+                            targetTop = cards[i].offsetTop;
+                            break;
+                        }
+                    }
+                    viewerCaptionFeed.scrollTop = targetTop;
+                };
+            }
+
             // 「最新へ ⬇」ボタン押下時
-            latestCardBtn.onclick = function() {
-                isUserScrolledUp = false;
-                latestCardBtn.style.display = 'none';
-                viewerCaptionFeed.scrollTop = viewerCaptionFeed.scrollHeight;
-            };
+            if (latestCardBtn) {
+                latestCardBtn.onclick = function() {
+                    isUserScrolledUp = false;
+                    latestCardBtn.style.display = 'none';
+                    viewerCaptionFeed.scrollTop = viewerCaptionFeed.scrollHeight;
+                };
+            }
         }
 
         // ==================== 言語選択の localStorage 記憶 ====================
@@ -1900,6 +1954,13 @@
                 placeholder.remove();
             }
 
+            viewerCardCount++;
+
+            const totalCardsCount = document.getElementById('totalCardsCount');
+            if (totalCardsCount) {
+                totalCardsCount.textContent = viewerCardCount;
+            }
+
             const currentSizeClass = fontClasses[currentFontSizeIndex];
             const item = document.createElement('div');
             item.className = 'caption-card bg-slate-800/90 p-4 rounded-xl border border-slate-700/60 shadow-md backdrop-blur-sm transition-all';
@@ -1909,7 +1970,10 @@
 
             item.innerHTML = `
                 <div class="flex justify-between items-center text-[10px] text-slate-400 mb-1.5 border-b border-slate-700/40 pb-1">
-                    <span><i class="fa-solid fa-globe mr-1 text-indigo-400"></i> ${escapeHtml(targetLangSelect.options[targetLangSelect.selectedIndex].text)}</span>
+                    <div class="flex items-center space-x-1.5">
+                        <span class="bg-indigo-600/90 text-white font-bold px-1.5 py-0.5 rounded text-[10px]">#${viewerCardCount}</span>
+                        <span><i class="fa-solid fa-globe mr-1 text-indigo-400"></i> ${escapeHtml(targetLangSelect.options[targetLangSelect.selectedIndex].text)}</span>
+                    </div>
                     <span>${timestamp || ''}</span>
                 </div>
                 <div class="${currentSizeClass} font-semibold text-white leading-relaxed">
@@ -1920,8 +1984,8 @@
 
             viewerCaptionFeed.appendChild(item);
 
-            // ユーザーが上にスクロールしていない場合のみ、自動的に最新位置へスクロール
-            if (!isUserScrolledUp) {
+            // 自動追従が有効かつ、ユーザーが上に遡っていない場合のみ最下部へ自動スクロール
+            if (isAutoScrollEnabled && !isUserScrolledUp) {
                 viewerCaptionFeed.scrollTop = viewerCaptionFeed.scrollHeight;
             }
         }
