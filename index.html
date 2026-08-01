@@ -842,6 +842,7 @@
 
         // スクロール判定（過去ログ読破時の自動スクロール制御）
         let isUserScrolledUp = false;
+        let isProgrammaticScroll = false; // ボタン操作中のスクロールイベント干渉を防止
 
         // ログダウンロード用の文字起こし履歴バッファ
         const transcriptHistory = [];
@@ -978,6 +979,9 @@
             if (!viewerCaptionFeed || !prevCardBtn || !latestCardBtn) return;
 
             viewerCaptionFeed.addEventListener('scroll', function() {
+                // ボタン操作によるプログラム的スクロール中はイベント処理をスキップ
+                if (isProgrammaticScroll) return;
+
                 const distanceToBottom = viewerCaptionFeed.scrollHeight - viewerCaptionFeed.scrollTop - viewerCaptionFeed.clientHeight;
                 
                 if (distanceToBottom > 40) {
@@ -989,7 +993,17 @@
                 }
             });
 
-            // 「⬆️ 前のカードへ」ボタン押下時（offsetTopピクセル精度計算）
+            // プログラム的スクロールを実行するヘルパー（scrollTop直接代入、スマホ互換性最大）
+            function programmaticScrollTo(targetScrollTop) {
+                isProgrammaticScroll = true;
+                viewerCaptionFeed.scrollTop = targetScrollTop;
+                // スクロールイベントの発火が完了するまで短時間フラグを維持
+                setTimeout(function() {
+                    isProgrammaticScroll = false;
+                }, 100);
+            }
+
+            // 「⬆️ 前のカードへ」ボタン押下時（offsetTop直接計算 + scrollTop代入）
             prevCardBtn.onclick = function() {
                 const cards = viewerCaptionFeed.querySelectorAll('.caption-card');
                 if (cards.length === 0) return;
@@ -997,15 +1011,16 @@
                 const currentScroll = viewerCaptionFeed.scrollTop;
                 let targetCard = null;
 
-                // 現在のスクロール位置より前（上）にある直近のカードを探す
+                // 現在のスクロール位置より上にある直近のカードを探す
                 for (let i = cards.length - 1; i >= 0; i--) {
                     const cardTop = cards[i].offsetTop;
-                    if (cardTop < currentScroll - 15) {
+                    if (cardTop < currentScroll - 5) {
                         targetCard = cards[i];
                         break;
                     }
                 }
 
+                // 見つからなければ先頭カードへ
                 if (!targetCard && cards.length > 0) {
                     targetCard = cards[0];
                 }
@@ -1013,21 +1028,15 @@
                 if (targetCard) {
                     isUserScrolledUp = true;
                     latestCardBtn.classList.remove('hidden');
-                    viewerCaptionFeed.scrollTo({
-                        top: Math.max(0, targetCard.offsetTop - 15),
-                        behavior: 'smooth'
-                    });
+                    programmaticScrollTo(Math.max(0, targetCard.offsetTop));
                 }
             };
 
             // 「⬇️ 最新のカードへ」ボタン押下時
             latestCardBtn.onclick = function() {
                 isUserScrolledUp = false;
-                viewerCaptionFeed.scrollTo({
-                    top: viewerCaptionFeed.scrollHeight,
-                    behavior: 'smooth'
-                });
                 latestCardBtn.classList.add('hidden');
+                programmaticScrollTo(viewerCaptionFeed.scrollHeight);
             };
         }
 
