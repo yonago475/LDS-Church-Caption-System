@@ -973,7 +973,7 @@
             }
         }
 
-        // ==================== スクロール検知 & カード移動ボタン制御 ====================
+        // ==================== スクロール検知 & カード移動ボタン制御 (ピクセル精度位置移動) ====================
         function setupViewerScrollEvents() {
             if (!viewerCaptionFeed || !prevCardBtn || !latestCardBtn) return;
 
@@ -989,20 +989,18 @@
                 }
             });
 
-            // 「⬆️ 前のカードへ」ボタン押下時
+            // 「⬆️ 前のカードへ」ボタン押下時（offsetTopピクセル精度計算）
             prevCardBtn.onclick = function() {
                 const cards = viewerCaptionFeed.querySelectorAll('.caption-card');
                 if (cards.length === 0) return;
 
-                const feedRect = viewerCaptionFeed.getBoundingClientRect();
-                const currentCenter = feedRect.top + feedRect.height / 2;
-
+                const currentScroll = viewerCaptionFeed.scrollTop;
                 let targetCard = null;
 
-                // 現在の中央より前にある直近のカードを探す
+                // 現在のスクロール位置より前（上）にある直近のカードを探す
                 for (let i = cards.length - 1; i >= 0; i--) {
-                    const cardRect = cards[i].getBoundingClientRect();
-                    if (cardRect.top < currentCenter - 50) {
+                    const cardTop = cards[i].offsetTop;
+                    if (cardTop < currentScroll - 15) {
                         targetCard = cards[i];
                         break;
                     }
@@ -1014,7 +1012,11 @@
 
                 if (targetCard) {
                     isUserScrolledUp = true;
-                    targetCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    latestCardBtn.classList.remove('hidden');
+                    viewerCaptionFeed.scrollTo({
+                        top: Math.max(0, targetCard.offsetTop - 15),
+                        behavior: 'smooth'
+                    });
                 }
             };
 
@@ -1959,8 +1961,7 @@
                 .replace(/&/g, "&amp;")
                 .replace(/</g, "&lt;")
                 .replace(/>/g, "&gt;")
-                .replace(/"/g, "&quot;")
-                .replace(/'/g, "&#039;");
+                .replace(/"/g, "&#039;");
         }
     </script>
 </body>
