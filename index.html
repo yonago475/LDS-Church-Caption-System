@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
@@ -16,8 +16,25 @@
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
         }
-        .caption-scroll {
-            scroll-behavior: smooth;
+        /* 聴講者（スマホ）モード時に画面全体のスクロールをロックし、字幕エリアのみをスクロール可能にする */
+        body.viewer-mode {
+            height: 100vh;
+            height: 100dvh;
+            overflow: hidden;
+            overscroll-behavior: none;
+        }
+        body.viewer-mode main {
+            height: calc(100vh - 3.5rem);
+            height: calc(100dvh - 3.5rem);
+            overflow: hidden;
+            padding: 0.5rem;
+            flex: 1;
+            min-height: 0;
+        }
+        #viewerCaptionFeed {
+            overscroll-behavior: contain;
+            -webkit-overflow-scrolling: touch;
+            touch-action: pan-y;
         }
     </style>
 </head>
@@ -102,6 +119,26 @@
                             </div>
                         </div>
 
+                        <!-- Broadcast Mode Selector Panel (全自動 vs 手動確認・修正) -->
+                        <div class="bg-indigo-50/70 p-3 rounded-xl border border-indigo-100 mb-4 flex items-center justify-between flex-wrap gap-2">
+                            <div class="flex items-center space-x-2">
+                                <i class="fa-solid fa-sliders text-indigo-600"></i>
+                                <span class="text-xs font-bold text-slate-800">配信モード切替:</span>
+                            </div>
+
+                            <div class="flex items-center space-x-1.5 bg-slate-200/60 p-1 rounded-xl">
+                                <label id="modeAutoLabel" class="inline-flex items-center cursor-pointer px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all bg-white text-slate-800 shadow-sm border border-slate-200">
+                                    <input type="radio" name="broadcastMode" value="auto" checked class="hidden" id="modeAutoRadio">
+                                    <i class="fa-solid fa-bolt text-amber-500 mr-1.5"></i> 全自動配信
+                                </label>
+
+                                <label id="modeManualLabel" class="inline-flex items-center cursor-pointer px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all text-slate-600 hover:text-slate-800">
+                                    <input type="radio" name="broadcastMode" value="manual" class="hidden" id="modeManualRadio">
+                                    <i class="fa-solid fa-keyboard text-indigo-600 mr-1.5"></i> 手動確認・修正配信
+                                </label>
+                            </div>
+                        </div>
+
                         <!-- PC Audio Setup Guide Box (Collapsible) -->
                         <div id="pcAudioGuideBox" class="hidden mb-4 p-3.5 bg-amber-50 rounded-xl border border-amber-200 text-xs text-amber-900 space-y-2">
                             <div class="font-bold text-amber-950 flex items-center">
@@ -135,10 +172,36 @@
                         </div>
                     </div>
 
-                    <!-- Live Interim Output Box -->
-                    <div class="mt-4 p-4 bg-slate-50 rounded-xl border border-slate-200">
-                        <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider block mb-1">現在の入力音声（リアルタイム補正中）</span>
+                    <!-- Live Interim Output & Manual Editor Container -->
+                    <div class="mt-4 p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-3">
+                        <div class="flex justify-between items-center">
+                            <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider block">現在の入力音声（リアルタイム補正中）</span>
+                            <span id="manualModeBadge" class="hidden px-2.5 py-0.5 rounded text-[11px] font-bold bg-indigo-100 text-indigo-800 border border-indigo-200">
+                                <i class="fa-solid fa-pen-to-square mr-1"></i> 手動確認モード（送信前修正可能）
+                            </span>
+                        </div>
+
                         <p id="interimText" class="text-base text-indigo-900 font-medium italic min-h-[1.5rem]">「▶ 音声認識スタート」を押して発話してください...</p>
+
+                        <!-- Manual Edit Text Box (Shown in Manual Mode) -->
+                        <div id="manualEditContainer" class="hidden pt-3 border-t border-slate-200 flex-col gap-2">
+                            <label for="manualEditInput" class="text-xs font-bold text-slate-700 flex items-center justify-between">
+                                <span><i class="fa-solid fa-keyboard text-indigo-600 mr-1"></i> 修正用テキストエリア（キーボードで自由編集）</span>
+                                <span class="text-[11px] text-slate-400 font-normal">ショートカット: [Ctrl+Enter] で送信 / [Esc] でクリア</span>
+                            </label>
+                            
+                            <textarea id="manualEditInput" rows="3" placeholder="音声認識されたテキストがここに自動挿入されます。誤認識をキーボードで直してから「送信・配信」を押してください..." class="w-full p-3 text-sm font-medium border border-indigo-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:outline-none bg-white text-slate-800 shadow-inner"></textarea>
+
+                            <div class="flex gap-2 justify-end">
+                                <button id="discardManualTextBtn" type="button" class="px-3 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 font-semibold text-xs rounded-xl transition-colors flex items-center">
+                                    <i class="fa-solid fa-xmark mr-1"></i> 破棄 (Esc)
+                                </button>
+
+                                <button id="sendManualTextBtn" type="button" class="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl transition-all shadow-sm flex items-center active:scale-95">
+                                    <i class="fa-solid fa-paper-plane mr-1.5"></i> 修正して送信・配信 (Ctrl+Enter)
+                                </button>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
@@ -269,17 +332,17 @@
         </div>
 
         <!-- ==================== VIEWER MODE (Smartphone View) ==================== -->
-        <div id="viewerSection" class="hidden flex-col gap-4 flex-1">
+        <div id="viewerSection" class="hidden flex-col flex-1 min-h-0 h-full gap-2">
 
             <!-- Language & View Settings Controls -->
-            <div class="bg-white rounded-2xl p-4 shadow-sm border border-slate-200 flex flex-wrap items-center justify-between gap-3">
+            <div class="bg-white rounded-2xl p-3 shadow-sm border border-slate-200 flex items-center justify-between gap-2 shrink-0">
                 <div class="flex items-center space-x-2">
                     <i class="fa-solid fa-language text-indigo-600 text-xl"></i>
-                    <span class="text-xs font-semibold text-slate-500 uppercase tracking-wider">表示言語 / Language</span>
+                    <span id="viewerLangLabel" class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Display Language</span>
                 </div>
                 
-                <select id="targetLangSelect" class="p-2 border border-slate-300 rounded-xl text-sm bg-white focus:ring-2 focus:ring-indigo-500 font-semibold text-slate-800 shadow-sm">
-                    <option value="en">English (英語)</option>
+                <select id="targetLangSelect" class="p-2 border border-slate-300 rounded-xl text-xs sm:text-sm bg-white focus:ring-2 focus:ring-indigo-500 font-semibold text-slate-800 shadow-sm flex-1 sm:flex-initial">
+                    <option value="en" selected>English (英語)</option>
                     <option value="tl">Tagalog (タガログ語)</option>
                     <option value="zh-CN">中文 简体 (中国語 簡体字)</option>
                     <option value="zh-TW">中文 繁體 (中国語 繁体字)</option>
@@ -290,34 +353,51 @@
                 </select>
             </div>
 
-            <!-- Viewer Captions Feed -->
-            <div class="bg-slate-900 rounded-2xl p-5 shadow-lg flex-1 flex flex-col justify-between min-h-[60vh]">
+            <!-- Viewer Captions Feed Container -->
+            <div class="bg-slate-900 rounded-2xl p-3 shadow-lg flex-1 min-h-0 flex flex-col justify-between relative">
                 
-                <!-- Caption Output Stream -->
-                <div id="viewerCaptionFeed" class="overflow-y-auto caption-scroll flex-1 space-y-4 pr-1">
-                    <div class="text-slate-400 text-sm text-center italic py-10">
+                <!-- Caption Output Stream (字幕タイムライン) -->
+                <div id="viewerCaptionFeed" class="flex-1 min-h-0 overflow-y-auto caption-scroll space-y-3 pr-1">
+                    <div id="captionPlaceholder" class="text-slate-400 text-sm text-center italic py-10">
                         <i class="fa-solid fa-tower-broadcast text-3xl mb-3 block text-slate-600"></i>
-                        ホストからの音声配信を待機しています...<br>
-                        <span class="text-xs text-slate-500">Waiting for live speech stream...</span>
+                        <span class="placeholder-text">Waiting for live speech stream...</span>
                     </div>
                 </div>
 
+                <!-- Floating Navigation Control (カード前後移動・最新復帰コントローラー) -->
+                <div class="absolute bottom-12 right-4 flex flex-col gap-2 z-30">
+                    <button id="prevCardBtn" type="button" class="px-3.5 py-2 bg-indigo-900/90 hover:bg-indigo-800 text-indigo-100 rounded-full shadow-lg text-xs font-semibold backdrop-blur-md transition-all flex items-center space-x-1.5 border border-indigo-400/40 active:scale-95">
+                        <i class="fa-solid fa-chevron-up text-amber-300"></i>
+                        <span id="prevCardBtnText">Previous Card</span>
+                    </button>
+                    <button id="latestCardBtn" type="button" class="px-3.5 py-2 bg-indigo-600/95 hover:bg-indigo-500 text-white rounded-full shadow-lg text-xs font-semibold backdrop-blur-md transition-all items-center space-x-1.5 border border-indigo-300/50 active:scale-95" style="display: none;">
+                        <i class="fa-solid fa-angles-down text-amber-300"></i>
+                        <span id="latestCardBtnText">Latest ⬇</span>
+                    </button>
+                </div>
+
                 <!-- Footer Status Bar -->
-                <div class="mt-4 pt-3 border-t border-slate-800 flex justify-between items-center text-xs text-slate-400 flex-wrap gap-2">
+                <div class="mt-2 pt-2 border-t border-slate-800 flex justify-between items-center text-xs text-slate-400 flex-wrap gap-2 shrink-0">
                     <div class="flex items-center space-x-2">
                         <span id="peerConnectionStatus" class="w-2 h-2 rounded-full bg-amber-400"></span>
-                        <span id="peerStatusText">接続中...</span>
+                        <span id="peerStatusText">Connecting...</span>
+                        <span class="text-[11px] text-slate-500 ml-1">(<span id="totalCardsLabelText">Total</span> <span id="totalCardsCount" class="text-indigo-400 font-bold">0</span>)</span>
                     </div>
 
                     <div class="flex items-center space-x-2">
-                        <!-- 画面スリープ防止トグルボタン -->
-                        <button id="wakeLockBtn" class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-xs flex items-center transition-colors border border-slate-700">
-                            <i class="fa-solid fa-lightbulb text-amber-400 mr-1.5" id="wakeLockIcon"></i>
-                            <span id="wakeLockText">スリープ防止: ON</span>
+                        <!-- 自動スクロール追従トグルボタン -->
+                        <button id="autoScrollToggleBtn" type="button" class="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-[11px] flex items-center transition-colors border border-slate-700">
+                            📜 <span id="autoScrollLabelText">Auto-scroll: </span><span id="autoScrollStateText" class="text-emerald-400 font-bold ml-1">ON</span>
                         </button>
 
-                        <button id="fontSizeBtn" class="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-xs border border-slate-700">
-                            文字サイズ: 中
+                        <!-- 画面スリープ防止トグルボタン -->
+                        <button id="wakeLockBtn" class="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-[11px] flex items-center transition-colors border border-slate-700">
+                            <i class="fa-solid fa-lightbulb text-amber-400 mr-1" id="wakeLockIcon"></i>
+                            <span id="wakeLockText">Keep Screen On: ON</span>
+                        </button>
+
+                        <button id="fontSizeBtn" class="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-[11px] border border-slate-700">
+                            Text: Medium
                         </button>
                     </div>
                 </div>
@@ -802,6 +882,162 @@
             }
         };
 
+        // ==================== 多言語UI辞書 (聴講者スマホ画面用) ====================
+        const VIEWER_UI_STRINGS = {
+            "en": {
+                selectLangLabel: "Display Language",
+                placeholder: "Waiting for live speech stream...",
+                connected: "Connected to stream. Waiting for captions...",
+                statusConnecting: "Connecting...",
+                statusConnected: "Connected to Host",
+                statusReconnecting: "Reconnecting...",
+                prevCardBtn: "Previous Card",
+                latestCardBtn: "Latest ⬇",
+                autoScrollOn: "Auto-scroll: ON",
+                autoScrollOff: "Auto-scroll: OFF",
+                wakeLockOn: "Keep Screen On: ON",
+                wakeLockOff: "Keep Screen On: OFF",
+                fontSmall: "Text: Small",
+                fontMedium: "Text: Medium",
+                fontLarge: "Text: Large",
+                totalCards: "Total",
+                modeBadge: "Viewer Mode (Captions Active)"
+            },
+            "tl": {
+                selectLangLabel: "Wika ng Pagpapakita",
+                placeholder: "Naghihintay para sa live na pagsasalita...",
+                connected: "Nakakonekta sa stream. Naghihintay para sa mga caption...",
+                statusConnecting: "Kumokonekta...",
+                statusConnected: "Nakakonekta sa Host",
+                statusReconnecting: "Muling kumokonekta...",
+                prevCardBtn: "Nakaraang Card",
+                latestCardBtn: "Pinakabagong ⬇",
+                autoScrollOn: "Awtomatikong scroll: ON",
+                autoScrollOff: "Awtomatikong scroll: OFF",
+                wakeLockOn: "Screen na Bukas: ON",
+                wakeLockOff: "Screen na Bukas: OFF",
+                fontSmall: "Laki ng Text: Maliit",
+                fontMedium: "Laki ng Text: Katamtaman",
+                fontLarge: "Laki ng Text: Malaki",
+                totalCards: "Kabuuan",
+                modeBadge: "Modo ng Tagapakinig (Tumatanggap ng Caption)"
+            },
+            "zh-CN": {
+                selectLangLabel: "显示语言",
+                placeholder: "等待实时语音直播...",
+                connected: "已连接直播。等待字幕...",
+                statusConnecting: "连接中...",
+                statusConnected: "已连接到主机",
+                statusReconnecting: "重新连接中...",
+                prevCardBtn: "上一张卡片",
+                latestCardBtn: "最新 ⬇",
+                autoScrollOn: "自动滚动: 开",
+                autoScrollOff: "自动滚动: 关",
+                wakeLockOn: "保持屏幕常亮: 开",
+                wakeLockOff: "保持屏幕常亮: 关",
+                fontSmall: "文字大小: 小",
+                fontMedium: "文字大小: 中",
+                fontLarge: "文字大小: 大",
+                totalCards: "共",
+                modeBadge: "听众模式（正在接收字幕）"
+            },
+            "zh-TW": {
+                selectLangLabel: "顯示語言",
+                placeholder: "等待實時語音直播...",
+                connected: "已連接直播。等待字幕...",
+                statusConnecting: "連接中...",
+                statusConnected: "已連接到主機",
+                statusReconnecting: "重新連接中...",
+                prevCardBtn: "上一張卡片",
+                latestCardBtn: "最新 ⬇",
+                autoScrollOn: "自動滾動: 開",
+                autoScrollOff: "自動滾動: 關",
+                wakeLockOn: "保持螢幕常亮: 開",
+                wakeLockOff: "保持螢幕常亮: 關",
+                fontSmall: "文字大小: 小",
+                fontMedium: "文字大小: 中",
+                fontLarge: "文字大小: 大",
+                totalCards: "共",
+                modeBadge: "聽眾模式（正在接收字幕）"
+            },
+            "pt": {
+                selectLangLabel: "Idioma de Exibição",
+                placeholder: "Aguardando transmissão ao vivo...",
+                connected: "Conectado à transmissão. Aguardando legendas...",
+                statusConnecting: "Conectando...",
+                statusConnected: "Conectado ao Host",
+                statusReconnecting: "Reconectando...",
+                prevCardBtn: "Cartão Anterior",
+                latestCardBtn: "Mais Recente ⬇",
+                autoScrollOn: "Rolar automático: ON",
+                autoScrollOff: "Rolar automático: OFF",
+                wakeLockOn: "Manter Tela Ligada: ON",
+                wakeLockOff: "Manter Tela Ligada: OFF",
+                fontSmall: "Texto: Pequeno",
+                fontMedium: "Texto: Médio",
+                fontLarge: "Texto: Grande",
+                totalCards: "Total",
+                modeBadge: "Modo Ouvinte (Recebendo Legendas)"
+            },
+            "es": {
+                selectLangLabel: "Idioma de Pantalla",
+                placeholder: "Esperando transmisión en vivo...",
+                connected: "Conectado a la transmisión. Esperando subtítulos...",
+                statusConnecting: "Conectando...",
+                statusConnected: "Conectando al Host",
+                statusReconnecting: "Reconectando...",
+                prevCardBtn: "Tarjeta Anterior",
+                latestCardBtn: "Más Reciente ⬇",
+                autoScrollOn: "Desplazamiento aut.: ON",
+                autoScrollOff: "Desplazamiento aut.: OFF",
+                wakeLockOn: "Mantener Pantalla: ON",
+                wakeLockOff: "Mantener Pantalla: OFF",
+                fontSmall: "Texto: Pequeño",
+                fontMedium: "Texto: Mediano",
+                fontLarge: "Texto: Grande",
+                totalCards: "Total",
+                modeBadge: "Modo Oyente (Recibiendo Subtítulos)"
+            },
+            "ko": {
+                selectLangLabel: "표시 언어",
+                placeholder: "실시간 음성 방송 대기 중...",
+                connected: "방송에 연결되었습니다. 자막 대기 중...",
+                statusConnecting: "연결 중...",
+                statusConnected: "호스트에 연결됨",
+                statusReconnecting: "재연결 중...",
+                prevCardBtn: "이전 카드",
+                latestCardBtn: "최신 ⬇",
+                autoScrollOn: "자동 스크롤: ON",
+                autoScrollOff: "자동 스크롤: OFF",
+                wakeLockOn: "화면 켜짐 유지: ON",
+                wakeLockOff: "화면 켜짐 유지: OFF",
+                fontSmall: "글자 크기: 작게",
+                fontMedium: "글자 크기: 보통",
+                fontLarge: "글자 크기: 크게",
+                totalCards: "총",
+                modeBadge: "청강자 모드 (자막 수신 중)"
+            },
+            "ja": {
+                selectLangLabel: "表示言語",
+                placeholder: "ホストからの音声配信を待機しています...",
+                connected: "配信に接続しました。字幕を待機中...",
+                statusConnecting: "接続中...",
+                statusConnected: "ホストに接続完了",
+                statusReconnecting: "再接続を試行中...",
+                prevCardBtn: "前のカードへ",
+                latestCardBtn: "最新へ ⬇",
+                autoScrollOn: "自動追従: ON",
+                autoScrollOff: "自動追従: OFF",
+                wakeLockOn: "スリープ防止: ON",
+                wakeLockOff: "スリープ防止: OFF",
+                fontSmall: "文字サイズ: 小",
+                fontMedium: "文字サイズ: 中",
+                fontLarge: "文字サイズ: 大",
+                totalCards: "全",
+                modeBadge: "聴講者モード（字幕受信中）"
+            }
+        };
+
         // ==================== アプリケーション状態変数 ====================
         let churchDictionary = {};
         let peer = null;
@@ -810,6 +1046,11 @@
         let isHost = true;
         let isRecognizing = false;
         let isBroadcastPaused = false;
+        let isManualBroadcastMode = false;
+        let isAutoScrollEnabled = true;
+        let isUserScrolledUp = false;
+        let viewerCardSequence = 0;
+
         let recognition = null;
         let currentFontSizeIndex = 1;
         const fontClasses = ["text-base", "text-xl", "text-3xl"];
@@ -909,6 +1150,7 @@
             setupSingleDictionaryForm();
             setupDictListDelegation();
             setupHostLogDelegation();
+            setupViewerScrollEvents();
 
             if (refreshAudioDevicesBtn) {
                 refreshAudioDevicesBtn.onclick = initAudioDeviceSelector;
@@ -926,19 +1168,20 @@
             if (roomId) {
                 isHost = false;
                 currentRoomId = roomId;
+                document.body.classList.add('viewer-mode');
+
                 hostSection.classList.add('hidden');
                 hostSection.classList.remove('flex');
                 viewerSection.classList.remove('hidden');
                 viewerSection.classList.add('flex');
-
-                modeBadge.textContent = "聴講者モード（字幕受信中）";
-                modeBadge.className = "text-xs px-3 py-1 rounded-full font-medium bg-emerald-800 text-emerald-100 border border-emerald-700";
 
                 restoreViewerLanguage();
                 setupWakeLock();
                 initPeerViewer(roomId);
             } else {
                 isHost = true;
+                document.body.classList.remove('viewer-mode');
+
                 viewerSection.classList.add('hidden');
                 viewerSection.classList.remove('flex');
                 hostSection.classList.remove('hidden');
@@ -947,6 +1190,7 @@
                 modeBadge.textContent = "ホスト配信モード（PC）";
                 modeBadge.className = "text-xs px-3 py-1 rounded-full font-medium bg-indigo-800 text-indigo-100 border border-indigo-700";
 
+                setupBroadcastModeToggle();
                 setupPauseBroadcastButton();
                 setupDownloadButton();
                 initPeerHost();
@@ -955,7 +1199,7 @@
             }
         }
 
-        // ==================== 言語選択の localStorage 記憶 ====================
+        // ==================== 言語選択 & Viewer UI動的切替 ====================
         function restoreViewerLanguage() {
             const savedLang = localStorage.getItem('lds_caption_lang');
             if (savedLang) {
@@ -966,11 +1210,200 @@
                         break;
                     }
                 }
+            } else {
+                targetLangSelect.value = 'en'; // デフォルトで英語ベースに設定
             }
+
+            updateViewerUIStrings(targetLangSelect.value);
 
             targetLangSelect.addEventListener('change', function() {
                 localStorage.setItem('lds_caption_lang', this.value);
+                updateViewerUIStrings(this.value);
             });
+        }
+
+        function updateViewerUIStrings(lang) {
+            const strings = VIEWER_UI_STRINGS[lang] || VIEWER_UI_STRINGS['en'];
+            
+            const langLabel = document.getElementById('viewerLangLabel');
+            if (langLabel) langLabel.textContent = strings.selectLangLabel;
+
+            const placeholder = document.getElementById('captionPlaceholder');
+            if (placeholder) {
+                const textSpan = placeholder.querySelector('.placeholder-text');
+                if (textSpan) textSpan.textContent = strings.placeholder;
+            }
+
+            const prevBtnText = document.getElementById('prevCardBtnText');
+            if (prevBtnText) prevBtnText.textContent = strings.prevCardBtn;
+
+            const latestBtnText = document.getElementById('latestCardBtnText');
+            if (latestBtnText) latestBtnText.textContent = strings.latestCardBtn;
+
+            const autoScrollLabelText = document.getElementById('autoScrollLabelText');
+            if (autoScrollLabelText) autoScrollLabelText.textContent = strings.autoScrollOn.split(':')[0] + ': ';
+
+            const autoScrollStateText = document.getElementById('autoScrollStateText');
+            if (autoScrollStateText) {
+                autoScrollStateText.textContent = isAutoScrollEnabled ? 'ON' : 'OFF';
+            }
+
+            const wakeLockText = document.getElementById('wakeLockText');
+            if (wakeLockText) {
+                wakeLockText.textContent = isWakeLockEnabled ? strings.wakeLockOn : strings.wakeLockOff;
+            }
+
+            const fontSizeBtn = document.getElementById('fontSizeBtn');
+            if (fontSizeBtn) {
+                const fontNames = [strings.fontSmall, strings.fontMedium, strings.fontLarge];
+                fontSizeBtn.textContent = fontNames[currentFontSizeIndex];
+            }
+
+            const totalCardsLabelText = document.getElementById('totalCardsLabelText');
+            if (totalCardsLabelText) totalCardsLabelText.textContent = strings.totalCards;
+
+            if (modeBadge && !isHost) {
+                modeBadge.textContent = strings.modeBadge;
+                modeBadge.className = "text-xs px-3 py-1 rounded-full font-medium bg-emerald-800 text-emerald-100 border border-emerald-700";
+            }
+
+            const peerStatusText = document.getElementById('peerStatusText');
+            if (peerStatusText) {
+                if (peerStatusText.textContent.includes('接続完了') || peerStatusText.textContent.includes('Connected') || peerStatusText.textContent.includes('Nakakonekta') || peerStatusText.textContent.includes('已连接') || peerStatusText.textContent.includes('Conectado') || peerStatusText.textContent.includes('연결됨')) {
+                    peerStatusText.textContent = strings.statusConnected;
+                } else if (peerStatusText.textContent.includes('再接続') || peerStatusText.textContent.includes('Reconnecting') || peerStatusText.textContent.includes('Muling') || peerStatusText.textContent.includes('重新') || peerStatusText.textContent.includes('Reconectando') || peerStatusText.textContent.includes('재연결')) {
+                    peerStatusText.textContent = strings.statusReconnecting;
+                } else {
+                    peerStatusText.textContent = strings.statusConnecting;
+                }
+            }
+        }
+
+        // ==================== 聴講者スマホ画面 スクロール制御 ====================
+        function setupViewerScrollEvents() {
+            const prevCardBtn = document.getElementById('prevCardBtn');
+            const latestCardBtn = document.getElementById('latestCardBtn');
+            const autoScrollToggleBtn = document.getElementById('autoScrollToggleBtn');
+            const autoScrollStateText = document.getElementById('autoScrollStateText');
+
+            if (!viewerCaptionFeed) return;
+
+            viewerCaptionFeed.addEventListener('scroll', function() {
+                var distanceToBottom = viewerCaptionFeed.scrollHeight - viewerCaptionFeed.scrollTop - viewerCaptionFeed.clientHeight;
+                
+                if (distanceToBottom > 50) {
+                    isUserScrolledUp = true;
+                    if (latestCardBtn) latestCardBtn.style.display = 'flex';
+                } else {
+                    isUserScrolledUp = false;
+                    if (latestCardBtn) latestCardBtn.style.display = 'none';
+                }
+            });
+
+            if (autoScrollToggleBtn && autoScrollStateText) {
+                autoScrollToggleBtn.onclick = function() {
+                    isAutoScrollEnabled = !isAutoScrollEnabled;
+                    autoScrollStateText.textContent = isAutoScrollEnabled ? 'ON' : 'OFF';
+                    autoScrollStateText.className = isAutoScrollEnabled ? 'text-emerald-400 font-bold ml-1' : 'text-amber-400 font-bold ml-1';
+                };
+            }
+
+            if (prevCardBtn) {
+                prevCardBtn.onclick = function() {
+                    isUserScrolledUp = true;
+                    if (latestCardBtn) latestCardBtn.style.display = 'flex';
+
+                    const currentScroll = viewerCaptionFeed.scrollTop;
+                    const cards = viewerCaptionFeed.querySelectorAll('.caption-card');
+                    let targetTop = Math.max(0, currentScroll - 160);
+
+                    for (let i = cards.length - 1; i >= 0; i--) {
+                        if (cards[i].offsetTop < currentScroll - 10) {
+                            targetTop = cards[i].offsetTop;
+                            break;
+                        }
+                    }
+                    viewerCaptionFeed.scrollTop = targetTop;
+                };
+            }
+
+            if (latestCardBtn) {
+                latestCardBtn.onclick = function() {
+                    isUserScrolledUp = false;
+                    latestCardBtn.style.display = 'none';
+                    viewerCaptionFeed.scrollTop = viewerCaptionFeed.scrollHeight;
+                };
+            }
+        }
+
+        // ==================== 配信モード切替（全自動 vs 手動確認・修正） ====================
+        function setupBroadcastModeToggle() {
+            const modeAutoRadio = document.getElementById('modeAutoRadio');
+            const modeManualRadio = document.getElementById('modeManualRadio');
+            const modeAutoLabel = document.getElementById('modeAutoLabel');
+            const modeManualLabel = document.getElementById('modeManualLabel');
+            const manualEditContainer = document.getElementById('manualEditContainer');
+            const manualModeBadge = document.getElementById('manualModeBadge');
+            const manualEditInput = document.getElementById('manualEditInput');
+            const sendBtn = document.getElementById('sendManualTextBtn');
+            const discardBtn = document.getElementById('discardManualTextBtn');
+
+            function updateModeUI() {
+                if (modeManualRadio && modeManualRadio.checked) {
+                    isManualBroadcastMode = true;
+                    if (manualEditContainer) {
+                        manualEditContainer.classList.remove('hidden');
+                        manualEditContainer.classList.add('flex');
+                    }
+                    if (manualModeBadge) manualModeBadge.classList.remove('hidden');
+
+                    if (modeManualLabel) modeManualLabel.className = 'inline-flex items-center cursor-pointer px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all bg-indigo-600 text-white shadow-sm';
+                    if (modeAutoLabel) modeAutoLabel.className = 'inline-flex items-center cursor-pointer px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all text-slate-600 hover:text-slate-800';
+                } else {
+                    isManualBroadcastMode = false;
+                    if (manualEditContainer) {
+                        manualEditContainer.classList.add('hidden');
+                        manualEditContainer.classList.remove('flex');
+                    }
+                    if (manualModeBadge) manualModeBadge.classList.add('hidden');
+
+                    if (modeAutoLabel) modeAutoLabel.className = 'inline-flex items-center cursor-pointer px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all bg-white text-slate-800 shadow-sm border border-slate-200';
+                    if (modeManualLabel) modeManualLabel.className = 'inline-flex items-center cursor-pointer px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all text-slate-600 hover:text-slate-800';
+                }
+            }
+
+            if (modeAutoRadio && modeManualRadio) {
+                modeAutoRadio.addEventListener('change', updateModeUI);
+                modeManualRadio.addEventListener('change', updateModeUI);
+            }
+
+            if (sendBtn && manualEditInput) {
+                sendBtn.onclick = function() {
+                    const text = manualEditInput.value.trim();
+                    if (!text) return;
+                    broadcastCaption(text);
+                    appendHostTranscript(text);
+                    manualEditInput.value = '';
+                };
+            }
+
+            if (discardBtn && manualEditInput) {
+                discardBtn.onclick = function() {
+                    manualEditInput.value = '';
+                };
+            }
+
+            if (manualEditInput) {
+                manualEditInput.addEventListener('keydown', function(e) {
+                    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+                        e.preventDefault();
+                        if (sendBtn) sendBtn.click();
+                    } else if (e.key === 'Escape') {
+                        e.preventDefault();
+                        if (discardBtn) discardBtn.click();
+                    }
+                });
+            }
         }
 
         // ==================== 画面スリープ防止 (Screen Wake Lock API) ====================
@@ -1836,20 +2269,35 @@
 
         // ==================== Viewer 字幕表示 ====================
         function appendViewerCaption(translatedText, originalText, timestamp) {
-            const emptyMsg = viewerCaptionFeed.querySelector('.italic');
-            if (emptyMsg) {
-                viewerCaptionFeed.innerHTML = '';
+            const placeholder = document.getElementById('captionPlaceholder');
+            if (placeholder) {
+                placeholder.remove();
+            } else {
+                const emptyMsg = viewerCaptionFeed.querySelector('.italic');
+                if (emptyMsg && emptyMsg.parentNode === viewerCaptionFeed) {
+                    emptyMsg.remove();
+                }
+            }
+
+            viewerCardSequence++;
+
+            const totalCardsCount = document.getElementById('totalCardsCount');
+            if (totalCardsCount) {
+                totalCardsCount.textContent = viewerCardSequence;
             }
 
             const currentSizeClass = fontClasses[currentFontSizeIndex];
             const item = document.createElement('div');
-            item.className = 'bg-slate-800/80 p-4 rounded-xl border border-slate-700/60 shadow-md backdrop-blur-sm transition-all';
+            item.className = 'caption-card bg-slate-800/80 p-4 rounded-xl border border-slate-700/60 shadow-md backdrop-blur-sm transition-all';
             
             const isJapaneseMode = targetLangSelect.value === 'ja';
 
             item.innerHTML = `
                 <div class="flex justify-between items-center text-[10px] text-slate-400 mb-1.5 border-b border-slate-700/40 pb-1">
-                    <span><i class="fa-solid fa-globe mr-1 text-indigo-400"></i> ${escapeHtml(targetLangSelect.options[targetLangSelect.selectedIndex].text)}</span>
+                    <div class="flex items-center space-x-2">
+                        <span class="px-1.5 py-0.5 rounded bg-indigo-900/90 text-indigo-200 font-mono font-bold text-[10px] border border-indigo-500/30">#${viewerCardSequence}</span>
+                        <span><i class="fa-solid fa-globe mr-1 text-indigo-400"></i> ${escapeHtml(targetLangSelect.options[targetLangSelect.selectedIndex].text)}</span>
+                    </div>
                     <span>${timestamp || ''}</span>
                 </div>
                 <div class="${currentSizeClass} font-semibold text-white leading-relaxed">
@@ -1859,7 +2307,10 @@
             `;
 
             viewerCaptionFeed.appendChild(item);
-            viewerCaptionFeed.scrollTop = viewerCaptionFeed.scrollHeight;
+
+            if (isAutoScrollEnabled && !isUserScrolledUp) {
+                viewerCaptionFeed.scrollTop = viewerCaptionFeed.scrollHeight;
+            }
         }
 
         function setupFontSizeButton() {
