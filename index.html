@@ -291,7 +291,7 @@
             </div>
 
             <!-- Viewer Captions Feed -->
-            <div class="bg-slate-900 rounded-2xl p-5 shadow-lg flex-1 flex flex-col justify-between min-h-[60vh]">
+            <div class="bg-slate-900 rounded-2xl p-5 shadow-lg flex-1 flex flex-col justify-between min-h-[60vh] relative">
                 
                 <!-- Caption Output Stream -->
                 <div id="viewerCaptionFeed" class="overflow-y-auto caption-scroll flex-1 space-y-4 pr-1">
@@ -301,6 +301,12 @@
                         <span class="text-xs text-slate-500">Waiting for live speech stream...</span>
                     </div>
                 </div>
+
+                <!-- Floating "Scroll to Bottom" Button (過去ログ読破時に最新位置に戻る) -->
+                <button id="scrollToBottomBtn" class="hidden absolute bottom-16 right-6 px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-full shadow-xl text-xs font-semibold backdrop-blur-sm transition-all duration-200 flex items-center space-x-1.5 z-20 border border-indigo-400/50 cursor-pointer">
+                    <i class="fa-solid fa-circle-arrow-down text-base text-amber-300"></i>
+                    <span>最新へ戻る</span>
+                </button>
 
                 <!-- Footer Status Bar -->
                 <div class="mt-4 pt-3 border-t border-slate-800 flex justify-between items-center text-xs text-slate-400 flex-wrap gap-2">
@@ -413,7 +419,7 @@
             "神件": "神権",
             "しんけんのかぎ": "神権の鍵",
             "ばぷてすま": "バプテスマ",
-            "あがない": "贖い",
+            "あかない": "贖い",
             "赤ない": "贖い",
             "あかし": "証",
             "明かし": "証",
@@ -826,7 +832,10 @@
         let currentRoomId = null;
         let viewerReconnectTimer = null;
         let reconnectAttemptCount = 0;
-        let recognitionRestartTimer = null; // 音声認識自動再接続用タイマー
+        let recognitionRestartTimer = null;
+
+        // スクロール判定（過去ログ読破時の自動スクロール制御）
+        let isUserScrolledUp = false;
 
         // ログダウンロード用の文字起こし履歴バッファ
         const transcriptHistory = [];
@@ -886,6 +895,7 @@
 
         const targetLangSelect = document.getElementById('targetLangSelect');
         const viewerCaptionFeed = document.getElementById('viewerCaptionFeed');
+        const scrollToBottomBtn = document.getElementById('scrollToBottomBtn'); // 最新へ戻る浮遊ボタン
         const peerConnectionStatus = document.getElementById('peerConnectionStatus');
         const peerStatusText = document.getElementById('peerStatusText');
         const fontSizeBtn = document.getElementById('fontSizeBtn');
@@ -909,6 +919,7 @@
             setupSingleDictionaryForm();
             setupDictListDelegation();
             setupHostLogDelegation();
+            setupViewerScrollEvents(); // スクロール検知イベント登録
 
             if (refreshAudioDevicesBtn) {
                 refreshAudioDevicesBtn.onclick = initAudioDeviceSelector;
@@ -953,6 +964,33 @@
                 initAudioDeviceSelector();
                 initSpeechRecognition();
             }
+        }
+
+        // ==================== スクロール検知 & 最新へ戻るボタン制御 ====================
+        function setupViewerScrollEvents() {
+            if (!viewerCaptionFeed || !scrollToBottomBtn) return;
+
+            viewerCaptionFeed.addEventListener('scroll', function() {
+                const distanceToBottom = viewerCaptionFeed.scrollHeight - viewerCaptionFeed.scrollTop - viewerCaptionFeed.clientHeight;
+                
+                // 一番下から40px以上上にスクロールしている場合は過去ログ読破モード
+                if (distanceToBottom > 40) {
+                    isUserScrolledUp = true;
+                    scrollToBottomBtn.classList.remove('hidden');
+                } else {
+                    isUserScrolledUp = false;
+                    scrollToBottomBtn.classList.add('hidden');
+                }
+            });
+
+            scrollToBottomBtn.onclick = function() {
+                isUserScrolledUp = false;
+                viewerCaptionFeed.scrollTo({
+                    top: viewerCaptionFeed.scrollHeight,
+                    behavior: 'smooth'
+                });
+                scrollToBottomBtn.classList.add('hidden');
+            };
         }
 
         // ==================== 言語選択の localStorage 記憶 ====================
@@ -1834,7 +1872,7 @@
             return result;
         }
 
-        // ==================== Viewer 字幕表示 ====================
+        // ==================== Viewer 字幕表示 (スマートスクロール制御) ====================
         function appendViewerCaption(translatedText, originalText, timestamp) {
             const emptyMsg = viewerCaptionFeed.querySelector('.italic');
             if (emptyMsg) {
@@ -1859,7 +1897,11 @@
             `;
 
             viewerCaptionFeed.appendChild(item);
-            viewerCaptionFeed.scrollTop = viewerCaptionFeed.scrollHeight;
+
+            // ユーザーが上にスクロールしていない場合のみ、自動的に最新位置へスクロール
+            if (!isUserScrolledUp) {
+                viewerCaptionFeed.scrollTop = viewerCaptionFeed.scrollHeight;
+            }
         }
 
         function setupFontSizeButton() {
