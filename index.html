@@ -316,7 +316,7 @@
                 
                 <!-- Caption Output Stream (字幕タイムライン: 指で上下スクロール可能) -->
                 <div id="viewerCaptionFeed" class="flex-1 min-h-0 overflow-y-auto caption-scroll space-y-3 pr-1">
-                    <div class="text-slate-400 text-sm text-center italic py-10">
+                    <div id="captionPlaceholder" class="text-slate-400 text-sm text-center italic py-10">
                         <i class="fa-solid fa-tower-broadcast text-3xl mb-3 block text-slate-600"></i>
                         ホストからの音声配信を待機しています...<br>
                         <span class="text-xs text-slate-500">Waiting for live speech stream...</span>
@@ -1780,12 +1780,12 @@
                 peerConnectionStatus.className = 'w-2 h-2 rounded-full bg-emerald-400';
                 peerStatusText.textContent = 'ホストに接続完了';
 
-                if (viewerCaptionFeed.querySelector('.italic')) {
-                    viewerCaptionFeed.innerHTML = `
-                        <div class="text-emerald-400 text-xs text-center italic py-4 border-b border-slate-800">
-                            <i class="fa-solid fa-circle-check mr-1"></i> 配信に接続しました。字幕を待機中...
-                        </div>
+                const placeholder = document.getElementById('captionPlaceholder');
+                if (placeholder) {
+                    placeholder.innerHTML = `
+                        <i class="fa-solid fa-circle-check mr-1"></i> 配信に接続しました。字幕を待機中...
                     `;
+                    placeholder.className = 'text-emerald-400 text-xs text-center italic py-4 border-b border-slate-800';
                 }
             });
 
@@ -1895,9 +1895,9 @@
 
         // ==================== Viewer 字幕表示 (カードナビゲーション・スマートスクロール対応) ====================
         function appendViewerCaption(translatedText, originalText, timestamp) {
-            const emptyMsg = viewerCaptionFeed.querySelector('.italic');
-            if (emptyMsg) {
-                viewerCaptionFeed.innerHTML = '';
+            const placeholder = document.getElementById('captionPlaceholder');
+            if (placeholder) {
+                placeholder.remove();
             }
 
             const currentSizeClass = fontClasses[currentFontSizeIndex];
