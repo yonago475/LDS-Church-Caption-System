@@ -434,6 +434,7 @@
             "せんきょうし": "宣教師",
             "せんにんせんきょうし": "専任宣教師",
             "しニアせんきょうし": "シニア宣教師",
+            "しにあせんきょうし": "シニア宣教師",
             "ちょうろう": "長老",
             "だいさいし": "大祭司",
             "しつじ": "執事",
@@ -488,6 +489,7 @@
             "せいさん": "聖餐",
             "精算": "聖餐",
             "清算": "聖餐",
+            "生産": "聖餐",
             "しんけん": "神権",
             "真剣": "神権",
             "神件": "神権",
@@ -497,6 +499,7 @@
             "赤ない": "贖い",
             "あかし": "証",
             "明かし": "証",
+            "明石": "証",
             "ふくいん": "福音",
             "服員": "福音",
             "あんそくび": "安息日",
@@ -511,6 +514,7 @@
             "えんだうめんと": "エンダウメント",
             "ふういん": "封印",
             "むすびがため": "結び固め",
+            "むすびかため": "結び固め",
             "結び硬め": "結び固め",
             "みがわり": "身代わり",
             "じゅうぶんのいち": "什分の一",
@@ -520,6 +524,7 @@
             "ふっかつ": "復活",
             "しょうえい": "昇栄",
             "すくいのおけいかく": "救いの計画",
+            "すくいのけいかく": "救いの計画",
             "すくいぬし": "救い主",
             "いえすきりすと": "イエス・キリスト",
             "イエスキリスト": "イエス・キリスト",
@@ -545,6 +550,17 @@
             "うりむととみむ": "ウリムとトミム",
             "りあほな": "リアホナ",
             "めし": "召し",
+            "せいやく": "聖約",
+            "制約": "聖約",
+            "製薬": "聖約",
+            "しんこう": "信仰",
+            "進行": "信仰",
+            "しゅは": "主は",
+            "手話": "主は",
+            "みな": "御名",
+            "皆": "御名",
+            "おんこ": "御子",
+            "温故": "御子",
 
             // --- モルモン書・歴史人物 ---
             "じょせふすみす": "ジョセフ・スミス",
@@ -600,6 +616,7 @@
             "まっけいだいかんちょう": "マッケイ大管長",
             "じょせふふぃーるでぃんぐすみす": "ジョセフ・フィールディング・スミス",
             "はろルドびーりー": "ハロルド・B・リー",
+            "はろるどびーりー": "ハロルド・B・リー",
             "りーだいかんちょう": "リー大管長",
             "すぺんさーだぶりゅーきんぼーる": "スペンサー・W・キンボール",
             "きんぼーるだいかんちょう": "キンボール大管長",
@@ -1589,7 +1606,9 @@
             const saved = localStorage.getItem('lds_church_dict');
             if (saved) {
                 try {
-                    churchDictionary = JSON.parse(saved);
+                    const parsed = JSON.parse(saved);
+                    // DEFAULT_DICTIONARY をベースにしつつ、ユーザーが追加した内容をマージ
+                    churchDictionary = { ...DEFAULT_DICTIONARY, ...parsed };
                 } catch (e) {
                     churchDictionary = { ...DEFAULT_DICTIONARY };
                 }
@@ -2097,15 +2116,10 @@
                             text: correctedFinal,
                             timestamp: new Date().toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
                         });
-
-                        broadcastToViewers({
-                            type: 'interim_caption',
-                            text: ''
-                        });
                     }
                 }
 
-                // 2. 仮テキスト（interim）のリアルタイム配信とスマート分割
+                // 2. 仮テキスト（interim）のホスト側表示とスマート分割
                 if (interimTranscript) {
                     const rawInterimRemaining = interimTranscript.slice(lastFinalizedRawLength);
 
@@ -2131,19 +2145,9 @@
 
                             const correctedRemainder = replaceChurchTerms(rawRemainder);
                             interimText.textContent = correctedRemainder || '（音声入力を継続中...）';
-
-                            broadcastToViewers({
-                                type: 'interim_caption',
-                                text: correctedRemainder
-                            });
                         } else {
                             const correctedInterim = replaceChurchTerms(rawInterimRemaining);
                             interimText.textContent = correctedInterim;
-
-                            broadcastToViewers({
-                                type: 'interim_caption',
-                                text: correctedInterim
-                            });
                         }
                     }
                 }
@@ -2156,10 +2160,6 @@
                     if (recognitionRestartTimer) clearTimeout(recognitionRestartTimer);
                     try { recognition.stop(); } catch(e){}
                     updateSpeechUI(false);
-                    broadcastToViewers({
-                        type: 'interim_caption',
-                        text: ''
-                    });
                 } else {
                     isRecognizing = true;
                     safeStartRecognition();
@@ -2284,8 +2284,6 @@
             hostConnection.on('data', async function(data) {
                 if (data.type === 'caption') {
                     await handleIncomingCaption(data.text, data.timestamp);
-                } else if (data.type === 'interim_caption') {
-                    renderViewerInterimCaption(data.text);
                 }
             });
 
@@ -2312,49 +2310,7 @@
             }, delay);
         }
 
-        function renderViewerInterimCaption(text) {
-            let interimCard = document.getElementById('viewerInterimCard');
-
-            if (!text || text.trim() === '') {
-                if (interimCard) interimCard.remove();
-                return;
-            }
-
-            const placeholder = document.getElementById('captionPlaceholder');
-            if (placeholder) placeholder.remove();
-
-            const emptyMsg = viewerCaptionFeed.querySelector('.italic');
-            if (emptyMsg && emptyMsg.parentNode === viewerCaptionFeed) emptyMsg.remove();
-
-            if (!interimCard) {
-                interimCard = document.createElement('div');
-                interimCard.id = 'viewerInterimCard';
-                interimCard.className = 'bg-indigo-950/60 p-3.5 rounded-xl border border-indigo-500/40 shadow-sm backdrop-blur-sm transition-all';
-            }
-
-            const currentSizeClass = fontClasses[currentFontSizeIndex];
-
-            interimCard.innerHTML = `
-                <div class="flex items-center space-x-1.5 text-[10px] text-indigo-300 mb-1 font-semibold">
-                    <span class="w-2 h-2 rounded-full bg-indigo-400 animate-ping"></span>
-                    <span><i class="fa-solid fa-microphone mr-1"></i> 話しています...</span>
-                </div>
-                <div class="${currentSizeClass} text-slate-200 italic leading-relaxed opacity-90">
-                    ${escapeHtml(text)}
-                </div>
-            `;
-
-            // 常に最下部（末尾）へ移動させて表示を維持
-            viewerCaptionFeed.appendChild(interimCard);
-
-            if (isAutoScrollEnabled && !isUserScrolledUp) {
-                viewerCaptionFeed.scrollTop = viewerCaptionFeed.scrollHeight;
-            }
-        }
-
         async function handleIncomingCaption(japaneseText, timestamp) {
-            renderViewerInterimCaption('');
-
             const targetLang = targetLangSelect.value;
             let translatedText = japaneseText;
 
@@ -2468,13 +2424,7 @@
                 ${!isJapaneseMode ? `<div class="text-xs text-slate-400 mt-2 italic font-normal">${escapeHtml(originalText)}</div>` : ''}
             `;
 
-            // 仮テキストカード（話しています...）が存在する場合は、その手前に挿入して仮テキストが常に最下部になるように制御
-            const interimCard = document.getElementById('viewerInterimCard');
-            if (interimCard && interimCard.parentNode === viewerCaptionFeed) {
-                viewerCaptionFeed.insertBefore(item, interimCard);
-            } else {
-                viewerCaptionFeed.appendChild(item);
-            }
+            viewerCaptionFeed.appendChild(item);
 
             if (isAutoScrollEnabled && !isUserScrolledUp) {
                 viewerCaptionFeed.scrollTop = viewerCaptionFeed.scrollHeight;
