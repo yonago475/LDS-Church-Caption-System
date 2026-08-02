@@ -2330,7 +2330,6 @@
                 interimCard = document.createElement('div');
                 interimCard.id = 'viewerInterimCard';
                 interimCard.className = 'bg-indigo-950/60 p-3.5 rounded-xl border border-indigo-500/40 shadow-sm backdrop-blur-sm transition-all';
-                viewerCaptionFeed.appendChild(interimCard);
             }
 
             const currentSizeClass = fontClasses[currentFontSizeIndex];
@@ -2344,6 +2343,9 @@
                     ${escapeHtml(text)}
                 </div>
             `;
+
+            // 常に最下部（末尾）へ移動させて表示を維持
+            viewerCaptionFeed.appendChild(interimCard);
 
             if (isAutoScrollEnabled && !isUserScrolledUp) {
                 viewerCaptionFeed.scrollTop = viewerCaptionFeed.scrollHeight;
@@ -2466,7 +2468,13 @@
                 ${!isJapaneseMode ? `<div class="text-xs text-slate-400 mt-2 italic font-normal">${escapeHtml(originalText)}</div>` : ''}
             `;
 
-            viewerCaptionFeed.appendChild(item);
+            // 仮テキストカード（話しています...）が存在する場合は、その手前に挿入して仮テキストが常に最下部になるように制御
+            const interimCard = document.getElementById('viewerInterimCard');
+            if (interimCard && interimCard.parentNode === viewerCaptionFeed) {
+                viewerCaptionFeed.insertBefore(item, interimCard);
+            } else {
+                viewerCaptionFeed.appendChild(item);
+            }
 
             if (isAutoScrollEnabled && !isUserScrolledUp) {
                 viewerCaptionFeed.scrollTop = viewerCaptionFeed.scrollHeight;
