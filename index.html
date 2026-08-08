@@ -1165,6 +1165,7 @@
         const manualQueueCountBadge = document.getElementById('manualQueueCountBadge');
         const manualQueueCount = document.getElementById('manualQueueCount');
         const joinNextTextBtn = document.getElementById('joinNextTextBtn');
+        const manualEditInput = document.getElementById('manualEditInput');
 
         const wakeLockBtn = document.getElementById('wakeLockBtn');
         const wakeLockIcon = document.getElementById('wakeLockIcon');
@@ -1425,7 +1426,6 @@
             const modeManualLabel = document.getElementById('modeManualLabel');
             const manualEditContainer = document.getElementById('manualEditContainer');
             const manualModeBadge = document.getElementById('manualModeBadge');
-            const manualEditInput = document.getElementById('manualEditInput');
             const sendBtn = document.getElementById('sendManualTextBtn');
             const discardBtn = document.getElementById('discardManualTextBtn');
 
@@ -1509,35 +1509,40 @@
                     }
                 });
             }
+        }
 
-            // 手動配信キューの表示を更新
-            function updateManualQueueUI() {
-                if (!manualQueueCountBadge || !manualQueueCount) return;
-                const count = manualBroadcastQueue.length;
-                if (count > 0 && isManualBroadcastMode) {
-                    manualQueueCountBadge.classList.remove('hidden');
-                    manualQueueCount.textContent = count;
-                    if (joinNextTextBtn) joinNextTextBtn.disabled = false;
-                } else {
-                    manualQueueCountBadge.classList.add('hidden');
-                    if (joinNextTextBtn) joinNextTextBtn.disabled = true;
-                }
+        // 手動配信キューの表示を更新
+        function updateManualQueueUI() {
+            const countBadge = document.getElementById('manualQueueCountBadge');
+            const countSpan = document.getElementById('manualQueueCount');
+            const joinBtn = document.getElementById('joinNextTextBtn');
+            if (!countBadge || !countSpan) return;
+            
+            const count = manualBroadcastQueue.length;
+            if (count > 0 && isManualBroadcastMode) {
+                countBadge.classList.remove('hidden');
+                countSpan.textContent = count;
+                if (joinBtn) joinBtn.disabled = false;
+            } else {
+                countBadge.classList.add('hidden');
+                if (joinBtn) joinBtn.disabled = true;
             }
+        }
 
-            // 次のキューデータをテキストエリアに挿入
-            function processNextManualQueue() {
-                const manualInput = document.getElementById('manualEditInput');
-                if (!manualInput) return;
-                
-                if (manualBroadcastQueue.length > 0) {
-                    const nextText = manualBroadcastQueue.shift();
-                    manualInput.value = nextText;
-                    manualInput.focus();
-                } else {
-                    manualInput.value = '';
-                }
-                updateManualQueueUI();
+        // 次のキューデータをテキストエリアに挿入
+        function processNextManualQueue() {
+            const manualInput = document.getElementById('manualEditInput');
+            if (!manualInput) return;
+            
+            if (manualBroadcastQueue.length > 0) {
+                const nextText = manualBroadcastQueue.shift();
+                manualInput.value = nextText;
+                manualInput.focus();
+            } else {
+                manualInput.value = '';
             }
+            updateManualQueueUI();
+        }
         }
 
         // ==================== 画面スリープ防止 (Screen Wake Lock API) ====================
