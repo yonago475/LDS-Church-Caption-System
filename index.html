@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>末日聖徒イエス・キリスト教会 リアルタイム多言語字幕システム</title>
+    <!-- Content Security Policy -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' cdn.tailwindcss.com unpkg.com cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' cdnjs.cloudflare.com cdn.tailwindcss.com; font-src 'self' cdnjs.cloudflare.com; connect-src 'self' wss://*.peerjs.com https://*.peerjs.com api.mymemory.translated.net translate.googleapis.com; img-src 'self' data: blob:;">
     <!-- Tailwind CSS for UI Styling -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- PeerJS for Real-time P2P Communication -->
@@ -1089,6 +1091,9 @@
         // ログダウンロード用の文字起こし履歴バッファ
         const transcriptHistory = [];
 
+        // 翻訳キャッシュ（セッション中のみ有効）- API呼び出し回数を削減
+        const translationCache = new Map();
+
         // ==================== DOM要素参照 ====================
         const hostSection = document.getElementById('hostSection');
         const viewerSection = document.getElementById('viewerSection');
@@ -1233,9 +1238,55 @@
 
             updateViewerUIStrings(targetLangSelect.value);
 
-            targetLangSelect.addEventListener('change', function() {
-                localStorage.setItem('lds_caption_lang', this.value);
-                updateViewerUIStrings(this.value);
+            targetLangSelect.addEventListener('change', async function() {
+                const newLang = this.value;
+                localStorage.setItem('lds_caption_lang', newLang);
+                updateViewerUIStrings(newLang);
+
+                // 既存の全カードを新しい言語に並列一括再翻訳
+                const cards = viewerCaptionFeed.querySelectorAll('.caption-card');
+                if (cards.length === 0) return;
+
+                const promises = Array.from(cards).map(async (card) => {
+                    const originalText = card.getAttribute('data-original');
+                    if (!originalText) return;
+
+                    let translatedText = originalText;
+                    if (newLang !== 'ja') {
+                        translatedText = await translateText(originalText, newLang);
+                    }
+
+                    const isJapaneseMode = newLang === 'ja';
+
+                    // 翻訳テキスト部分を更新
+                    const textContainer = card.querySelector('.font-semibold.text-white');
+                    if (textContainer) {
+                        textContainer.textContent = translatedText;
+                    }
+
+                    // 言語ラベルを更新
+                    const langSpan = card.querySelector('.fa-globe');
+                    if (langSpan && langSpan.parentNode) {
+                        langSpan.parentNode.innerHTML = '<i class="fa-solid fa-globe mr-1 text-indigo-400"></i> ' + escapeHtml(targetLangSelect.options[targetLangSelect.selectedIndex].text);
+                    }
+
+                    // 日本語原文エリアの表示/非表示を切り替え
+                    let originalContainer = card.querySelector('.text-slate-400.mt-2.italic');
+                    if (isJapaneseMode) {
+                        if (originalContainer) originalContainer.remove();
+                    } else {
+                        if (originalContainer) {
+                            originalContainer.textContent = originalText;
+                        } else {
+                            const origDiv = document.createElement('div');
+                            origDiv.className = 'text-xs text-slate-400 mt-2 italic font-normal';
+                            origDiv.textContent = originalText;
+                            card.appendChild(origDiv);
+                        }
+                    }
+                });
+
+                await Promise.all(promises);
             });
         }
 
@@ -1398,7 +1449,12 @@
                 sendBtn.onclick = function() {
                     const text = manualEditInput.value.trim();
                     if (!text) return;
-                    broadcastCaption(text);
+                    // バグ修正: broadcastCaption（未定義）→ broadcastToViewers に修正
+                    broadcastToViewers({
+                        type: 'caption',
+                        text: text,
+                        timestamp: new Date().toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+                    });
                     appendHostTranscript(text);
                     manualEditInput.value = '';
                 };
@@ -1603,24 +1659,48 @@
 
         // ==================== 教会用語辞書管理 ====================
         function loadDictionary() {
-            const saved = localStorage.getItem('lds_church_dict');
-            if (saved) {
+            let customDict = {};
+            const savedCustom = localStorage.getItem('lds_church_dict_custom');
+            const savedOld = localStorage.getItem('lds_church_dict');
+
+            if (savedCustom) {
+                // 新形式（差分のみ保存）から読み込み
                 try {
-                    const parsed = JSON.parse(saved);
-                    // DEFAULT_DICTIONARY をベースにしつつ、ユーザーが追加した内容をマージ
-                    churchDictionary = { ...DEFAULT_DICTIONARY, ...parsed };
+                    customDict = JSON.parse(savedCustom);
                 } catch (e) {
-                    churchDictionary = { ...DEFAULT_DICTIONARY };
+                    customDict = {};
                 }
-            } else {
-                churchDictionary = { ...DEFAULT_DICTIONARY };
-                saveDictionary();
+            } else if (savedOld) {
+                // 旧形式からの自動移行：DEFAULT_DICTIONARY と同一のエントリを除外して差分のみ抽出
+                try {
+                    const parsedOld = JSON.parse(savedOld);
+                    Object.keys(parsedOld).forEach(key => {
+                        if (DEFAULT_DICTIONARY[key] !== parsedOld[key]) {
+                            customDict[key] = parsedOld[key];
+                        }
+                    });
+                    // 新形式で保存し、旧形式は削除（移行完了）
+                    localStorage.setItem('lds_church_dict_custom', JSON.stringify(customDict));
+                    localStorage.removeItem('lds_church_dict');
+                } catch (e) {
+                    customDict = {};
+                }
             }
+
+            // DEFAULT_DICTIONARY をベースにカスタム差分をマージ
+            churchDictionary = { ...DEFAULT_DICTIONARY, ...customDict };
             renderDictionaryList();
         }
 
         function saveDictionary() {
-            localStorage.setItem('lds_church_dict', JSON.stringify(churchDictionary));
+            // DEFAULT_DICTIONARY と異なるエントリ（ユーザー追加・編集分）のみを保存
+            const customDict = {};
+            Object.keys(churchDictionary).forEach(key => {
+                if (DEFAULT_DICTIONARY[key] !== churchDictionary[key]) {
+                    customDict[key] = churchDictionary[key];
+                }
+            });
+            localStorage.setItem('lds_church_dict_custom', JSON.stringify(customDict));
             renderDictionaryList();
         }
 
@@ -1975,6 +2055,17 @@
             peer.on('error', function(err) {
                 console.error('PeerJS Host Error:', err);
 
+                // ホスト側のネットワーク警告をUI表示
+                if (speechStatus) {
+                    const origHTML = speechStatus.innerHTML;
+                    speechStatus.innerHTML = '<span class="w-2 h-2 mr-1.5 rounded-full bg-red-400 animate-pulse"></span> ⚠️ P2P接続エラー';
+                    speechStatus.className = 'inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-700';
+                    setTimeout(() => {
+                        speechStatus.innerHTML = origHTML;
+                        speechStatus.className = 'inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-600';
+                    }, 10000);
+                }
+
                 if (err.type === 'unavailable-id') {
                     console.warn('Saved Peer ID is unavailable. Generating a new one...');
                     localStorage.removeItem('lds_caption_peer_id');
@@ -2033,7 +2124,25 @@
             const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
             
             if (!SpeechRecognition) {
-                interimText.textContent = 'お使いのブラウザはWeb Speech APIに対応していません。Google ChromeまたはMicrosoft Edgeをご利用ください。';
+                interimText.textContent = 'お使いのブラウザはWeb Speech APIに対応していません。';
+                // ブラウザ非対応時の目立つ警告パネルを表示
+                const warningHtml = `
+                    <div class="bg-red-100 text-red-800 p-4 rounded-xl border-2 border-red-300 shadow-md mb-4 flex items-start gap-3">
+                        <i class="fa-solid fa-circle-exclamation text-2xl text-red-500 shrink-0 mt-0.5"></i>
+                        <div>
+                            <p class="font-bold text-sm mb-1">⚠️ ブラウザ非対応</p>
+                            <p class="text-xs leading-relaxed">お使いのブラウザは音声認識（Web Speech API）に対応していません。<br>
+                            <strong>Google Chrome</strong> または <strong>Microsoft Edge</strong> でこのページを開いてください。</p>
+                        </div>
+                    </div>`;
+                if (interimText && interimText.parentNode) {
+                    interimText.parentNode.insertAdjacentHTML('beforebegin', warningHtml);
+                }
+                // 開始ボタンを無効化
+                if (toggleRecognitionBtn) {
+                    toggleRecognitionBtn.disabled = true;
+                    toggleRecognitionBtn.classList.add('opacity-50', 'cursor-not-allowed');
+                }
                 return;
             }
 
@@ -2108,14 +2217,23 @@
                     if (rawFinalRemaining) {
                         const correctedFinal = replaceChurchTerms(rawFinalRemaining);
                         interimText.textContent = '（次の音声入力を待機中...）';
-                        
-                        appendHostTranscript(correctedFinal);
 
-                        broadcastToViewers({
-                            type: 'caption',
-                            text: correctedFinal,
-                            timestamp: new Date().toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
-                        });
+                        if (isManualBroadcastMode) {
+                            // 手動配信モード: テキストエリアに蓄積し、ホストが確認後に手動送信
+                            const manualInput = document.getElementById('manualEditInput');
+                            if (manualInput) {
+                                const current = manualInput.value.trim();
+                                manualInput.value = current ? (current + ' ' + correctedFinal) : correctedFinal;
+                            }
+                        } else {
+                            // 自動配信モード: 即時配信
+                            appendHostTranscript(correctedFinal);
+                            broadcastToViewers({
+                                type: 'caption',
+                                text: correctedFinal,
+                                timestamp: new Date().toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+                            });
+                        }
                     }
                 }
 
@@ -2134,13 +2252,23 @@
 
                             if (rawChunkToFinalize) {
                                 const correctedChunk = replaceChurchTerms(rawChunkToFinalize);
-                                appendHostTranscript(correctedChunk);
 
-                                broadcastToViewers({
-                                    type: 'caption',
-                                    text: correctedChunk,
-                                    timestamp: new Date().toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
-                                });
+                                if (isManualBroadcastMode) {
+                                    // 手動配信モード: テキストエリアに蓄積
+                                    const manualInput = document.getElementById('manualEditInput');
+                                    if (manualInput) {
+                                        const current = manualInput.value.trim();
+                                        manualInput.value = current ? (current + ' ' + correctedChunk) : correctedChunk;
+                                    }
+                                } else {
+                                    // 自動配信モード: 即時配信
+                                    appendHostTranscript(correctedChunk);
+                                    broadcastToViewers({
+                                        type: 'caption',
+                                        text: correctedChunk,
+                                        timestamp: new Date().toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+                                    });
+                                }
                             }
 
                             const correctedRemainder = replaceChurchTerms(rawRemainder);
@@ -2249,6 +2377,13 @@
 
             peer.on('error', function(err) {
                 console.error('Viewer Peer Error:', err);
+                // ビューアー側のネットワーク警告をUI表示
+                if (peerConnectionStatus) {
+                    peerConnectionStatus.className = 'w-2 h-2 rounded-full bg-red-400 animate-pulse';
+                }
+                if (peerStatusText) {
+                    peerStatusText.textContent = '⚠️ 接続エラー - 自動再接続を試行します...';
+                }
                 scheduleViewerReconnect();
             });
 
@@ -2326,6 +2461,12 @@
             const TRANSLATE_TIMEOUT_MS = 5000;
             let rawTranslation = text;
 
+            // 翻訳キャッシュの確認（同一テキスト+言語の再翻訳を回避）
+            const cacheKey = `${targetLang}:${text.trim()}`;
+            if (translationCache.has(cacheKey)) {
+                return translationCache.get(cacheKey);
+            }
+
             try {
                 const controller1 = new AbortController();
                 const timer1 = setTimeout(() => controller1.abort(), TRANSLATE_TIMEOUT_MS);
@@ -2337,7 +2478,9 @@
                 const data = await res.json();
                 if (data && data.responseData && data.responseData.translatedText) {
                     rawTranslation = data.responseData.translatedText;
-                    return applyTargetGlossary(rawTranslation, targetLang);
+                    const result = applyTargetGlossary(rawTranslation, targetLang);
+                    translationCache.set(cacheKey, result);
+                    return result;
                 }
             } catch (err) {
                 if (err.name === 'AbortError') {
@@ -2347,6 +2490,7 @@
                 }
             }
 
+            // フォールバック: Google Translate Proxy (gtx)
             try {
                 const controller2 = new AbortController();
                 const timer2 = setTimeout(() => controller2.abort(), TRANSLATE_TIMEOUT_MS);
@@ -2358,7 +2502,9 @@
                 const data = await res.json();
                 if (data && data[0]) {
                     rawTranslation = data[0].map(item => item[0]).join('');
-                    return applyTargetGlossary(rawTranslation, targetLang);
+                    const result = applyTargetGlossary(rawTranslation, targetLang);
+                    translationCache.set(cacheKey, result);
+                    return result;
                 }
             } catch (err) {
                 if (err.name === 'AbortError') {
@@ -2366,9 +2512,22 @@
                 } else {
                     console.error('All translation attempts failed:', err);
                 }
+                // 翻訳完全失敗時のUI通知（聴講者に翻訳失敗を警告）
+                if (peerStatusText) {
+                    const originalStatusText = peerStatusText.textContent;
+                    peerStatusText.textContent = '⚠️ 翻訳サービス一時不調 - 原文表示中';
+                    peerStatusText.style.color = '#fbbf24';
+                    setTimeout(() => {
+                        peerStatusText.textContent = originalStatusText;
+                        peerStatusText.style.color = '';
+                    }, 8000);
+                }
             }
 
-            return applyTargetGlossary(rawTranslation, targetLang);
+            const fallbackResult = applyTargetGlossary(rawTranslation, targetLang);
+            // 失敗時もキャッシュして同じテキストで連続リトライしないようにする
+            translationCache.set(cacheKey, fallbackResult);
+            return fallbackResult;
         }
 
         function applyTargetGlossary(text, lang) {
@@ -2404,9 +2563,20 @@
                 totalCardsCount.textContent = viewerCardSequence;
             }
 
+            // DOM蓄積対策: 最大100件を超えた場合、最も古いカードを削除
+            const MAX_CAPTION_CARDS = 100;
+            const existingCards = viewerCaptionFeed.querySelectorAll('.caption-card');
+            if (existingCards.length >= MAX_CAPTION_CARDS) {
+                existingCards[0].remove();
+            }
+
             const currentSizeClass = fontClasses[currentFontSizeIndex];
             const item = document.createElement('div');
             item.className = 'caption-card bg-slate-800/80 p-4 rounded-xl border border-slate-700/60 shadow-md backdrop-blur-sm transition-all';
+
+            // 言語切替時の一括再翻訳用に原文テキストとタイムスタンプをdata属性に保存
+            item.setAttribute('data-original', originalText || '');
+            item.setAttribute('data-timestamp', timestamp || '');
             
             const isJapaneseMode = targetLangSelect.value === 'ja';
 
@@ -2428,6 +2598,17 @@
 
             if (isAutoScrollEnabled && !isUserScrolledUp) {
                 viewerCaptionFeed.scrollTop = viewerCaptionFeed.scrollHeight;
+            } else if (isUserScrolledUp) {
+                // スマートオートスクロール: ユーザーが過去ログを閲覧中なら新着通知を表示
+                const latestCardBtn = document.getElementById('latestCardBtn');
+                const latestCardBtnText = document.getElementById('latestCardBtnText');
+                if (latestCardBtn) {
+                    latestCardBtn.style.display = 'flex';
+                    if (latestCardBtnText) latestCardBtnText.textContent = '🆕 新着字幕あり ⬇';
+                    // バンプアニメーション
+                    latestCardBtn.style.transform = 'scale(1.15)';
+                    setTimeout(() => { latestCardBtn.style.transform = 'scale(1)'; }, 300);
+                }
             }
         }
 
