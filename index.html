@@ -568,8 +568,6 @@
             "進行": "信仰",
             "しゅは": "主は",
             "手話": "主は",
-            "みな": "御名",
-            "皆": "御名",
             "おんこ": "御子",
             "温故": "御子",
 
@@ -586,7 +584,6 @@
             "えのす": "エノス",
             "やこぶ": "ヤコブ",
             "もるもん": "モルモン",
-            "さら": "サラ",
             "らばん": "ラバン",
             "れむえる": "レムエル",
             "さむ": "サム",
@@ -676,7 +673,68 @@
             "だりんえいちおーくす": "ダリン・H・オークス",
             "おーくすかんちょう": "オークス管長",
             "へんりーびーあいりんぐ": "ヘンリー・B・アイリング",
-            "あいりんぐかんちょう": "アイリング管長"
+            "あいりんぐかんちょう": "アイリング管長",
+
+            // --- 聖文・聖句関連（ログ分析による追加） ---
+            "成分": "聖文",
+            "せいぶん": "聖文",
+            "せい国": "聖句",
+            "制服": "聖句",
+
+            // --- 「耐え忍ぶ」音声認識誤り対策 ---
+            "大使のウッド": "耐え忍ぶ",
+            "大使の部": "耐え忍ぶ",
+            "太子の部": "耐え忍ぶ",
+            "大使のこと": "耐え忍ぶこと",
+            "大使の部食べ": "耐え忍ぶための",
+            "たいしのぶ": "耐え忍ぶ",
+
+            // --- 教会指導者名（ログ分析による追加） ---
+            "ベトナ長老": "ベドナー長老",
+            "べとな": "ベドナー",
+            "動く長老": "ベドナー長老",
+            "ネルソンかんちょう": "ネルソン管長",
+
+            // --- 聖書旧約人名（ログ分析による追加） ---
+            "よしや": "ヨシヤ",
+            "吉尾": "ヨシヤ",
+            "まなせ": "マナセ",
+            "止まらせ": "マナセ",
+            "えぜきえる": "エゼキエル",
+            "あもん": "アモン",
+
+            // --- 聖書地名（ログ分析による追加） ---
+            "エッセマネ": "ゲツセマネ",
+            "げつせまね": "ゲツセマネ",
+
+            // --- 聖典参照の誤認識（ログ分析による追加） ---
+            "第1にファイ": "第1ニーファイ",
+            "第2杯": "第2ニーファイ",
+            "第3杯": "第3ニーファイ",
+            "第4杯": "第4ニーファイ",
+
+            // --- 教会組織・集会用語（ログ分析による追加） ---
+            "日中学校": "日曜学校",
+            "2長学校": "日曜学校",
+            "びしょっぷ": "ビショップ",
+
+            // --- 教会概念・儀式（ログ分析による追加） ---
+            "みたま": "御霊",
+            "みにすたりんぐ": "ミニスタリング",
+            "ミニスタリング": "ミニスタリング",
+            "あさいめんと": "アサイメント",
+            "アサイメント": "アサイメント",
+            "しゅくふくぶん": "祝福文",
+
+            // --- 「御名」文脈特化パターン（「皆」の副作用回避） ---
+            "皆により": "御名により",
+            "皆を通して": "御名を通して",
+            "皆を通し": "御名を通し",
+            "皆によって": "御名によって",
+            "みなにより": "御名により",
+            "みなを通して": "御名を通して",
+            "みなを通し": "御名を通し",
+            "御名と行い": "御名によりお話しし"
         };
 
         // ==================== 多言語教会用語辞書 (翻訳後テキストの後置換補正) ====================
@@ -2014,6 +2072,16 @@
             return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
         }
 
+        // ==================== 聖典参照パターン補正 ====================
+        function fixScriptureReferences(text) {
+            if (!text) return text;
+            // 「勝」「賞」→「章」の誤認識修正（例: 10勝29節 → 10章29節）
+            text = text.replace(/(\d+)勝(\d+)節/g, '$1章$2節');
+            text = text.replace(/(\d+)賞(\d+)節/g, '$1章$2節');
+            text = text.replace(/(\d+)勝(\d+)/g, '$1章$2');
+            return text;
+        }
+
         // ==================== スマート文節分割ロジック ====================
         function findSmartSplitIndex(text) {
             if (!text || text.length < 12) return -1;
@@ -2280,7 +2348,7 @@
                     lastFinalizedRawLength = 0;
 
                     if (rawFinalRemaining) {
-                        const correctedFinal = replaceChurchTerms(rawFinalRemaining);
+                        const correctedFinal = fixScriptureReferences(replaceChurchTerms(rawFinalRemaining));
                         interimText.textContent = '（次の音声入力を待機中...）';
 
                         if (isManualBroadcastMode) {
@@ -2312,17 +2380,20 @@
                     const rawInterimRemaining = interimTranscript.slice(lastFinalizedRawLength);
 
                     if (rawInterimRemaining) {
-                        const splitIdx = findSmartSplitIndex(rawInterimRemaining);
+                        // 提案B: 辞書置換を分割判定の前に適用し、「大使のウッド」等の分断を防止
+                        const correctedInterimFull = fixScriptureReferences(replaceChurchTerms(rawInterimRemaining));
+                        const splitIdx = findSmartSplitIndex(correctedInterimFull);
 
                         if (splitIdx > 0) {
-                            const rawChunkToFinalize = rawInterimRemaining.slice(0, splitIdx).trim();
-                            const rawRemainder = rawInterimRemaining.slice(splitIdx);
+                            const correctedChunk = correctedInterimFull.slice(0, splitIdx).trim();
+                            const correctedRemainder = correctedInterimFull.slice(splitIdx);
 
-                            lastFinalizedRawLength += splitIdx;
+                            // rawベースのオフセット近似: 辞書置換で文字列長が変わるため、
+                            // 置換後テキストの消費比率からraw側のオフセットを推定
+                            const ratioConsumed = splitIdx / correctedInterimFull.length;
+                            lastFinalizedRawLength = Math.round(rawInterimRemaining.length * ratioConsumed);
 
-                            if (rawChunkToFinalize) {
-                                const correctedChunk = replaceChurchTerms(rawChunkToFinalize);
-
+                            if (correctedChunk) {
                                 if (isManualBroadcastMode) {
                                     // 手動配信モード: テキストエリアが空かつキューが空なら直接表示、そうでなければキューにストック
                                     const manualInput = document.getElementById('manualEditInput');
@@ -2346,11 +2417,9 @@
                                 }
                             }
 
-                            const correctedRemainder = replaceChurchTerms(rawRemainder);
                             interimText.textContent = correctedRemainder || '（音声入力を継続中...）';
                         } else {
-                            const correctedInterim = replaceChurchTerms(rawInterimRemaining);
-                            interimText.textContent = correctedInterim;
+                            interimText.textContent = correctedInterimFull;
                         }
                     }
                 }
