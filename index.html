@@ -12,7 +12,6 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <!-- FontAwesome for Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-<script src="./src/findSmartSplitIndex.js"></script>
     <style>
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
@@ -1416,6 +1415,166 @@
             text = text.replace(/(\d+)賞(\d+)節/g, '$1章$2節');
             text = text.replace(/(\d+)勝(\d+)/g, '$1章$2');
             return text;
+        }
+
+        // ==================== 固有名詞・重要教会用語・複合助詞連語（分断禁止） ====================
+        const PROTECTED_TERMS = [
+            "末日聖徒イエス・キリスト教会",
+            "末日聖徒イエス・キリスト",
+            "イエス・キリスト教会",
+            "イエス・キリスト",
+            "末日聖徒",
+            "扶助協会",
+            "長老定員会",
+            "アロン神権",
+            "メルキゼデク神権",
+            "福音の教義",
+            "初等協会",
+            "中央幹部",
+            // 複合助詞・連語（助詞＋語の途中での切断を完全ブロック）
+            "に関して言えば",
+            "について言えば",
+            "にとって言えば",
+            "に関して",
+            "について",
+            "において",
+            "にとって",
+            "によって",
+            "に向けて",
+            "につれる",
+            "としても",
+            "としては",
+            "の中で",
+            "だけでなく",
+            "のみならず",
+            "にかけて"
+        ];
+
+        function isInsideProtectedTerm(text, pos) {
+            for (const term of PROTECTED_TERMS) {
+                let idx = text.indexOf(term);
+                while (idx !== -1) {
+                    if (pos > idx && pos < idx + term.length) {
+                        return true;
+                    }
+                    idx = text.indexOf(term, idx + 1);
+                }
+            }
+            return false;
+        }
+
+        // ==================== 自然な文節境界スコアリング分割ロジック ====================
+        function findSmartSplitIndex(text, isFinal = false) {
+            if (!text || text.length < 10) return -1;
+
+            // 1. 明示的な文末記号（。！？\n）がある場合、最優先でその直後を切断
+            const punctRegex = /[。！？\n]/g;
+            let pMatch;
+            while ((pMatch = punctRegex.exec(text)) !== null) {
+                const pos = pMatch.index + pMatch[0].length;
+                if (pos >= 8) {
+                    return pos;
+                }
+            }
+
+            // 2. 境界候補と確信度スコアの算出
+            const candidateMap = new Map();
+            const candidateInfoMap = new Map();
+
+            // 読点・空白の直後も境界候補に追加（separator フラグ付与）
+            const sepRegex = /[、\s\u3000]+/g;
+            let sMatch;
+            while ((sMatch = sepRegex.exec(text)) !== null) {
+                const p = sMatch.index + sMatch[0].length;
+                const current = candidateMap.get(p) || 0;
+                candidateMap.set(p, Math.max(current, 30));
+                const prev = candidateInfoMap.get(p) || {};
+                candidateInfoMap.set(p, { ...prev, separator: true });
+            }
+
+            // isFinal の場合はテキスト全体の末尾も候補
+            if (isFinal && text.length >= 10) {
+                candidateMap.set(text.length, 20);
+                const prev = candidateInfoMap.get(text.length) || {};
+                candidateInfoMap.set(text.length, { ...prev, isFinal: true });
+            }
+
+            const candidatePositions = Array.from(candidateMap.keys()).sort((a, b) => a - b);
+            if (candidatePositions.length === 0) return -1;
+
+            // 終止表現・接続助詞パターンの定義
+            const endingEndRegex = /(です|ます|でした|ました|思います|思っています|感謝します|感謝いたします|証します|祈ります|お祈りします|信じます|ください|つもります|でしょう|ましょう|アーメン)(よね|ね|よ|か|わ|な|ぞ|。|！|？|[\s\u3000]+)?$/;
+            const clauseEndRegex = /(、|ので|ですが|けれども|けれど|ために|に関して言えば|について言えば|に関して|について|において|の中で|によって)$/;
+            const nextLeadingConjunctionRegex = /^[\s\u3000]*(また|そして|しかし|だから|ですから|なお|さらに|あるいは|または)([\s\u3000、]|$)/;
+
+            function isEndingMatch(prefix) {
+                return endingEndRegex.test(prefix);
+            }
+            function isClauseEndMatch(prefix) {
+                return clauseEndRegex.test(prefix);
+            }
+            function isNextLeadingConjunctionMatch(nextPart) {
+                return nextLeadingConjunctionRegex.test(nextPart);
+            }
+
+            let bestScore = -Infinity;
+            let bestPos = -1;
+
+            for (const pos of candidatePositions) {
+                if (pos < 8) continue;
+
+                // 固有名詞の途中なら絶対に切断しない
+                if (isInsideProtectedTerm(text, pos)) {
+                    continue;
+                }
+
+                // 未確定（interim）時、末尾付近（後続が4文字未満）かつ文末記号がない場合は保留
+                if (!isFinal && pos > text.length - 4 && !/[。！？\s\u3000]/.test(text[pos - 1])) {
+                    continue;
+                }
+
+                const prefix = text.substring(0, pos).trim();
+                const prefixLen = prefix.length;
+                if (prefixLen < 8) continue;
+
+                const nextPart = text.substring(pos);
+
+                // 1. 表示文字数の正規分布重み（27文字をピーク、標準偏差7文字のガウス関数、最大40点に最適化）
+                const diff = prefixLen - 27;
+                const lengthWeight = Math.exp(-(diff * diff) / (2 * 49)) * 40;
+
+                // 2. 確信度スコア
+                const confidenceScore = candidateMap.get(pos) || 0;
+
+                // 3. 終止表現・接続助詞・次行接続詞ボーナス
+                let bonus = 0;
+                if (isEndingMatch(prefix)) {
+                    bonus += 150;
+                }
+                if (isClauseEndMatch(prefix)) {
+                    bonus += 70;
+                }
+                if (isNextLeadingConjunctionMatch(nextPart)) {
+                    bonus += 80;
+                }
+                if (/[、\s\u3000]$/.test(text.substring(0, pos))) {
+                    bonus += 40;
+                }
+
+                const totalScore = lengthWeight + confidenceScore + bonus;
+
+                if (totalScore > bestScore) {
+                    bestScore = totalScore;
+                    bestPos = pos;
+                }
+            }
+
+            // スコアが一定以上（または長文で分割が必要な場合）に採用
+            if (bestPos !== -1 && (bestScore >= 30 || (text.length >= 35 && bestScore > 20))) {
+                return bestPos;
+            }
+
+            return -1;
         }
 
         function splitIntoSmartChunks(text) {
