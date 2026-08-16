@@ -1633,8 +1633,15 @@
             if (!committedChunks || committedChunks.length === 0 || !fullText) return fullText;
 
             const normFull = fullText.replace(/[\s\u3000、。！？]+/g, '').toLowerCase();
+            const totalCommittedNormLen = committedChunks.reduce((acc, c) => acc + c.replace(/[\s\u3000、。！？]+/g, '').length, 0);
 
-            // 1. 直近にコミットされた文節（chunk）から逆順にアンカー検索
+            // 全文の正規化長がコミット済み文字数以下なら、すでに全てコミット済み（空文字を返して重複再送を防止）
+            if (normFull.length <= totalCommittedNormLen) {
+                return "";
+            }
+
+            // 1. 直近にコミットされた文節からアンカー検索
+            let maxMatchedEndNormIdx = 0;
             for (let i = committedChunks.length - 1; i >= 0; i--) {
                 const chunk = committedChunks[i];
                 const normChunk = chunk.replace(/[\s\u3000、。！？]+/g, '').toLowerCase();
@@ -1643,33 +1650,28 @@
                 const anchorIdx = normFull.indexOf(normChunk);
                 if (anchorIdx !== -1) {
                     const endNormIdx = anchorIdx + normChunk.length;
-                    let normCount = 0;
-                    let rawIdx = 0;
-                    while (rawIdx < fullText.length && normCount < endNormIdx) {
-                        if (!/[\s\u3000、。！？]/.test(fullText[rawIdx])) {
-                            normCount++;
-                        }
-                        rawIdx++;
+                    if (endNormIdx > maxMatchedEndNormIdx) {
+                        maxMatchedEndNormIdx = endNormIdx;
                     }
-                    return fullText.substring(rawIdx).trim();
                 }
             }
 
-            // 2. フォールバック: 表記揺れ（再デコード）等でアンカーが直接一致しない場合、コミット済み正規化文字数で近似位置を算出
-            let totalCommittedNormLen = committedChunks.reduce((acc, c) => acc + c.replace(/[\s\u3000、。！？]+/g, '').length, 0);
-            if (totalCommittedNormLen > 0 && totalCommittedNormLen < normFull.length) {
-                let normCount = 0;
-                let rawIdx = 0;
-                while (rawIdx < fullText.length && normCount < totalCommittedNormLen) {
-                    if (!/[\s\u3000、。！？]/.test(fullText[rawIdx])) {
-                        normCount++;
-                    }
-                    rawIdx++;
-                }
-                return fullText.substring(rawIdx).trim();
+            // アンカーマッチ最末尾位置と累積コミット長のうち大きい方をカットオフ位置に採用
+            const targetNormCut = Math.max(maxMatchedEndNormIdx, totalCommittedNormLen);
+            if (targetNormCut >= normFull.length) {
+                return "";
             }
 
-            return fullText;
+            let normCount = 0;
+            let rawIdx = 0;
+            while (rawIdx < fullText.length && normCount < targetNormCut) {
+                if (!/[\s\u3000、。！？]/.test(fullText[rawIdx])) {
+                    normCount++;
+                }
+                rawIdx++;
+            }
+
+            return fullText.substring(rawIdx).trim();
         }
 
 
@@ -1786,8 +1788,8 @@
             recognition.interimResults = true;
             recognition.lang = 'ja-JP';
 
-                        // 直近の送信履歴（De-duplication用: { id, text, norm, timestamp }）
-            // 音声認識の自動再起動（onstart）でクリアされないようセッション内で維持
+            // セッション内全送信済み正規化テキストの重複排除 Set（時間で破棄せずセッション中永久保持）
+            const sessionSentNormSet = new Set();
             const recentSentHistory = [];
             let captionSequenceId = 0;
 
@@ -1801,45 +1803,39 @@
                 const cleanText = text.trim();
                 if (!cleanText) return;
 
-                const now = Date.now();
                 const normClean = normalizeCaption(cleanText);
+                if (!normClean) return;
 
-                // 120秒以上前の古い履歴を削除
-                while (recentSentHistory.length > 0 && (now - recentSentHistory[0].timestamp) > 120000) {
-                    recentSentHistory.shift();
+                // 1. セッション全体での完全一致・正規化一致判定（時間制限なしで100%永久遮断）
+                if (sessionSentNormSet.has(normClean)) {
+                    return;
                 }
 
-                // 直近履歴との重複判定（完全一致・正規化一致・近接重複）
+                // 2. 過去の送信済み文節との部分重複・包含判定
                 for (let i = recentSentHistory.length - 1; i >= 0; i--) {
                     const item = recentSentHistory[i];
-                    const timeDiff = now - item.timestamp;
-
-                    // 1. 完全一致または空白・記号無視の正規化一致
-                    if (item.text === cleanText || item.norm === normClean) {
+                    if (item.norm === normClean) {
                         return;
                     }
-
-                    // 2. 直近10秒以内の部分重複判定（すでに送信済みの文が末尾または全体に含まれる場合）
-                    if (timeDiff < 10000) {
-                        if (item.norm.endsWith(normClean) || normClean.endsWith(item.norm) || item.norm.includes(normClean) || normClean.includes(item.norm)) {
-                            if (Math.abs(normClean.length - item.norm.length) < 8) {
-                                return;
-                            }
+                    if (item.norm.includes(normClean) || normClean.includes(item.norm)) {
+                        if (Math.abs(normClean.length - item.norm.length) < 6) {
+                            return;
                         }
                     }
                 }
 
                 captionSequenceId++;
+                const now = Date.now();
                 const timeStr = new Date().toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
-                // 履歴に追加
+                sessionSentNormSet.add(normClean);
                 recentSentHistory.push({
                     id: captionSequenceId,
                     text: cleanText,
                     norm: normClean,
                     timestamp: now
                 });
-                if (recentSentHistory.length > 100) {
+                if (recentSentHistory.length > 500) {
                     recentSentHistory.shift();
                 }
 
@@ -2006,6 +2002,7 @@
             clearTranscriptsBtn.onclick = function() {
                 hostTranscriptLog.innerHTML = '<p class="text-xs text-slate-400 text-center italic my-auto">ログをクリアしました</p>';
                 transcriptHistory.length = 0;
+                sessionSentNormSet.clear();
                 recentSentHistory.length = 0;
                 committedChunks.length = 0;
             };
