@@ -1867,6 +1867,12 @@
                     }
                 }
 
+                // 3. 直近に送信した複数チャンクの連結文字列との部分一致判定（遅延確定・再起動時の重複を完全遮断）
+                const recentCombined = recentSentHistory.slice(-8).map(h => h.norm).join('');
+                if (recentCombined && recentCombined.includes(normClean)) {
+                    return;
+                }
+
                 captionSequenceId++;
                 const now = Date.now();
                 const timeStr = new Date().toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
@@ -1892,7 +1898,7 @@
                 });
             }
 
-            // 未確定音声（interim）から先行コミット済みの文節バッファ配列
+            // 未確定音声（interim）から先行コミット済みの文節バッファ配列（セッション単位で履歴維持）
             const committedChunks = [];
             let silenceCommitTimer = null;
             let currentUnhandledInterim = '';
@@ -1908,6 +1914,9 @@
                         dispatchCaption(chunk);
                         committedChunks.push(chunk);
                     });
+                    if (committedChunks.length > 100) {
+                        committedChunks.splice(0, committedChunks.length - 100);
+                    }
                     currentUnhandledInterim = '';
                     interimText.textContent = '（次の音声入力を待機中...）';
                 }
@@ -1929,14 +1938,12 @@
 
             recognition.onstart = function() {
                 isRecognizing = true;
-                committedChunks.length = 0;
                 currentUnhandledInterim = '';
                 updateSpeechUI(true);
             };
 
             recognition.onend = function() {
                 flushUnhandledInterim();
-                committedChunks.length = 0;
                 if (isRecognizing) {
                     if (recognitionRestartTimer) clearTimeout(recognitionRestartTimer);
                     recognitionRestartTimer = setTimeout(() => {
@@ -1987,11 +1994,15 @@
                         const uncommittedFinal = stripCommittedChunks(correctedFinal, committedChunks);
                         if (uncommittedFinal) {
                             const chunks = splitIntoSmartChunks(uncommittedFinal);
-                            chunks.forEach(chunk => dispatchCaption(chunk));
+                            chunks.forEach(chunk => {
+                                dispatchCaption(chunk);
+                                committedChunks.push(chunk);
+                            });
+                            if (committedChunks.length > 100) {
+                                committedChunks.splice(0, committedChunks.length - 100);
+                            }
                         }
                     }
-                    // 確定イベント完了で未確定バッファと先行コミットステートを確実にクリア
-                    committedChunks.length = 0;
                     interimText.textContent = '（次の音声入力を待機中...）';
                 }
 
@@ -2008,6 +2019,9 @@
                             if (chunk) {
                                 dispatchCaption(chunk);
                                 committedChunks.push(chunk);
+                            }
+                            if (committedChunks.length > 100) {
+                                committedChunks.splice(0, committedChunks.length - 100);
                             }
                             unhandledInterim = stripCommittedChunks(correctedInterim, committedChunks);
                             splitIdx = findSmartSplitIndex(unhandledInterim);
