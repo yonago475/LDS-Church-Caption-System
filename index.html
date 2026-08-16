@@ -4,8 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>末日聖徒イエス・キリスト教会 リアルタイム多言語字幕システム</title>
-    <!-- Content Security Policy -->
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' cdn.tailwindcss.com unpkg.com cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' cdnjs.cloudflare.com cdn.tailwindcss.com; font-src 'self' cdnjs.cloudflare.com; connect-src 'self' wss://*.peerjs.com https://*.peerjs.com api.mymemory.translated.net translate.googleapis.com; img-src 'self' data: blob:;">
     <!-- Tailwind CSS for UI Styling -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- PeerJS for Real-time P2P Communication -->
@@ -18,34 +16,17 @@
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
         }
-        /* 聴講者（スマホ）モード時に画面全体のスクロールをロックし、字幕エリアのみをスクロール可能にする */
-        body.viewer-mode {
-            height: 100vh;
-            height: 100dvh;
-            overflow: hidden;
-            overscroll-behavior: none;
-        }
-        body.viewer-mode main {
-            height: calc(100vh - 3.5rem);
-            height: calc(100dvh - 3.5rem);
-            overflow: hidden;
-            padding: 0.5rem;
-            flex: 1;
-            min-height: 0;
-        }
-        #viewerCaptionFeed {
-            overscroll-behavior: contain;
-            -webkit-overflow-scrolling: touch;
-            touch-action: pan-y;
+        .caption-scroll {
+            scroll-behavior: smooth;
         }
     </style>
 </head>
 <body class="bg-slate-100 min-h-screen text-slate-800 flex flex-col">
 
     <header class="bg-indigo-900 text-white shadow-md sticky top-0 z-50">
-        <div class="max-w-6xl mx-auto px-4 py-2 sm:py-2.5 flex justify-between items-center">
+        <div class="max-w-6xl mx-auto px-4 py-3 flex justify-between items-center">
             <div class="flex items-center space-x-3">
-                <img src="data:image/png;base64,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" alt="Logo" class="h-10 sm:h-12 w-auto object-contain shrink-0">
+                <i class="fa-solid fa-church text-amber-400 text-xl"></i>
                 <div>
                     <h1 class="text-base sm:text-lg font-bold leading-tight">リアルタイム多言語字幕配信</h1>
                     <p class="text-xs text-indigo-200">The Church of Jesus Christ of Latter-day Saints</p>
@@ -121,26 +102,6 @@
                             </div>
                         </div>
 
-                        <!-- Broadcast Mode Selector Panel (全自動 vs 手動確認・修正) -->
-                        <div class="bg-indigo-50/70 p-3 rounded-xl border border-indigo-100 mb-4 flex items-center justify-between flex-wrap gap-2">
-                            <div class="flex items-center space-x-2">
-                                <i class="fa-solid fa-sliders text-indigo-600"></i>
-                                <span class="text-xs font-bold text-slate-800">配信モード切替:</span>
-                            </div>
-
-                            <div class="flex items-center space-x-1.5 bg-slate-200/60 p-1 rounded-xl">
-                                <label id="modeAutoLabel" class="inline-flex items-center cursor-pointer px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all bg-white text-slate-800 shadow-sm border border-slate-200">
-                                    <input type="radio" name="broadcastMode" value="auto" checked class="hidden" id="modeAutoRadio">
-                                    <i class="fa-solid fa-bolt text-amber-500 mr-1.5"></i> 全自動配信
-                                </label>
-
-                                <label id="modeManualLabel" class="inline-flex items-center cursor-pointer px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all text-slate-600 hover:text-slate-800">
-                                    <input type="radio" name="broadcastMode" value="manual" class="hidden" id="modeManualRadio">
-                                    <i class="fa-solid fa-keyboard text-indigo-600 mr-1.5"></i> 手動確認・修正配信
-                                </label>
-                            </div>
-                        </div>
-
                         <!-- PC Audio Setup Guide Box (Collapsible) -->
                         <div id="pcAudioGuideBox" class="hidden mb-4 p-3.5 bg-amber-50 rounded-xl border border-amber-200 text-xs text-amber-900 space-y-2">
                             <div class="font-bold text-amber-950 flex items-center">
@@ -174,45 +135,10 @@
                         </div>
                     </div>
 
-                    <!-- Live Interim Output & Manual Editor Container -->
-                    <div class="mt-4 p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-3">
-                        <div class="flex justify-between items-center">
-                            <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider block">現在の入力音声（リアルタイム補正中）</span>
-                            <div class="flex items-center space-x-1.5">
-                                <span id="manualModeBadge" class="hidden px-2.5 py-0.5 rounded text-[11px] font-bold bg-indigo-100 text-indigo-800 border border-indigo-200">
-                                    <i class="fa-solid fa-pen-to-square mr-1"></i> 手動確認モード（送信前修正可能）
-                                </span>
-                                <span id="manualQueueCountBadge" class="hidden px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-300 animate-pulse">
-                                    待機中: <span id="manualQueueCount">0</span>件
-                                </span>
-                            </div>
-                        </div>
-
+                    <!-- Live Interim Output Box -->
+                    <div class="mt-4 p-4 bg-slate-50 rounded-xl border border-slate-200">
+                        <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider block mb-1">現在の入力音声（リアルタイム補正中）</span>
                         <p id="interimText" class="text-base text-indigo-900 font-medium italic min-h-[1.5rem]">「▶ 音声認識スタート」を押して発話してください...</p>
-
-                        <!-- Manual Edit Text Box (Shown in Manual Mode) -->
-                        <div id="manualEditContainer" class="hidden pt-3 border-t border-slate-200 flex-col gap-2">
-                            <label for="manualEditInput" class="text-xs font-bold text-slate-700 flex items-center justify-between">
-                                <span><i class="fa-solid fa-keyboard text-indigo-600 mr-1"></i> 修正用テキストエリア（キーボードで自由編集）</span>
-                                <span class="text-[11px] text-slate-400 font-normal">ショートカット: [Ctrl+Enter] で送信 / [Esc] でクリア</span>
-                            </label>
-                            
-                            <textarea id="manualEditInput" rows="3" placeholder="音声認識されたテキストがここに自動挿入されます。誤認識をキーボードで直してから「送信・配信」を押してください..." class="w-full p-3 text-sm font-medium border border-indigo-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:outline-none bg-white text-slate-800 shadow-inner"></textarea>
-
-                            <div class="flex gap-2 justify-end">
-                                <button id="joinNextTextBtn" type="button" class="px-3 py-2 bg-amber-500 hover:bg-amber-600 disabled:bg-slate-200 disabled:text-slate-400 disabled:cursor-not-allowed text-white font-semibold text-xs rounded-xl transition-all flex items-center" disabled>
-                                    <i class="fa-solid fa-link mr-1"></i> 次の文章を結合
-                                </button>
-
-                                <button id="discardManualTextBtn" type="button" class="px-3 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 font-semibold text-xs rounded-xl transition-colors flex items-center">
-                                    <i class="fa-solid fa-xmark mr-1"></i> 破棄 (Esc)
-                                </button>
-
-                                <button id="sendManualTextBtn" type="button" class="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl transition-all shadow-sm flex items-center active:scale-95">
-                                    <i class="fa-solid fa-paper-plane mr-1.5"></i> 修正して送信・配信 (Ctrl+Enter)
-                                </button>
-                            </div>
-                        </div>
                     </div>
                 </div>
 
@@ -343,17 +269,17 @@
         </div>
 
         <!-- ==================== VIEWER MODE (Smartphone View) ==================== -->
-        <div id="viewerSection" class="hidden flex-col flex-1 min-h-0 h-full gap-2">
+        <div id="viewerSection" class="hidden flex-col gap-4 flex-1">
 
             <!-- Language & View Settings Controls -->
-            <div class="bg-white rounded-2xl p-3 shadow-sm border border-slate-200 flex items-center justify-between gap-2 shrink-0">
+            <div class="bg-white rounded-2xl p-4 shadow-sm border border-slate-200 flex flex-wrap items-center justify-between gap-3">
                 <div class="flex items-center space-x-2">
                     <i class="fa-solid fa-language text-indigo-600 text-xl"></i>
-                    <span id="viewerLangLabel" class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Display Language</span>
+                    <span class="text-xs font-semibold text-slate-500 uppercase tracking-wider">表示言語 / Language</span>
                 </div>
                 
-                <select id="targetLangSelect" class="p-2 border border-slate-300 rounded-xl text-xs sm:text-sm bg-white focus:ring-2 focus:ring-indigo-500 font-semibold text-slate-800 shadow-sm flex-1 sm:flex-initial">
-                    <option value="en" selected>English (英語)</option>
+                <select id="targetLangSelect" class="p-2 border border-slate-300 rounded-xl text-sm bg-white focus:ring-2 focus:ring-indigo-500 font-semibold text-slate-800 shadow-sm">
+                    <option value="en">English (英語)</option>
                     <option value="tl">Tagalog (タガログ語)</option>
                     <option value="zh-CN">中文 简体 (中国語 簡体字)</option>
                     <option value="zh-TW">中文 繁體 (中国語 繁体字)</option>
@@ -364,51 +290,34 @@
                 </select>
             </div>
 
-            <!-- Viewer Captions Feed Container -->
-            <div class="bg-slate-900 rounded-2xl p-3 shadow-lg flex-1 min-h-0 flex flex-col justify-between relative">
+            <!-- Viewer Captions Feed -->
+            <div class="bg-slate-900 rounded-2xl p-5 shadow-lg flex-1 flex flex-col justify-between min-h-[60vh]">
                 
-                <!-- Caption Output Stream (字幕タイムライン) -->
-                <div id="viewerCaptionFeed" class="flex-1 min-h-0 overflow-y-auto caption-scroll space-y-3 pr-1">
-                    <div id="captionPlaceholder" class="text-slate-400 text-sm text-center italic py-10">
+                <!-- Caption Output Stream -->
+                <div id="viewerCaptionFeed" class="overflow-y-auto caption-scroll flex-1 space-y-4 pr-1">
+                    <div class="text-slate-400 text-sm text-center italic py-10">
                         <i class="fa-solid fa-tower-broadcast text-3xl mb-3 block text-slate-600"></i>
-                        <span class="placeholder-text">Waiting for live speech stream...</span>
+                        ホストからの音声配信を待機しています...<br>
+                        <span class="text-xs text-slate-500">Waiting for live speech stream...</span>
                     </div>
-                </div>
-
-                <!-- Floating Navigation Control (カード前後移動・最新復帰コントローラー) -->
-                <div class="absolute bottom-12 right-4 flex flex-col gap-2 z-30">
-                    <button id="prevCardBtn" type="button" class="px-3.5 py-2 bg-indigo-900/90 hover:bg-indigo-800 text-indigo-100 rounded-full shadow-lg text-xs font-semibold backdrop-blur-md transition-all flex items-center space-x-1.5 border border-indigo-400/40 active:scale-95">
-                        <i class="fa-solid fa-chevron-up text-amber-300"></i>
-                        <span id="prevCardBtnText">Previous Card</span>
-                    </button>
-                    <button id="latestCardBtn" type="button" class="px-3.5 py-2 bg-indigo-600/95 hover:bg-indigo-500 text-white rounded-full shadow-lg text-xs font-semibold backdrop-blur-md transition-all items-center space-x-1.5 border border-indigo-300/50 active:scale-95" style="display: none;">
-                        <i class="fa-solid fa-angles-down text-amber-300"></i>
-                        <span id="latestCardBtnText">Latest ⬇</span>
-                    </button>
                 </div>
 
                 <!-- Footer Status Bar -->
-                <div class="mt-2 pt-2 border-t border-slate-800 flex justify-between items-center text-xs text-slate-400 flex-wrap gap-2 shrink-0">
+                <div class="mt-4 pt-3 border-t border-slate-800 flex justify-between items-center text-xs text-slate-400 flex-wrap gap-2">
                     <div class="flex items-center space-x-2">
                         <span id="peerConnectionStatus" class="w-2 h-2 rounded-full bg-amber-400"></span>
-                        <span id="peerStatusText">Connecting...</span>
-                        <span class="text-[11px] text-slate-500 ml-1">(<span id="totalCardsLabelText">Total</span> <span id="totalCardsCount" class="text-indigo-400 font-bold">0</span>)</span>
+                        <span id="peerStatusText">接続中...</span>
                     </div>
 
                     <div class="flex items-center space-x-2">
-                        <!-- 自動スクロール追従トグルボタン -->
-                        <button id="autoScrollToggleBtn" type="button" class="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-[11px] flex items-center transition-colors border border-slate-700">
-                            📜 <span id="autoScrollLabelText">Auto-scroll: </span><span id="autoScrollStateText" class="text-emerald-400 font-bold ml-1">ON</span>
-                        </button>
-
                         <!-- 画面スリープ防止トグルボタン -->
-                        <button id="wakeLockBtn" class="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-[11px] flex items-center transition-colors border border-slate-700">
-                            <i class="fa-solid fa-lightbulb text-amber-400 mr-1" id="wakeLockIcon"></i>
-                            <span id="wakeLockText">Keep Screen On: ON</span>
+                        <button id="wakeLockBtn" class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-xs flex items-center transition-colors border border-slate-700">
+                            <i class="fa-solid fa-lightbulb text-amber-400 mr-1.5" id="wakeLockIcon"></i>
+                            <span id="wakeLockText">スリープ防止: ON</span>
                         </button>
 
-                        <button id="fontSizeBtn" class="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-[11px] border border-slate-700">
-                            Text: Medium
+                        <button id="fontSizeBtn" class="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-xs border border-slate-700">
+                            文字サイズ: 中
                         </button>
                     </div>
                 </div>
@@ -445,7 +354,6 @@
             "せんきょうし": "宣教師",
             "せんにんせんきょうし": "専任宣教師",
             "しニアせんきょうし": "シニア宣教師",
-            "しにあせんきょうし": "シニア宣教師",
             "ちょうろう": "長老",
             "だいさいし": "大祭司",
             "しつじ": "執事",
@@ -500,7 +408,6 @@
             "せいさん": "聖餐",
             "精算": "聖餐",
             "清算": "聖餐",
-            "生産": "聖餐",
             "しんけん": "神権",
             "真剣": "神権",
             "神件": "神権",
@@ -510,7 +417,6 @@
             "赤ない": "贖い",
             "あかし": "証",
             "明かし": "証",
-            "明石": "証",
             "ふくいん": "福音",
             "服員": "福音",
             "あんそくび": "安息日",
@@ -525,7 +431,6 @@
             "えんだうめんと": "エンダウメント",
             "ふういん": "封印",
             "むすびがため": "結び固め",
-            "むすびかため": "結び固め",
             "結び硬め": "結び固め",
             "みがわり": "身代わり",
             "じゅうぶんのいち": "什分の一",
@@ -535,7 +440,6 @@
             "ふっかつ": "復活",
             "しょうえい": "昇栄",
             "すくいのおけいかく": "救いの計画",
-            "すくいのけいかく": "救いの計画",
             "すくいぬし": "救い主",
             "いえすきりすと": "イエス・キリスト",
             "イエスキリスト": "イエス・キリスト",
@@ -561,15 +465,6 @@
             "うりむととみむ": "ウリムとトミム",
             "りあほな": "リアホナ",
             "めし": "召し",
-            "せいやく": "聖約",
-            "制約": "聖約",
-            "製薬": "聖約",
-            "しんこう": "信仰",
-            "進行": "信仰",
-            "しゅは": "主は",
-            "手話": "主は",
-            "おんこ": "御子",
-            "温故": "御子",
 
             // --- モルモン書・歴史人物 ---
             "じょせふすみす": "ジョセフ・スミス",
@@ -584,6 +479,7 @@
             "えのす": "エノス",
             "やこぶ": "ヤコブ",
             "もるもん": "モルモン",
+            "さら": "サラ",
             "らばん": "ラバン",
             "れむえる": "レムエル",
             "さむ": "サム",
@@ -624,7 +520,6 @@
             "まっけいだいかんちょう": "マッケイ大管長",
             "じょせふふぃーるでぃんぐすみす": "ジョセフ・フィールディング・スミス",
             "はろルドびーりー": "ハロルド・B・リー",
-            "はろるどびーりー": "ハロルド・B・リー",
             "りーだいかんちょう": "リー大管長",
             "すぺんさーだぶりゅーきんぼーる": "スペンサー・W・キンボール",
             "きんぼーるだいかんちょう": "キンボール大管長",
@@ -673,140 +568,7 @@
             "だりんえいちおーくす": "ダリン・H・オークス",
             "おーくすかんちょう": "オークス管長",
             "へんりーびーあいりんぐ": "ヘンリー・B・アイリング",
-            "あいりんぐかんちょう": "アイリング管長",
-
-            // --- 聖文・聖句関連（ログ分析による追加） ---
-            "成分": "聖文",
-            "せいぶん": "聖文",
-            "せい国": "聖句",
-            "制服": "聖句",
-
-            // --- 「耐え忍ぶ」音声認識誤り対策 ---
-            "大使のウッド": "耐え忍ぶ",
-            "大使の部": "耐え忍ぶ",
-            "太子の部": "耐え忍ぶ",
-            "大使のこと": "耐え忍ぶこと",
-            "大使の部食べ": "耐え忍ぶための",
-            "たいしのぶ": "耐え忍ぶ",
-
-            // --- 教会指導者名（ログ分析による追加） ---
-            "ベトナ長老": "ベドナー長老",
-            "べとな": "ベドナー",
-            "動く長老": "ベドナー長老",
-            "ネルソンかんちょう": "ネルソン管長",
-
-            // --- 聖書旧約人名（ログ分析による追加） ---
-            "よしや": "ヨシヤ",
-            "吉尾": "ヨシヤ",
-            "まなせ": "マナセ",
-            "止まらせ": "マナセ",
-            "えぜきえる": "エゼキエル",
-            "あもん": "アモン",
-
-            // --- 聖書地名（ログ分析による追加） ---
-            "エッセマネ": "ゲツセマネ",
-            "げつせまね": "ゲツセマネ",
-
-            // --- 聖典参照の誤認識（ログ分析による追加） ---
-            "第1にファイ": "第1ニーファイ",
-            "第2杯": "第2ニーファイ",
-            "第3杯": "第3ニーファイ",
-            "第4杯": "第4ニーファイ",
-
-            // --- 教会組織・集会用語（ログ分析による追加） ---
-            "日中学校": "日曜学校",
-            "2長学校": "日曜学校",
-            "びしょっぷ": "ビショップ",
-
-            // --- 教会概念・儀式（ログ分析による追加） ---
-            "みたま": "御霊",
-            "みにすたりんぐ": "ミニスタリング",
-            "ミニスタリング": "ミニスタリング",
-            "あさいめんと": "アサイメント",
-            "アサイメント": "アサイメント",
-            "しゅくふくぶん": "祝福文",
-
-            // --- 「御名」文脈特化パターン（「皆」の副作用回避） ---
-            "皆により": "御名により",
-            "皆を通して": "御名を通して",
-            "皆を通し": "御名を通し",
-            "皆によって": "御名によって",
-            "みなにより": "御名により",
-            "みなを通して": "御名を通して",
-            "みなを通し": "御名を通し",
-            "御名と行い": "御名によりお話しし",
-
-            // --- 聖餐の祈り・最優先誤変換是正（2026/08/16 ログ分析による追加） ---
-            "芸能 シナ 神よ": "永遠の父なる神よ",
-            "エゲの父なる神": "永遠の父なる神",
-            "営農 内なる神": "永遠の父なる神",
-            "愛されて な と 様": "愛する天のお父様",
-            "手にいらっしゃいます": "天にいらっしゃいます",
-            "うんこの御霊": "御子の御霊",
-            "香港の御霊": "御子の御霊",
-            "うんこを覚えている": "御子を覚えている",
-            "うんこの体": "御子の体",
-            "うんこ": "御子",
-            "御子知": "御子の血",
-            "読めてください": "清めてください",
-            "宿泊してください": "祝福してください",
-            "1,3回": "聖餐会",
-            "ラーメン": "アーメン",
-
-            // --- 教会組織・集会・役職用語（2026/08/16 ログ分析による追加） ---
-            "米子 ワールド": "米子ワード",
-            "米子ワールド": "米子ワード",
-            "ワールド聖餐": "ワード聖餐",
-            "び ショップ": "ビショップ",
-            "神権士": "神権者",
-            "親権者": "神権者",
-            "名刺を果たして": "召しを果たして",
-            "名刺されました": "召されました",
-            "名刺され": "召され",
-            "感謝の介入": "感謝の解任",
-            "この定義に": "この提議に",
-            "その家を表してください": "その意を表してください",
-            "その家を表して": "その意を表して",
-            "その絵を表してください": "その意を表してください",
-            "その絵を表して": "その意を表して",
-            "電動": "伝道",
-            "成果体": "聖歌隊",
-            "歌詞を伺い": "証を伺い",
-
-            // --- 聖典・聖句関連（2026/08/16 ログ分析による追加） ---
-            "もらない人": "モロナイ書",
-            "モロナイ人": "モロナイ書",
-            "エステル機": "エステル記",
-            "エステル 機": "エステル記",
-            "モーセ 書": "モーセ書",
-            "第32杯": "第3ニーファイ",
-            "不協議と聖約": "教義と聖約",
-            "この選挙": "この聖句",
-            "ある成功": "ある聖句",
-            "シェイク": "聖句",
-            "親日": "真理",
-
-            // --- 教会名・集会進行・クラス（2026/08/16 ログ分析フィードバック） ---
-            "まつじつせいといえすきりすときょうかい": "末日聖徒イエス・キリスト教会",
-            "まつじつせいと": "末日聖徒",
-            "松井先生とイエス・キリスト教会": "末日聖徒イエス・キリスト教会",
-            "松井先生とイエス": "末日聖徒イエス",
-            "松井先生と": "末日聖徒",
-            "松井先生": "末日聖徒",
-            "松井生徒": "末日聖徒",
-            "末日正当": "末日聖徒",
-            "末日生徒": "末日聖徒",
-            "馬車のお話": "話者のお話",
-            "ばしゃのおはなし": "話者のお話",
-            "ばしゃ": "話者",
-            "進められている": "勧められている",
-            "霊的な革新": "霊的な確信",
-            "協議と聖約": "教義と聖約",
-            "婦女協会": "扶助協会",
-            "長老店委員会": "長老定員会",
-            "長老店員会": "長老定員会",
-            "男女で暮らすに": "男女でクラスに",
-            "短めのクラス": "2つ目のクラス"
+            "あいりんぐかんちょう": "アイリング管長"
         };
 
         // ==================== 多言語教会用語辞書 (翻訳後テキストの後置換補正) ====================
@@ -1040,162 +802,6 @@
             }
         };
 
-        // ==================== 多言語UI辞書 (聴講者スマホ画面用) ====================
-        const VIEWER_UI_STRINGS = {
-            "en": {
-                selectLangLabel: "Display Language",
-                placeholder: "Waiting for live speech stream...",
-                connected: "Connected to stream. Waiting for captions...",
-                statusConnecting: "Connecting...",
-                statusConnected: "Connected to Host",
-                statusReconnecting: "Reconnecting...",
-                prevCardBtn: "Previous Card",
-                latestCardBtn: "Latest ⬇",
-                autoScrollOn: "Auto-scroll: ON",
-                autoScrollOff: "Auto-scroll: OFF",
-                wakeLockOn: "Keep Screen On: ON",
-                wakeLockOff: "Keep Screen On: OFF",
-                fontSmall: "Text: Small",
-                fontMedium: "Text: Medium",
-                fontLarge: "Text: Large",
-                totalCards: "Total",
-                modeBadge: "Viewer Mode (Captions Active)"
-            },
-            "tl": {
-                selectLangLabel: "Wika ng Pagpapakita",
-                placeholder: "Naghihintay para sa live na pagsasalita...",
-                connected: "Nakakonekta sa stream. Naghihintay para sa mga caption...",
-                statusConnecting: "Kumokonekta...",
-                statusConnected: "Nakakonekta sa Host",
-                statusReconnecting: "Muling kumokonekta...",
-                prevCardBtn: "Nakaraang Card",
-                latestCardBtn: "Pinakabagong ⬇",
-                autoScrollOn: "Awtomatikong scroll: ON",
-                autoScrollOff: "Awtomatikong scroll: OFF",
-                wakeLockOn: "Screen na Bukas: ON",
-                wakeLockOff: "Screen na Bukas: OFF",
-                fontSmall: "Laki ng Text: Maliit",
-                fontMedium: "Laki ng Text: Katamtaman",
-                fontLarge: "Laki ng Text: Malaki",
-                totalCards: "Kabuuan",
-                modeBadge: "Modo ng Tagapakinig (Tumatanggap ng Caption)"
-            },
-            "zh-CN": {
-                selectLangLabel: "显示语言",
-                placeholder: "等待实时语音直播...",
-                connected: "已连接直播。等待字幕...",
-                statusConnecting: "连接中...",
-                statusConnected: "已连接到主机",
-                statusReconnecting: "重新连接中...",
-                prevCardBtn: "上一张卡片",
-                latestCardBtn: "最新 ⬇",
-                autoScrollOn: "自动滚动: 开",
-                autoScrollOff: "自动滚动: 关",
-                wakeLockOn: "保持屏幕常亮: 开",
-                wakeLockOff: "保持屏幕常亮: 关",
-                fontSmall: "文字大小: 小",
-                fontMedium: "文字大小: 中",
-                fontLarge: "文字大小: 大",
-                totalCards: "共",
-                modeBadge: "听众模式（正在接收字幕）"
-            },
-            "zh-TW": {
-                selectLangLabel: "顯示語言",
-                placeholder: "等待實時語音直播...",
-                connected: "已連接直播。等待字幕...",
-                statusConnecting: "連接中...",
-                statusConnected: "已連接到主機",
-                statusReconnecting: "重新連接中...",
-                prevCardBtn: "上一張卡片",
-                latestCardBtn: "最新 ⬇",
-                autoScrollOn: "自動滾動: 開",
-                autoScrollOff: "自動滾動: 關",
-                wakeLockOn: "保持螢幕常亮: 開",
-                wakeLockOff: "保持螢幕常亮: 關",
-                fontSmall: "文字大小: 小",
-                fontMedium: "文字大小: 中",
-                fontLarge: "文字大小: 大",
-                totalCards: "共",
-                modeBadge: "聽眾模式（正在接收字幕）"
-            },
-            "pt": {
-                selectLangLabel: "Idioma de Exibição",
-                placeholder: "Aguardando transmissão ao vivo...",
-                connected: "Conectado à transmissão. Aguardando legendas...",
-                statusConnecting: "Conectando...",
-                statusConnected: "Conectado ao Host",
-                statusReconnecting: "Reconectando...",
-                prevCardBtn: "Cartão Anterior",
-                latestCardBtn: "Mais Recente ⬇",
-                autoScrollOn: "Rolar automático: ON",
-                autoScrollOff: "Rolar automático: OFF",
-                wakeLockOn: "Manter Tela Ligada: ON",
-                wakeLockOff: "Manter Tela Ligada: OFF",
-                fontSmall: "Texto: Pequeno",
-                fontMedium: "Texto: Médio",
-                fontLarge: "Texto: Grande",
-                totalCards: "Total",
-                modeBadge: "Modo Ouvinte (Recebendo Legendas)"
-            },
-            "es": {
-                selectLangLabel: "Idioma de Pantalla",
-                placeholder: "Esperando transmisión en vivo...",
-                connected: "Conectado a la transmisión. Esperando subtítulos...",
-                statusConnecting: "Conectando...",
-                statusConnected: "Conectando al Host",
-                statusReconnecting: "Reconectando...",
-                prevCardBtn: "Tarjeta Anterior",
-                latestCardBtn: "Más Reciente ⬇",
-                autoScrollOn: "Desplazamiento aut.: ON",
-                autoScrollOff: "Desplazamiento aut.: OFF",
-                wakeLockOn: "Mantener Pantalla: ON",
-                wakeLockOff: "Mantener Pantalla: OFF",
-                fontSmall: "Texto: Pequeño",
-                fontMedium: "Texto: Mediano",
-                fontLarge: "Texto: Grande",
-                totalCards: "Total",
-                modeBadge: "Modo Oyente (Recibiendo Subtítulos)"
-            },
-            "ko": {
-                selectLangLabel: "표시 언어",
-                placeholder: "실시간 음성 방송 대기 중...",
-                connected: "방송에 연결되었습니다. 자막 대기 중...",
-                statusConnecting: "연결 중...",
-                statusConnected: "호스트에 연결됨",
-                statusReconnecting: "재연결 중...",
-                prevCardBtn: "이전 카드",
-                latestCardBtn: "최신 ⬇",
-                autoScrollOn: "자동 스크롤: ON",
-                autoScrollOff: "자동 스크롤: OFF",
-                wakeLockOn: "화면 켜짐 유지: ON",
-                wakeLockOff: "화면 켜짐 유지: OFF",
-                fontSmall: "글자 크기: 작게",
-                fontMedium: "글자 크기: 보통",
-                fontLarge: "글자 크기: 크게",
-                totalCards: "총",
-                modeBadge: "청강자 모드 (자막 수신 중)"
-            },
-            "ja": {
-                selectLangLabel: "表示言語",
-                placeholder: "ホストからの音声配信を待機しています...",
-                connected: "配信に接続しました。字幕を待機中...",
-                statusConnecting: "接続中...",
-                statusConnected: "ホストに接続完了",
-                statusReconnecting: "再接続を試行中...",
-                prevCardBtn: "前のカードへ",
-                latestCardBtn: "最新へ ⬇",
-                autoScrollOn: "自動追従: ON",
-                autoScrollOff: "自動追従: OFF",
-                wakeLockOn: "スリープ防止: ON",
-                wakeLockOff: "スリープ防止: OFF",
-                fontSmall: "文字サイズ: 小",
-                fontMedium: "文字サイズ: 中",
-                fontLarge: "文字サイズ: 大",
-                totalCards: "全",
-                modeBadge: "聴講者モード（字幕受信中）"
-            }
-        };
-
         // ==================== アプリケーション状態変数 ====================
         let churchDictionary = {};
         let peer = null;
@@ -1204,12 +810,6 @@
         let isHost = true;
         let isRecognizing = false;
         let isBroadcastPaused = false;
-        let isManualBroadcastMode = false;
-        let manualBroadcastQueue = []; // 手動配信キュー（待ち行列）
-        let isAutoScrollEnabled = true;
-        let isUserScrolledUp = false;
-        let viewerCardSequence = 0;
-
         let recognition = null;
         let currentFontSizeIndex = 1;
         const fontClasses = ["text-base", "text-xl", "text-3xl"];
@@ -1230,9 +830,6 @@
 
         // ログダウンロード用の文字起こし履歴バッファ
         const transcriptHistory = [];
-
-        // 翻訳キャッシュ（セッション中のみ有効）- API呼び出し回数を削減
-        const translationCache = new Map();
 
         // ==================== DOM要素参照 ====================
         const hostSection = document.getElementById('hostSection');
@@ -1292,10 +889,6 @@
         const peerConnectionStatus = document.getElementById('peerConnectionStatus');
         const peerStatusText = document.getElementById('peerStatusText');
         const fontSizeBtn = document.getElementById('fontSizeBtn');
-        const manualQueueCountBadge = document.getElementById('manualQueueCountBadge');
-        const manualQueueCount = document.getElementById('manualQueueCount');
-        const joinNextTextBtn = document.getElementById('joinNextTextBtn');
-        const manualEditInput = document.getElementById('manualEditInput');
 
         const wakeLockBtn = document.getElementById('wakeLockBtn');
         const wakeLockIcon = document.getElementById('wakeLockIcon');
@@ -1316,7 +909,6 @@
             setupSingleDictionaryForm();
             setupDictListDelegation();
             setupHostLogDelegation();
-            setupViewerScrollEvents();
 
             if (refreshAudioDevicesBtn) {
                 refreshAudioDevicesBtn.onclick = initAudioDeviceSelector;
@@ -1334,20 +926,19 @@
             if (roomId) {
                 isHost = false;
                 currentRoomId = roomId;
-                document.body.classList.add('viewer-mode');
-
                 hostSection.classList.add('hidden');
                 hostSection.classList.remove('flex');
                 viewerSection.classList.remove('hidden');
                 viewerSection.classList.add('flex');
+
+                modeBadge.textContent = "聴講者モード（字幕受信中）";
+                modeBadge.className = "text-xs px-3 py-1 rounded-full font-medium bg-emerald-800 text-emerald-100 border border-emerald-700";
 
                 restoreViewerLanguage();
                 setupWakeLock();
                 initPeerViewer(roomId);
             } else {
                 isHost = true;
-                document.body.classList.remove('viewer-mode');
-
                 viewerSection.classList.add('hidden');
                 viewerSection.classList.remove('flex');
                 hostSection.classList.remove('hidden');
@@ -1356,7 +947,6 @@
                 modeBadge.textContent = "ホスト配信モード（PC）";
                 modeBadge.className = "text-xs px-3 py-1 rounded-full font-medium bg-indigo-800 text-indigo-100 border border-indigo-700";
 
-                setupBroadcastModeToggle();
                 setupPauseBroadcastButton();
                 setupDownloadButton();
                 initPeerHost();
@@ -1365,7 +955,7 @@
             }
         }
 
-        // ==================== 言語選択 & Viewer UI動的切替 ====================
+        // ==================== 言語選択の localStorage 記憶 ====================
         function restoreViewerLanguage() {
             const savedLang = localStorage.getItem('lds_caption_lang');
             if (savedLang) {
@@ -1376,302 +966,11 @@
                         break;
                     }
                 }
-            } else {
-                targetLangSelect.value = 'en'; // デフォルトで英語ベースに設定
             }
 
-            updateViewerUIStrings(targetLangSelect.value);
-
-            targetLangSelect.addEventListener('change', async function() {
-                const newLang = this.value;
-                localStorage.setItem('lds_caption_lang', newLang);
-                updateViewerUIStrings(newLang);
-
-                // 既存の全カードを新しい言語に並列一括再翻訳
-                const cards = viewerCaptionFeed.querySelectorAll('.caption-card');
-                if (cards.length === 0) return;
-
-                const promises = Array.from(cards).map(async (card) => {
-                    const originalText = card.getAttribute('data-original');
-                    if (!originalText) return;
-
-                    let translatedText = originalText;
-                    if (newLang !== 'ja') {
-                        translatedText = await translateText(originalText, newLang);
-                    }
-
-                    const isJapaneseMode = newLang === 'ja';
-
-                    // 翻訳テキスト部分を更新
-                    const textContainer = card.querySelector('.font-semibold.text-white');
-                    if (textContainer) {
-                        textContainer.textContent = translatedText;
-                    }
-
-                    // 言語ラベルを更新
-                    const langSpan = card.querySelector('.fa-globe');
-                    if (langSpan && langSpan.parentNode) {
-                        langSpan.parentNode.innerHTML = '<i class="fa-solid fa-globe mr-1 text-indigo-400"></i> ' + escapeHtml(targetLangSelect.options[targetLangSelect.selectedIndex].text);
-                    }
-
-                    // 日本語原文エリアの表示/非表示を切り替え
-                    let originalContainer = card.querySelector('.text-slate-400.mt-2.italic');
-                    if (isJapaneseMode) {
-                        if (originalContainer) originalContainer.remove();
-                    } else {
-                        if (originalContainer) {
-                            originalContainer.textContent = originalText;
-                        } else {
-                            const origDiv = document.createElement('div');
-                            origDiv.className = 'text-xs text-slate-400 mt-2 italic font-normal';
-                            origDiv.textContent = originalText;
-                            card.appendChild(origDiv);
-                        }
-                    }
-                });
-
-                await Promise.all(promises);
+            targetLangSelect.addEventListener('change', function() {
+                localStorage.setItem('lds_caption_lang', this.value);
             });
-        }
-
-        function updateViewerUIStrings(lang) {
-            const strings = VIEWER_UI_STRINGS[lang] || VIEWER_UI_STRINGS['en'];
-            
-            const langLabel = document.getElementById('viewerLangLabel');
-            if (langLabel) langLabel.textContent = strings.selectLangLabel;
-
-            const placeholder = document.getElementById('captionPlaceholder');
-            if (placeholder) {
-                const textSpan = placeholder.querySelector('.placeholder-text');
-                if (textSpan) textSpan.textContent = strings.placeholder;
-            }
-
-            const prevBtnText = document.getElementById('prevCardBtnText');
-            if (prevBtnText) prevBtnText.textContent = strings.prevCardBtn;
-
-            const latestBtnText = document.getElementById('latestCardBtnText');
-            if (latestBtnText) latestBtnText.textContent = strings.latestCardBtn;
-
-            const autoScrollLabelText = document.getElementById('autoScrollLabelText');
-            if (autoScrollLabelText) autoScrollLabelText.textContent = strings.autoScrollOn.split(':')[0] + ': ';
-
-            const autoScrollStateText = document.getElementById('autoScrollStateText');
-            if (autoScrollStateText) {
-                autoScrollStateText.textContent = isAutoScrollEnabled ? 'ON' : 'OFF';
-            }
-
-            const wakeLockText = document.getElementById('wakeLockText');
-            if (wakeLockText) {
-                wakeLockText.textContent = isWakeLockEnabled ? strings.wakeLockOn : strings.wakeLockOff;
-            }
-
-            const fontSizeBtn = document.getElementById('fontSizeBtn');
-            if (fontSizeBtn) {
-                const fontNames = [strings.fontSmall, strings.fontMedium, strings.fontLarge];
-                fontSizeBtn.textContent = fontNames[currentFontSizeIndex];
-            }
-
-            const totalCardsLabelText = document.getElementById('totalCardsLabelText');
-            if (totalCardsLabelText) totalCardsLabelText.textContent = strings.totalCards;
-
-            if (modeBadge && !isHost) {
-                modeBadge.textContent = strings.modeBadge;
-                modeBadge.className = "text-xs px-3 py-1 rounded-full font-medium bg-emerald-800 text-emerald-100 border border-emerald-700";
-            }
-
-            const peerStatusText = document.getElementById('peerStatusText');
-            if (peerStatusText) {
-                if (peerStatusText.textContent.includes('接続完了') || peerStatusText.textContent.includes('Connected') || peerStatusText.textContent.includes('Nakakonekta') || peerStatusText.textContent.includes('已连接') || peerStatusText.textContent.includes('Conectado') || peerStatusText.textContent.includes('연결됨')) {
-                    peerStatusText.textContent = strings.statusConnected;
-                } else if (peerStatusText.textContent.includes('再接続') || peerStatusText.textContent.includes('Reconnecting') || peerStatusText.textContent.includes('Muling') || peerStatusText.textContent.includes('重新') || peerStatusText.textContent.includes('Reconectando') || peerStatusText.textContent.includes('재연결')) {
-                    peerStatusText.textContent = strings.statusReconnecting;
-                } else {
-                    peerStatusText.textContent = strings.statusConnecting;
-                }
-            }
-        }
-
-        // ==================== 聴講者スマホ画面 スクロール制御 ====================
-        function setupViewerScrollEvents() {
-            const prevCardBtn = document.getElementById('prevCardBtn');
-            const latestCardBtn = document.getElementById('latestCardBtn');
-            const autoScrollToggleBtn = document.getElementById('autoScrollToggleBtn');
-            const autoScrollStateText = document.getElementById('autoScrollStateText');
-
-            if (!viewerCaptionFeed) return;
-
-            viewerCaptionFeed.addEventListener('scroll', function() {
-                var distanceToBottom = viewerCaptionFeed.scrollHeight - viewerCaptionFeed.scrollTop - viewerCaptionFeed.clientHeight;
-                
-                if (distanceToBottom > 50) {
-                    isUserScrolledUp = true;
-                    if (latestCardBtn) latestCardBtn.style.display = 'flex';
-                } else {
-                    isUserScrolledUp = false;
-                    if (latestCardBtn) latestCardBtn.style.display = 'none';
-                }
-            });
-
-            if (autoScrollToggleBtn && autoScrollStateText) {
-                autoScrollToggleBtn.onclick = function() {
-                    isAutoScrollEnabled = !isAutoScrollEnabled;
-                    autoScrollStateText.textContent = isAutoScrollEnabled ? 'ON' : 'OFF';
-                    autoScrollStateText.className = isAutoScrollEnabled ? 'text-emerald-400 font-bold ml-1' : 'text-amber-400 font-bold ml-1';
-                };
-            }
-
-            if (prevCardBtn) {
-                prevCardBtn.onclick = function() {
-                    isUserScrolledUp = true;
-                    if (latestCardBtn) latestCardBtn.style.display = 'flex';
-
-                    const currentScroll = viewerCaptionFeed.scrollTop;
-                    const cards = viewerCaptionFeed.querySelectorAll('.caption-card');
-                    let targetTop = Math.max(0, currentScroll - 160);
-
-                    for (let i = cards.length - 1; i >= 0; i--) {
-                        if (cards[i].offsetTop < currentScroll - 10) {
-                            targetTop = cards[i].offsetTop;
-                            break;
-                        }
-                    }
-                    viewerCaptionFeed.scrollTop = targetTop;
-                };
-            }
-
-            if (latestCardBtn) {
-                latestCardBtn.onclick = function() {
-                    isUserScrolledUp = false;
-                    latestCardBtn.style.display = 'none';
-                    viewerCaptionFeed.scrollTop = viewerCaptionFeed.scrollHeight;
-                };
-            }
-        }
-
-        // ==================== 配信モード切替（全自動 vs 手動確認・修正） ====================
-        function setupBroadcastModeToggle() {
-            const modeAutoRadio = document.getElementById('modeAutoRadio');
-            const modeManualRadio = document.getElementById('modeManualRadio');
-            const modeAutoLabel = document.getElementById('modeAutoLabel');
-            const modeManualLabel = document.getElementById('modeManualLabel');
-            const manualEditContainer = document.getElementById('manualEditContainer');
-            const manualModeBadge = document.getElementById('manualModeBadge');
-            const sendBtn = document.getElementById('sendManualTextBtn');
-            const discardBtn = document.getElementById('discardManualTextBtn');
-
-            function updateModeUI() {
-                if (modeManualRadio && modeManualRadio.checked) {
-                    isManualBroadcastMode = true;
-                    if (manualEditContainer) {
-                        manualEditContainer.classList.remove('hidden');
-                        manualEditContainer.classList.add('flex');
-                    }
-                    if (manualModeBadge) manualModeBadge.classList.remove('hidden');
-                    updateManualQueueUI();
-
-                    if (modeManualLabel) modeManualLabel.className = 'inline-flex items-center cursor-pointer px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all bg-indigo-600 text-white shadow-sm';
-                    if (modeAutoLabel) modeAutoLabel.className = 'inline-flex items-center cursor-pointer px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all text-slate-600 hover:text-slate-800';
-                } else {
-                    isManualBroadcastMode = false;
-                    manualBroadcastQueue = []; // キューをクリア
-                    updateManualQueueUI();
-                    if (manualEditInput) manualEditInput.value = ''; // 入力欄をクリア
-                    if (manualEditContainer) {
-                        manualEditContainer.classList.add('hidden');
-                        manualEditContainer.classList.remove('flex');
-                    }
-                    if (manualModeBadge) manualModeBadge.classList.add('hidden');
-
-                    if (modeAutoLabel) modeAutoLabel.className = 'inline-flex items-center cursor-pointer px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all bg-white text-slate-800 shadow-sm border border-slate-200';
-                    if (modeManualLabel) modeManualLabel.className = 'inline-flex items-center cursor-pointer px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all text-slate-600 hover:text-slate-800';
-                }
-            }
-
-            if (modeAutoRadio && modeManualRadio) {
-                modeAutoRadio.addEventListener('change', updateModeUI);
-                modeManualRadio.addEventListener('change', updateModeUI);
-            }
-
-            if (sendBtn && manualEditInput) {
-                sendBtn.onclick = function() {
-                    const text = manualEditInput.value.trim();
-                    if (!text) return;
-                    // バグ修正: broadcastCaption（未定義）→ broadcastToViewers に修正
-                    broadcastToViewers({
-                        type: 'caption',
-                        text: text,
-                        timestamp: new Date().toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
-                    });
-                    appendHostTranscript(text);
-                    manualEditInput.value = '';
-                    processNextManualQueue();
-                };
-            }
-
-            if (discardBtn && manualEditInput) {
-                discardBtn.onclick = function() {
-                    manualEditInput.value = '';
-                    processNextManualQueue();
-                };
-            }
-
-            if (joinNextTextBtn && manualEditInput) {
-                joinNextTextBtn.onclick = function() {
-                    if (manualBroadcastQueue.length > 0) {
-                        const nextText = manualBroadcastQueue.shift();
-                        const current = manualEditInput.value;
-                        // 日本語なのでスペースを入れずにそのまま結合
-                        manualEditInput.value = current + nextText;
-                        manualEditInput.focus();
-                        updateManualQueueUI();
-                    }
-                };
-            }
-
-            if (manualEditInput) {
-                manualEditInput.addEventListener('keydown', function(e) {
-                    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
-                        e.preventDefault();
-                        if (sendBtn) sendBtn.click();
-                    } else if (e.key === 'Escape') {
-                        e.preventDefault();
-                        if (discardBtn) discardBtn.click();
-                    }
-                });
-            }
-        }
-
-        // 手動配信キューの表示を更新
-        function updateManualQueueUI() {
-            const countBadge = document.getElementById('manualQueueCountBadge');
-            const countSpan = document.getElementById('manualQueueCount');
-            const joinBtn = document.getElementById('joinNextTextBtn');
-            if (!countBadge || !countSpan) return;
-            
-            const count = manualBroadcastQueue.length;
-            if (count > 0 && isManualBroadcastMode) {
-                countBadge.classList.remove('hidden');
-                countSpan.textContent = count;
-                if (joinBtn) joinBtn.disabled = false;
-            } else {
-                countBadge.classList.add('hidden');
-                if (joinBtn) joinBtn.disabled = true;
-            }
-        }
-
-        // 次のキューデータをテキストエリアに挿入
-        function processNextManualQueue() {
-            const manualInput = document.getElementById('manualEditInput');
-            if (!manualInput) return;
-            
-            if (manualBroadcastQueue.length > 0) {
-                const nextText = manualBroadcastQueue.shift();
-                manualInput.value = nextText;
-                manualInput.focus();
-            } else {
-                manualInput.value = '';
-            }
-            updateManualQueueUI();
         }
 
         // ==================== 画面スリープ防止 (Screen Wake Lock API) ====================
@@ -1854,48 +1153,22 @@
 
         // ==================== 教会用語辞書管理 ====================
         function loadDictionary() {
-            let customDict = {};
-            const savedCustom = localStorage.getItem('lds_church_dict_custom');
-            const savedOld = localStorage.getItem('lds_church_dict');
-
-            if (savedCustom) {
-                // 新形式（差分のみ保存）から読み込み
+            const saved = localStorage.getItem('lds_church_dict');
+            if (saved) {
                 try {
-                    customDict = JSON.parse(savedCustom);
+                    churchDictionary = JSON.parse(saved);
                 } catch (e) {
-                    customDict = {};
+                    churchDictionary = { ...DEFAULT_DICTIONARY };
                 }
-            } else if (savedOld) {
-                // 旧形式からの自動移行：DEFAULT_DICTIONARY と同一のエントリを除外して差分のみ抽出
-                try {
-                    const parsedOld = JSON.parse(savedOld);
-                    Object.keys(parsedOld).forEach(key => {
-                        if (DEFAULT_DICTIONARY[key] !== parsedOld[key]) {
-                            customDict[key] = parsedOld[key];
-                        }
-                    });
-                    // 新形式で保存し、旧形式は削除（移行完了）
-                    localStorage.setItem('lds_church_dict_custom', JSON.stringify(customDict));
-                    localStorage.removeItem('lds_church_dict');
-                } catch (e) {
-                    customDict = {};
-                }
+            } else {
+                churchDictionary = { ...DEFAULT_DICTIONARY };
+                saveDictionary();
             }
-
-            // DEFAULT_DICTIONARY をベースにカスタム差分をマージ
-            churchDictionary = { ...DEFAULT_DICTIONARY, ...customDict };
             renderDictionaryList();
         }
 
         function saveDictionary() {
-            // DEFAULT_DICTIONARY と異なるエントリ（ユーザー追加・編集分）のみを保存
-            const customDict = {};
-            Object.keys(churchDictionary).forEach(key => {
-                if (DEFAULT_DICTIONARY[key] !== churchDictionary[key]) {
-                    customDict[key] = churchDictionary[key];
-                }
-            });
-            localStorage.setItem('lds_church_dict_custom', JSON.stringify(customDict));
+            localStorage.setItem('lds_church_dict', JSON.stringify(churchDictionary));
             renderDictionaryList();
         }
 
@@ -2134,20 +1407,19 @@
             for (const key of keys) {
                 if (!key) continue;
                 const val = churchDictionary[key];
-                const regex = new RegExp(escapeRegExp(key), 'gi');
+                const regex = new RegExp(escapeRegExp(key), "gi");
                 result = result.replace(regex, val);
             }
             return result;
         }
 
         function escapeRegExp(string) {
-            return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            return string.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
         }
 
         // ==================== 聖典参照パターン補正 ====================
         function fixScriptureReferences(text) {
             if (!text) return text;
-            // 「勝」「賞」→「章」の誤認識修正（例: 10勝29節 → 10章29節）
             text = text.replace(/(\d+)勝(\d+)節/g, '$1章$2節');
             text = text.replace(/(\d+)賞(\d+)節/g, '$1章$2節');
             text = text.replace(/(\d+)勝(\d+)/g, '$1章$2');
@@ -2155,7 +1427,7 @@
         }
 
         // ==================== Google BudouX 軽量日本語文節境界解析エンジン ====================
-        const BUDOUX_JA_MODEL = {UW3:{"\u3002":7489,\u306E:4734,\u306B:4691,\u3092:6415,"\u3001":5563,\u304C:4755,\u306F:4959,\u308B:3353,\u3068:3426,\u304F:3176,\u3067:3996,\u3046:2642,\u3082:3681,\u306A:2936,\u305F:2480,\u3066:2785,"?":6078,\u304A:-2914,\u3044:2031,\u3084:2633,"\uFF1F":4618,"]":4624,\u3093:1053,\u3063:-2041,\u3070:2715,\u3089:1706,\u7A7A:1800,\u30FC:-145,\u304B:2291,"\uFF0C":4056,"\uFF3D":2470,\u308A:1300,"\uFF01":4063,\u3054:-2431,"\uFF0E":2399,\u65B9:1453,"\u300C":-2558,"\u2026":3205,"\u30FB":1335,\u30B9:-620,\u3078:2692,\u3069:1816,\u30C3:-1928,"\uFF09":3398,\u54C1:751,\u30F3:-629,\u306C:3300,\u4EE5:-2e3,\u90E8:762,"\u300D":1932,\u30D7:-1836,\u308F:-616,\u3064:1360,\u3060:1174,"\u2606":3462,"[":-1994,\u7B11:3635,\u30A2:-1797,\u308D:1431,\u4E0A:779,\u3042:972,"\u266A":2628,\u624B:-183,\u3083:1375,\u30B8:-796,\u4E2D:1301,\u30A4:-487,\u611F:1111,\u30E9:-338,\u30AB:-1283,\u65E5:959,"\u300E":-1686,\u3005:2038,\u65B0:-1540,\u4EBA:638,"\u2605":2912,\u305A:1625,\u5206:1163,\u5927:-1217,\u9593:963,\u30D5:-1214,\u3059:883,\u305B:912,\u3041:1679,\u4ECA:1033,\u3050:1818,\u3055:-522,\u5834:-603,\u7528:-918,\u5F8C:1275,"\u301C":989,\u3080:1382,\u30ED:-1419,\u5EA6:1160,\u4F5C:-1374,\u6642:79,\u4EAC:-1123,\u3057:378,\u307E:-152,\u307F:572,\u30B7:-1095,\u5F53:-456,\u958B:-990,\u30C9:-852,\u767A:-1054,\u96FB:-1264,"\u201D":1283,\u610F:-571,"\uFF10":-706,\u8B70:-663,\u3048:787,\u9078:-1062,\u8D85:1577,\u884C:-828,\u805E:-747,\u6599:-1005,\u7136:1078,\u89B3:-714,\u591C:1523,\u5B50:-547,\u4F53:869,\u790E:-708,"\uFF11":-1031,\u59CB:-1024,"\u3011":1566,\u5909:839,\u3076:1080,\u304D:522,\u7684:332,\u90FD:-186,\u3051:550,\u79CB:1338,\u6614:1446,\u5473:453,\u6BB5:200,\u5165:-408,\u9678:-847,\u3071:621,\u5B66:-428,\u3061:577,\u64CD:-739,\u8A00:-295,\u305E:974,"\u3000":558,\u57FA:-328,\u7686:727,\u533A:1039,\u6C17:-301,\u5E74:306,\u3053:236,\u679C:624,\u30C6:-347,\u52D5:-365,\u3058:331,\u3088:389,\u984C:693,"\uFF3B":-418,\u30E3:-421,\u64AE:-208,\u5149:-185,\u306D:581,"\uFF1A":405,\u7CFB:575,\u72B6:-213,\u898B:-26,\u8A8D:-458,\u6240:497,\u756A:198,\u4EE3:-234,\u7A0B:442,\u308C:138,\u6280:596,\u30C7:-246,\u30D3:-226,\u6700:-226,\uFF4F:-220,\u30C8:-19,\u9031:247,\u30E2:-174,\u8272:276,\u629E:237,\u65A4:348,\u30EC:-121,\u5225:282,\u6C34:99,\u524D:88,\u6708:69,\u793E:18,\u30A8:-46,\u53F0:4},UW4:{"\u3002":-8409,\u306E:-4692,\u306B:-5268,\u304C:-4447,\u306F:-4129,\u308B:-6527,"\u3001":-8588,\u307E:-1730,\u3066:-4055,\u3067:-3048,\u3068:-3367,\u3092:-5609,\u3063:-4711,\u3046:-2832,\u3042:420,\u3059:-1905,\u308A:-4888,\u305D:664,\u304A:1091,\u3060:-2551,\u306A:-2077,\u3061:-2463,\u304B:-3076,\u305F:-1909,\u308C:-4658,\u3084:-1440,\u3054:935,\u3093:-4614,\u3044:-1728,\u304D:-2145,\u3089:-5174,\u3057:-1900,"\u300D":-6693,\u3088:-1601,\u3069:-781,\u307F:-922,"[":4743,\u30FC:-2994,\u3053:-693,\u898B:1207,"\u300F":-5820,"\uFF1F":-7009,\u304F:-3140,\u3055:-1700,\u30AB:586,"\u300E":1840,\u3082:-2844,"?":-6075,\u3051:-3915,\u9752:1992,"\u300C":2292,\u3058:-2552,\u308F:-1749,\u8A00:739,\u30F3:-2602,\u5408:-1716,\u7A7A:1694,\u3081:-2542,\u53EF:54,\u30C3:-2609,\u305B:-2238,\u601D:1277,\u4ECA:1606,\u79C1:2076,\u30A8:442,"\uFF01":-5166,"]":-2271,\u3048:-2226,\u6765:535,\u5927:659,\u884C:508,"\uFF0C":-4825,\u30C7:1176,\u4F55:848,"\u30FB":-1683,\u30AF:-451,\u4E00:459,\u7DBA:3688,\u3079:-3180,\u624B:602,\u3070:-2701,\u8868:991,\u3073:-2057,\u308D:-3016,"\u2026":-3121,\u98DF:357,\u7B11:-3556,\u5F7C:1091,"\uFF08":2672,"\uFF0E":-3218,\u59CB:15,"\uFF11":932,\u4EBA:495,\u3064:-1162,\u4F7F:819,"\uFF09":-4504,\u5E83:919,\u6642:476,\u3083:-2620,\u4EAC:344,\u30EB:-964,\u3076:-1604,\u6328:917,\u305A:-2240,\u7159:2232,\u7528:-1034,\u643A:260,\u826F:364,\u30B3:426,\u9593:-932,"\uFF12":788,\u5236:1078,\u53CB:477,\u306D:-2411,\u81EA:622,\u7D9A:-1060,\u3086:-662,\u30EC:-50,\u304E:-1836,\u3056:-1264,\u7684:-1369,\u30C8:-476,"\uFF3B":1485,\u7279:1095,\u80FD:-1182,\u3041:-1687,\u66F8:657,\u52D5:-165,\u64AE:397,W:596,\u56F0:44,\u591A:1232,\u753B:-321,\u307C:-1019,"\u201D":-1139,\u6C34:496,\u5E2F:-836,"\uFF3D":-1275,\u60C5:-895,\u306C:-901,\u5C11:466,\u50D5:1158,\u767D:540,\u3080:-1148,"\u301C":-1730,"\u266A":-1840,\u30EA:-574,\u6700:713,\u5238:-1517,\u30E5:-922,\u7269:-1186,\u56DE:-1165,\u3087:-1568,"\u2606":-1466,\u5B9A:-231,\u30C9:-305,\u590F:781,"(":1258,\u6709:835,\u30E9:-111,\u30CB:-425,\u30B9:-114,"\uFF10":-378,"\u3010":1074,\u305C:-1171,\u8A71:506,"\u3000":-1103,\u8DB3:681,\u5C0F:651,\u7CFB:325,\u3078:-687,\u7121:284,\u5207:-412,\u30B0:-212,\u305E:-868,\u808C:389,\u307B:-326,\u3050:-917,\u614B:-12,\u4ED8:-201,\u4E8C:465,\u4E0D:426,\u5165:22,\u5BB6:30,\u30B8:-206,\u8857:511,\u3065:-632,\u81ED:896,\u7D44:-310,\u3072:515,\u8FD4:-202,\u5EA6:-370,\u8AB0:571,\u697D:284,\u7518:471,\u5F8C:-39,\u7F8E:198,"\uFF13":306,\u3052:-533,\u4ED6:252,\u771F:-508,\u9053:147,\u732B:144,\u9AD8:127,\u63DB:-431,\u796D:522,\u6C17:106,\u6771:536,\u805E:206,\uFF4F:-345,\u30D3:-221,\u51FA:-40,"\u2605":-616,\u30BA:-163,\u65B9:-63,\u670D:271,\u8CB7:238,\u904A:150,\u7236:309,\u79FB:-135,\u8FBC:-247,\u5E74:-172,\u5168:90,\u57FA:14,"\uFF14":-94,\u53D6:-155,\u30D0:61,\u68EE:-264,\u72ED:169,\u30ED:-56,\u30C0:27,\uFF33:-27,\u30E0:-36,\u56DB:36,\u5F0F:-4},UW5:{"\u3002":-2640,\u306F:-1370,\u306B:-887,\u3063:1308,\u306A:-801,\u3067:-1039,"\u3001":-1037,\u307E:-215,\u3059:-1050,\u304D:1166,\u3053:292,\u3092:-963,\u308B:484,\u306E:-993,\u304F:214,\u52D5:1959,\u305D:-810,\u3058:736,\u3079:2111,\u3057:-484,\u304C:-673,\u308C:403,\u3051:-38,\u3044:331,\u3042:-619,\u3068:-819,\u529B:377,\u3055:-213,\u3048:634,\u30E9:348,\u30F3:-446,\u305B:-666,\u305F:-85,"\u30FB":-1040,\u4E0A:-1123,"\u300D":-1161,\u304B:161,\u308D:-64,\u3046:301,\u3060:-609,\u3064:1134,\u3088:-579,"[":-1764,\u30EB:-732,\u305A:1025,\u30C8:-561,\u4EAC:271,\u4F5C:1178,\u3081:555,\u666F:1355,\u3093:840,\u5E2F:223,\u65E5:535,\u5F53:1176,\u308F:716,\u958B:1053,\u307C:1695,\u601D:-284,\u3089:252,\u898B:-318,\u5668:-264,\u307F:-194,\u308A:324,\u8A00:-392,\u30B9:-247,\u3073:1058,\u56DE:214,\u4F7F:-1375,\u6C34:-521,\u3082:-206,\u5E74:929,\u96FB:-235,\u30D0:-378,\u5165:-225,\u4E08:1283,\u8449:453,"?":-992,\u756A:230,\u65AD:485,\u9762:464,\u5229:662,\u4F53:-1511,\u30C3:-120,\u5E83:-459,\u3061:324,\u660E:741,\u3066:162,\u672C:310,\u30E3:361,\u5B9A:113,"\uFF0E":-217,"\uFF01":-109,\u6599:48,\u6709:-248,\u3080:517,"\uFF3D":-167,\u30AF:-82,\u610F:362,\u5238:-353,\u8B58:-258,\u884C:-101,\u5148:-529,"\uFF1F":-230,\u8D8A:-759,\u5BFA:-204,"\u2026":-170,\uFF2E:427,\u4EE5:-33,\u304E:42,\u629E:98,\u5927:-46,\u30ED:41,\u3069:-13,\u8981:9},UW2:{"\u3002":-1693,\u306B:-1241,\u306E:-1179,\u304B:23,\u3092:-2697,"\u3001":-1482,\u3082:-996,\u306F:-1161,\u304C:-907,\u3063:216,\u308C:-141,\u3068:-979,"\u300D":497,\u4EE5:2548,\u305D:-706,\u304F:-956,\u304A:-1259,\u3088:-156,\u308B:-381,\u3059:541,\u3067:-1094,\u5168:1196,\u3046:-642,\u3081:432,\u3061:-29,\u3051:347,\u3042:-330,\u898B:-334,\u7279:869,\u5C11:910,\u3086:1198,\u3066:-997,\u624B:1665,\u3060:399,\u3053:-102,\u3054:-1045,\u4E00:1254,\u6CD5:1386,\u3048:-181,\u3055:690,\u3044:-168,\u753B:210,\u98DF:528,\u307E:288,"?":-1655,\u968F:2691,\u4F5C:-707,\u306A:-491,\u3084:-986,"\uFF1F":-1126,\u3069:-254,\u307F:-286,\u6BCE:1450,\u7D50:2102,\u30E9:-556,\u5F0F:539,\u8A00:-470,\u30B0:-1203,\u65B0:-848,\u308A:-529,\u5E83:-480,\u307B:772,\u5473:376,\u5834:60,"[":-968,\u95A2:1275,\u4E0A:-328,\u5F7C:196,\u540C:590,"]":-1158,\u77E5:-775,\u7528:-614,\u591A:528,\u3064:-604,\u3076:487,\u65E5:65,\u6C34:824,\u30D5:-311,\u30B8:-678,"\u300C":-372,\u4EBA:46,\u30B7:-991,\u5BB9:1158,\u30A3:-319,\u304D:-116,\u65B9:-367,\u30FC:195,"\u300E":-881,\u3072:-1634,"\uFF10":162,\u30B5:-852,\u9078:371,\u5BB6:433,\u7740:-270,\u3070:-407,\u308F:168,\u632F:-1439,\u3093:93,\u308D:-219,\u305F:-144,\u305C:836,\u3071:305,\u3083:229,\u3079:113,\u76EE:-812,\u30D1:520,\u88CF:-68,\u6765:204,\u306D:375,\u30CE:512,"\uFF11":172,\u8449:452,\u51B7:-421,\u30B1:-851,\u3005:404,\u30C7:-538,\u672C:468,\u96FB:320,\u5BFA:-109,\u666F:202,\u7D1A:1115,\u53D7:-634,\u6587:208,"\uFF14":305,\u53D6:-241,\u6700:253,\u662F:541,\u7406:231,"\u2026":280,"\uFF3E":107,\u5165:-151,\u958B:-208,\u30D0:149,\u5982:602,"\uFF13":-232,"\uFF0C":-261,\u56E3:381,\u7ACB:-256,\u4E09:265,\u30EC:-117,\uFF30:-380,\u5897:-354,\u4E0B:219,\u5947:257,\u6614:279,\u5238:-287,\u843D:-277,"\uFF12":-85,"\uFF3D":-47,\u76F4:204,\u8ECA:56,\u547C:-203,\u30D7:-61,\u6211:-176,\u8A31:243,\u660E:69,\u548C:92,\u6B8B:74,"\u2605":-101,"\uFF3B":-18,\uFF28:-36,\u8981:4,\u6D6E:-9,\u767E:-13,\u4ECB:9},UW1:{\u306B:-452,\u3044:-196,\u3088:211,\u3067:-349,\u306E:121,\u307E:48,\u3068:328,\u306F:-222,\u304C:-257,\u4F5C:433,\u898B:358,\u3042:61,\u308A:-167,\u304A:99,\u59CB:670,\u77E5:438,\u3066:317,\u3092:-8,"\u3002":-10,\u4E0A:-311,\u30C3:689,\u3064:228,\u304B:-194,\u6C34:419,\u3082:142,\u3061:12,\u305D:207,\u3060:-108,\u3059:254,\u305F:-102,\u3057:80,\u3093:302,\u8A8D:-958,\u30D7:-1036,\u3051:-100,"\u3001":79,\u306A:-189,\u643A:-431,\u308B:-109,\u6C17:89,\u57FA:-1347,\u30B9:-389,\u660E:1295,\u30D5:-104,\u30D0:481,\u6642:-445,\u7A4D:-1228,"]":-995,"\u30FB":147,\u65B0:454,\u30EA:481,\u58CA:-785,\u64AE:-633,"\u300D":-355,"\uFF10":282,\u8981:-433,\u8AAC:-31,"\u300E":-806,\u30F3:297,\u304F:120,\u30AF:-303,\u3084:-392,\u8B70:511,\u30A4:-311,\u767A:727,\u884C:-65,\u30E1:425,\u9593:488,\u308F:-42,\u3063:174,"\uFF13":-312,\u4ECA:154,\u9032:697,\u30AA:528,\u9762:-611,"\uFF01":140,\u5B89:-341,"\uFF0E":-366,\u5206:-56,\u56FD:-473,\u3048:-94,\u5C0F:229,\u52D5:230,\u6A21:-296,\u308C:113,\u7A7A:-116,\u3069:114,\u9577:472,\u3053:126,\u5834:-117,\u308D:273,\u30ED:-138,"\uFF12":180,\u4EAC:-161,\u30E3:297,\u81EA:255,\u3056:209,\u3055:-91,\u5199:113,"\uFF3B":-141,\u3086:-107,\u6A5F:145,\u8A71:-82,\u3046:38,\u7D9A:-57,\u8FBC:115,\u9AD8:39,\u611F:-47,\u3079:-37,\u82E6:-215,\u306D:-41,\u30B1:-32,\u500B:-64,\u4F55:27,\u30E9:9,\u5185:-41,\u3070:-4,\u7279:-4},UW6:{"\u3002":-378,\u304C:431,\u306E:224,\u3055:1042,\u308A:662,\u3084:801,\u3067:138,\u306F:230,\u306A:254,\u3057:572,\u304A:-349,\u3069:627,\u3054:-265,\u3063:523,\u305B:-364,\u307F:907,\u3092:92,\u64AE:-586,\u30B9:381,\u308B:255,\u3042:-26,\u7A7A:723,\u3071:1174,"\u300D":-249,\u306B:377,\u3044:328,\u30F3:-744,\u3082:192,\u30AF:-679,\u3051:-320,\u3081:1137,\u304B:384,\u5834:-544,\u3064:726,\u3053:207,\u3046:194,\u5F7C:-760,\u3093:448,\u30B3:118,\u3060:25,\u30A2:-391,\u753B:760,\u30EB:415,\u4ED8:189,\u307E:331,\u30B0:653,\u3070:115,\u30FC:-102,\u308D:467,"\uFF10":665,"\u300F":-611,\u904A:-1122,\u3068:-54,\u3088:336,\u96FB:334,\u9001:-1606,\u30B7:-459,\u898B:-196,"\uFF1A":873,"\uFF11":252,\u51FA:502,\u8A00:-381,\u30D1:-563,\u3086:174,\u3066:-66,\u8FD4:1165,\u6765:-246,\u7684:309,\u6C17:473,\u6C34:842,"\u30FB":-125,"\uFF3D":-262,\u30AB:207,\u304E:602,\u5B66:-461,\u3059:-47,\u30E5:11,\u8FBC:282,\u601D:-112,"\u3001":5,\u904E:226,\u305F:36,\u304F:45,\u5BFA:321,\u5236:218,"\uFF1F":-54,\u81EA:244,\u3080:205,\u308C:53,\u3058:140,\u30C8:-29,\u30C6:38,\u65B0:-96,\u305A:-147,\u3073:27,\u4EAD:55,\u5BB6:-22,\u59CB:-4,\u65B9:-9},TW1:{\u3088\u3044\u3088:4065,\u3082\u306F\u3084:3901,\u307E\u305F\u307E:4719,\u306B\u3061\u306F:-664,\u3042\u308A\u304C:-3380,\u3053\u3093\u306B:-1108,\u3093\u3069\u3093:2173,\u3067\u898B\u308B:-4243,\u304A\u3063\u3066:4386,\u304C\u3061\u306A:1233,\u59CB\u307E\u308B:1239,\u7518\u3048\u304C:-2398,\u3075\u3060\u3093:3138,\u3061\u308A\u306E:-612,\u3060\u3093\u3069:-2464,\u3068\u3044\u3046:308,"\u306F\u300D\u3068":811,\u3066\u3044\u304F:724,\u3088\u3046\u306A:1135,\u3059\u304D\u3068:-3905,\u304B\u306A\u308A:1910,\u305D\u306E\u6642:2529,"\u30FB\u30FB\u30FB":1131,\u6301\u3063\u3066:-1316,\u3082\u306A\u304F:1033,\u305F\u307E\u305F:-1232,\u304A\u308A\u306B:500,\u3084\u306F\u308A:2087,"\u3001\u305D\u308C":670,\u56F0\u3063\u305F:1688,\u4EE5\u4E0A\u306B:1158,\u5165\u308C\u308B:1318,\u8272\u304B\u3089:810,\u3072\u3068\u3064:1182,\u307E\u307E\u306B:1005,\u306E\u304A\u3082:-933,"\u306A\u3044\u3001":-1358,\u3087\u3046\u3069:825,"\u308B\u300D\u3068":-1330,\u304A\u3051\u3070:670,\u308C\u4EE5\u4E0A:428,\u3055\u308C\u305F:487,\u307E\u3057\u305F:-315,\u304B\u306A\u304B:640,\u3068\u3093\u3069:591,\u306A\u304C\u3089:994,\u3053\u3068\u3082:-324,\u306F\u5C11\u3057:457,\u307E\u308B\u3067:437,\u7528\u3059\u308B:494,\u306A\u3093\u3068:-726,\u3063\u304B\u308A:693,\u3084\u3059\u3044:151,\u7F6E\u3044\u305F:595,\u306B\u6765\u3066:515,"\u3002\u305F\u3060":579,\u306F\u4E00\u3064:-765,\u306B\u3057\u3066:-285,"\u300E\u3044\u3044":-815,\u3057\u304B\u3057:341,\u3051\u308C\u3070:-5,\u3093\u3067\u3082:294,\u3059\u3054\u304F:344,\u3068\u3057\u3066:149,\u30EC\u30D9\u30EB:343,\u5206\u304B\u308A:-28,\u304F\u3089\u3044:47,\u304B\u3063\u305F:-42,\u306F\u6B63\u76F4:130,\u305D\u3057\u3066:107,\u306A\u3063\u3066:-27,\u3061\u308D\u3093:87,\u3044\u305F\u3060:-82,"\u3067\u3059\u3002":-13},BW2:{\u305B\u304F:7488,\u3068\u3044:530,\u3044\u3088:-3897,\u3068\u304A:-3206,\u306A\u3044:-3381,\u305F\u3068:1143,\u306E\u307F:-3924,\u3067\u3059:-2964,\u3067\u3042:-3766,\u306E\u3088:-1391,\u306E\u3067:-2216,\u305F\u307E:-1858,\u304F\u3060:-3429,\u3067\u304D:-2522,\u3066\u3044:-1270,\u672C\u30A4:3066,\u3088\u3044:-1015,\u306F\u3058:-3506,\u3046\u3054:2861,\u306B\u3082:-1638,\u3046\u3084:-1077,\u3044\u5408:-2242,\u306E\u304C:-1067,\u306A\u3069:-2100,\u3067\u3082:-1998,\u5FB4\u30A8:2677,\u306E\u306F:-1724,\u3089\u3086:-2120,\u3044\u305F:-1229,"\u3001\u3068":-1152,\u304C\u3063:-1378,\u305F\u3044:-1582,\u3044\u307E:-1055,\u3046\u6620:1796,\u3067\u3057:-1765,\u304F\u3057:-904,\u3046\u3069:-1728,\u3084\u3059:-1751,\u3066\u304F:-1642,\u3066\u304D:-1962,\u3066\u304A:-2147,\u304F\u306A:-1726,\u306B\u306F:-728,\u308B\u3068:-689,\u306A\u304F:-1215,"\u300D\u3068":-1102,\u306E\u524D:-1558,\u306F\u3067:678,\u5E2F\u96FB:-1153,\u3089\u306A:-393,\u3082\u3057:-818,\u306E\u3060:-923,\u305F\u3060:-1990,\u3064\u3076:-1424,\u3066\u307F:-1897,\u3044\u3082:628,\u305F\u6B4C:855,\u3066\u3042:-2112,\u306B\u306A:-491,\u3066\u3082:-693,\u3069\u3082:-1171,\u3068\u3068:-508,\u3073\u4E0A:2155,\u306E\u65B9:743,\u306E\u3054:-1572,\u3082\u3042:-923,\u3066\u884C:-2060,\u3068\u3081:-685,\u3044\u72B6:852,\u3068\u601D:352,\u306E\u304B:-620,\u590F\u4F11:-942,\u306F\u3044:-752,\u4EBA\u3044:1242,\u3044\u3044:-436,\u5F71\u73FE:-847,\u3092\u8FD4:-1674,\u306E\u3082:-898,\u3070\u306A:-330,\u306B\u3057:-666,\u3067\u306A:-1285,\u306A\u3042:-1384,\u308C\u305F:-663,\u3059\u3054:-994,\u3068\u3082:-498,\u306A\u304B:-358,"\u3002\u7B11":-1134,\u8B58\u3053:589,\u3082\u3064:-834,\u3057\u305F:-487,\u3068\u304B:-718,\u3044\u672C:342,\u4EE3\u9045:-339,\u4FC2\u306A:651,\u308A\u3082:-544,\u672C\u683C:-549,\u306E\uFF11:-1541,\u3053\u3057:320,\u3046\u307E:-585,\u3069\u3053:-469,"\u3057\u2026":1445,\u304C\u3057:223,\u3059\u3082:553,"\u3001\u306A":-297,\u6C17\u3088:-669,"\u300D\u3067":661,\u3044\u3057:-537,\u3044\u306A:-176,\u3068\u3053:-282,\u306F\u3042:-395,\u305F\u3055:-348,\u3067\u306F:-340,\u3044\u3064:-212,\u30FC\u30C9:-328,\u306E\u65E7:292,\u6C17\u306A:352,\u304B\u3057:-234,\u3082\u306E:-153,\u3071\u306A:282,\u306F\u305A:-320,\u3066\u6765:-321,\u3068\u304D:-152,\u304C\u89B3:-343,\u65E5\u672C:-290,\u3067\u3044:-57,\u30B0\u3068:346,\u30FC\u30EB:-71,\u305D\u3053:-211,\u306A\u3041:-145,\u307E\u305F:-127,\u6642\u9593:-89,\u3068\u306E:-155,\u308A\u306A:117,\u306B\u304E:-112,\u3044\u3060:-98,\u610F\u898B:-121,\u306B\u3055:-117,\u3092\u304F:121,\u308B\u3088:-23,\u3067\u306E:60,\u3066\u3053:-74,"\uFF3D\u79C1":-209,\u305F\u3082:79,\u306B\u3053:-106,\u3044\u3068:-46,\u308B\u306A:-46,"\u30FB\u30FB":-74,\u304C\u306E:97,\u308A\u3044:46,\u30EB\u3084:55,\u3064\u3044:-41,\u305F\u6642:36,\u304B\u306A:-18,\u4E2D\u3060:13,\u3066\u6B32:-22,\u308B\u304C:-18},BW3:{\u3061\u306F:-1560,\u307E\u3068:2472,\u4E0A\u304C:2157,\u305D\u306E:2279,\u53D7\u3051:1217,\u3044\u3046:934,\u306F\u3058:2825,\u3046\u307E:5181,\u3082\u306E:3890,\u5F53\u65E5:3661,\u3053\u308C:2619,\u3053\u3068:1306,\u3067\u304D:726,\u3057\u3066:249,\u3067\u3059:-1770,\u306A\u3063:-873,\u3086\u308B:-1196,\u306A\u3093:277,\u305D\u3046:-2027,\u5206\u304B:1550,\u6A5F\u5668:-2906,\u307E\u3059:-1015,\u304A\u308A:-1690,\u3053\u306E:2391,\u3042\u308B:-459,\u3068\u3044:-594,\u3044\u3044:955,\u59CB\u307E:1268,\u3061\u3087:2266,\u3067\u3082:1750,\u304B\u3051:2743,\u3053\u308D:-340,\u3055\u3093:-2842,\u3068\u304D:2206,"\u304C\u3001":1854,\u3082\u3082:-666,\u3064\u3076:464,\u65E5\u304C:1435,\u3059\u304B:-1500,\u5834\u5408:884,\u305F\u307E:569,\u304A\u3059:1347,\u304B\u3089:-968,\u3088\u304F:1397,\u3057\u307E:-584,\u3055\u3044:-1716,\u306A\u3089:-692,\u307E\u3082:1441,\u3088\u3046:-1342,\u30BF\u30FC:-1378,\u3068\u3066:2190,\u304B\u304B:1909,\u5165\u5834:1451,"\u3067\u3001":998,\u3082\u3093:1266,\u3082\u3089:2559,\u3068\u3082:1466,\u306A\u3044:365,\u3082\u3046:2236,\u3055\u3042:1560,\u3059\u3054:1569,\u3057\u305F:956,\u3060\u308D:-1626,\u304C\u3093:2093,\u307E\u3057:-911,\u304B\u3063:-1048,\u3059\u304D:439,\u3059\u3050:1596,\u304C\u89B3:2278,\u3060\u3051:-571,\u3044\u3066:-419,"\u30FB\u30FB":-1365,\u3044\u308D:323,\u307E\u3041:1359,\u304D\u307E:-760,\u3064\u3044:781,\u30E1\u30FC:206,\u4ECA\u56DE:199,\u30C7\u30B6:667,\u3044\u304B:680,\u3068\u601D:-615,\u305F\u3081:615,\u306F\u307E:876,\u305D\u3053:276,\u3057\u3044:-558,\u306A\u304F:471,\u3068\u308A:856,\u3042\u3068:883,\u3068\u3053:1154,\u306B\u304E:1272,\u3068\u3063:655,\u3088\u308A:-879,\u3046\u3061:630,\u3057\u3083:259,\u306F\u308B:601,\u308F\u304B:577,\u3054\u3068:-584,\u307F\u305F:-855,\u4F55\u3067:589,\u7406\u7531:447,\u3084\u3059:-239,\u5834\u3067:-359,\u306F\u305A:688,\u53CB\u4EBA:549,\u3044\u307E:488,\u307E\u3060:618,\u307F\u3093:711,\u306A\u308B:174,\u58F0\u3092:362,\u304B\u3082:-431,\u3082\u3064:858,\u96FB\u8A71:-82,\u51FA\u6765:-550,\u307C\u3063:-1037,\u3048\u3048:897,"\u3057\u3001":-119,\u3093\u3067:327,\u6700\u8FD1:294,\u307E\u3067:-581,\u3082\u3068:712,\u3051\u308C:-403,\u5165\u308C:136,\u305F\u3044:-179,\u304D\u3063:289,\u3057\u304B:-193,\u5E83\u304C:208,\u8272\u306F:380,\u307C\u308C:-595,\u304B\u306A:113,\u307E\u305B:-273,\u306F\u3057:448,\u4E00\u306B:-390,\u30EB\u30FC:203,\u3044\u3089:308,\u3064\u3051:278,\u304B\u308A:-91,\u306A\u304B:114,\u3060\u3044:67,\u307E\u3042:151,\u305F\u3063:160,\u4EBA\u306F:98,\u901A\u308A:-188,\u304B\u304D:206,\u304F\u3060:4,\u3053\u305D:-127,\u308F\u305B:-65,\u305D\u304F:-159,\u3068\u3089:187,\u3044\u308B:60,\u96FB\u8ECA:41,\u305D\u3057:83,"\u3060\u3002":-69,\u4EE5\u4E0A:-27,\u3072\u3068:50,\u3053\u3093:-27,\u9045\u308C:-13,\u3064\u304D:41},BW1:{\u306E\u307F:3608,\u3093\u306B:-1199,\u306A\u3044:1466,\u304B\u3089:1770,"\u300D\u3068":764,\u3057\u3044:1673,\u308C\u305F:1714,\u307E\u307E:3102,\u3082\u306F:-5208,\u3084\u304F:2580,\u4EE5\u4E0A:638,\u3088\u3046:-735,\u305D\u306E:-1267,\u306E\u306F:1481,\u5C11\u3057:1849,\u767D\u3044:2517,\u3093\u3060:893,\u3063\u305F:360,\u307E\u3082:-4720,\u305F\u3044:602,\u3066\u3082:936,\u3059\u306E:-1330,\u3053\u306E:-1222,\u308B\u306E:-1099,\u6C17\u306B:-411,\u3088\u308A:2039,\u3060\u3093:139,\u3067\u306F:-636,\u304F\u308C:2727,\u3086\u308B:1242,\u6676\u306E:3692,\u304C\u3068:-1783,\u305F\u304F:-395,\u306F\u3084:76,\u3093\u306A:635,\u3044\u3046:487,\u304D\u305F:764,\u305F\u3089:1058,\u5168\u90E8:980,\u3068\u304B:1412,\u3053\u3068:-1372,\u3067\u3082:848,\u304B\u3082:-1620,\u77E5\u3089:-1049,\u305F\u306E:-1186,\u3068\u304C:-1545,"\u3001\u771F":4806,\u3081\u3066:580,\u3046\u306A:565,\u307E\u3068:-1981,\u6700\u8FD1:1620,"\u306F\u3001":1206,"\u3002\u300D":2576,\u305F\u3068:-1274,\u9752\u3044:1287,\u6CD5\u7684:1701,\u306B\u3082:756,\u554F\u3044:-1104,\u304B\u3057:1807,\u821E\u3046:1701,\u304C\u308B:838,\u3068\u304D:1700,\u306E\u304C:1437,"\u3002\u30FB":2496,\u3093\u3067:-471,\u3063\u3066:-105,\u3046\u3084:-1562,\u308A\u3068:1225,\u4F55\u304B:620,\u3053\u305D:1747,\u3042\u30FC:1688,"\u306F\uFF1F":1059,\u3061\u304C:-558,\u3082\u3046:1250,\u308A\u3083:2192,"\u3044\u3001":-511,"\u304C\u3001":1096,\u308C\u308B:225,\u3059\u3044:485,\u306E\u9593:1633,\u3044\u3067:-1193,\u3088\u304F:609,\u5F85\u3061:-1544,\u3082\u3057:1220,\u7684\u306A:795,\u306A\u3089:1088,\u306A\u305C:1571,"\u3066\u3001":258,\u601D\u3044:-1350,\u308A\u306B:380,"\u3067\u3001":419,\u540C\u3058:1027,\u305B\u3093:670,\u7A7A\u304D:-1383,\u3068\u3044:-298,\u3068\u306F:-436,\u307E\u308A:377,\u4EBA\u6C17:1457,\u304F\u3066:798,\u795E\u793E:877,"\u3001\u4ECA":771,\u304D\u306E:-1190,"\u305F\uFF0E":1208,\u305F\u3060:583,\u306E\u5F8C:961,\u307E\u3060:608,"\uFF12\u3001":-1829,\u308C\u304C:-431,\u3051\u3069:568,\u3068\u3082:-238,\u306B\u306F:244,\u308B\u3068:139,\u3068\u3067:830,\u3084\u3089:1191,\u95A2\u4FC2:19,\u3068\u306E:455,\u8981\u306A:424,\u4E0A\u306B:315,\u666E\u6BB5:508,\u308B\u306B:-726,\u3042\u3044:-693,\u308C\u3066:-252,\u3082\u306E:-440,\u3044\u305F:154,\u65E5\u304C:97,\u77E5\u308B:-422,\u305D\u308C:298,\u3057\u3066:-20,\u30C3\u30AF:194,\u8A00\u3044:-654,\u4E16\u306E:-899,\u306A\u304F:290,\u7518\u5473:487,"\u304B\uFF0C":-975,"\u304B\u3001":-320,\u306E\u3082:287,\u4F7F\u3044:-712,\u3089\u306A:-589,\u3053\u308D:320,\u3081\u308B:-367,\u662F\u975E:171,\u30D1\u30B5:486,\u3057\u305A:-790,"\u3001\u3068":301,\u3064\u3076:-728,\u306E\u3067:252,\u3069\u306E:-438,\u306A\u3069:542,\u304B\u304D:501,\u306E\u4E0A:802,\u3083\u3042:591,\u3066\u3044:-317,\u3053\u3046:-336,\u3058\u3066:435,\u5B89\u306B:-559,"\uFF10\u5186":318,\u3068\u306B:-234,\u3079\u304D:614,\u8CB7\u3044:-478,"\u5BFA\u3001":-914,\u4E00\u756A:51,"\u3002\u4ECA":312,\u3044\u3044:-237,\u304A\u5E97:487,\u3060\u3057:495,\u306F\u982D:852,\u3076\u304C:362,\u3044\u3082:-511,\u3042\u308B:64,"\u3067\u2026":641,\u3066\u308B:221,\u52B9\u679C:684,\u73FE\u5728:375,\u3048\u3070:175,\u53D6\u308A:-277,\u308D\u3046:-251,\u3046\u3048:426,\u30EA\u30FC:155,\u307E\u3042:219,\u3044\u306E:-101,\u3055\u3093:149,\u3046\u304B:153,\u3057\u304B:105,"\uFF3E\uFF3E":225,\u3066\u306F:-138,\u7D76\u5BFE:287,\u305F\u3081:222,\u3093\u3066:104,\u672C\u8A9E:141,\u3076\u3093:202,\u5206\u3051:89,\u90FD\u5408:79,\u3044\u3057:74,\u308A\u306F:-74,\u306B\u6C34:60,\u5730\u306F:64,"\u3002\u3042":-50,\u3071\u308A:64,\u624B\u9806:27,\uFF4F\uFF52:41,\u306A\u30FC:18,\u308F\u3089:-36,\u30E1\u30FC:-4},TW4:{\u3042\u308A\u304C:3759,\u3044\u3088\u3044:3168,\u3088\u3046\u3084:4457,\u30D7\u30ED\u30B0:3230,\u53EF\u80FD\u6027:3995,\u3061\u304C\u3046:4151,\u3082\u306F\u3084:4598,\u3069\u306E\u3088:4488,\u3088\u3046\u306A:-1580,\u305F\u307E\u305F:1222,\u3068\u3053\u308D:2143,\u304A\u308A\u306B:-922,\u3069\u3093\u3069:1500,"\u3057\u305F\u3002":-1976,\u3068\u304A\u308A:2787,\u304F\u3089\u3044:2019,\u52D5\u753B\u3067:-595,\u3044\u3063\u3071:2914,"\u304C\u3001\u305D":1930,\u305D\u306E\u307E:1869,\u3067\u304D\u305F:2433,\u3042\u308A\u307E:-1093,\u3057\u3066\u304A:1081,\u3053\u3068\u304C:-1147,\u3042\u308B\u3044:-2827,\u3053\u3068\u306B:-1233,\u3060\u3063\u3066:1627,\u3057\u304B\u3057:1932,\u304B\u306A\u308A:2053,\u3046\u3069\u3093:1969,\u306F\u3058\u307E:1379,"\u3067\u3001\u305D":1416,\u3053\u308C\u306F:1549,\u304A\u308A\u307E:2824,\u3044\u304F\u3055:-1526,\u3057\u3083\u3079:1878,\u3053\u3068\u3082:-941,\u3053\u3068\u3092:627,\u3044\u308D\u3044:977,\u9752\u3044\u7A7A:534,"\u306A\u3044\u3002":282,\u3059\u304D\u3068:937,\u306A\u3044\u3068:586,\u3061\u306A\u307F:1675,\u3084\u3063\u3066:209,\u5236\u5EA6\u306B:835,\u3059\u308B\u3068:691,\u3088\u3046\u306B:-576,\u5834\u5408\u306F:427,\u3072\u3068\u3064:282,\u305D\u3046\u3067:-660,\u306A\u3093\u3068:1016,\u3060\u3063\u305F:-1088,\u308F\u3051\u3067:-463,\u306A\u3093\u3066:-359,"\u3067\u3082\u3001":329,\u307E\u3057\u305F:-439,\u3044\u304B\u306A:369,"\u3053\u3068\u3002":481,\u3063\u3066\u3053:227,\u3044\u3051\u306A:-298,\u3067\u304D\u306A:128,\u52DD\u624B\u306B:746,\u3067\u304D\u308B:-233,\u3057\u306A\u3044:222,\u306A\u3093\u304B:380,\u3044\u3048\u3070:302,\u30B1\u30FC\u30B7:-181,\u304B\u3051\u3089:286,\u3044\u307E\u3059:-131,\u3067\u3082\u307E:486,\u3064\u306A\u304C:343,\u3060\u304B\u3089:104,\u3044\u3063\u3066:-121,\u3044\u304F\u3089:146,\u305D\u308C\u3068:-207,\u306F\u307E\u3063:146,\u3042\u305F\u308A:-122,\u306E\u4EAC\u90FD:79,"\u3042\u308B\u3002":-32,\u5BB6\u306E\u30EB:143,\u3053\u3068\u3067:37,\u3044\u307E\u3057:-87,\u30AB\u30EC\u30FC:36,\u30A4\u30F3\u30C6:18},TW2:{\u3057\u3066\u304A:-2325,\u3061\u304C\u3046:-3182,\u305D\u306E\u307E:-2462,\u3069\u3093\u3069:-2121,\u3088\u3046\u3084:-1615,\u6C17\u306B\u5165:-3777,\u308C\u304C\u3061:-1060,\u307E\u308B\u3067:-1439,\u3068\u304C\u3042:-983,\u3067\u306F\u306A:-1890,\u304B\u3089\u3057:905,\u3046\u306B\u306A:-908,\u3093\u3067\u3044:-1745,\u308C\u306F\u305D:-1479,\u3088\u3046\u306A:-914,\u3067\u306F\u3042:-1576,\u305D\u3082\u305D:-1708,\u5973\u306E\u5B50:-1668,\u306A\u3044\u3068:-722,\u56FD\u4EBA\u304C:841,\u3089\u3068\u8A00:-1047,\u3063\u3066\u306E:1005,\u308C\u308B\u3053:290,\u3067\u3082\u3042:-913,\u3093\u306A\u3093:739,\u3066\u3082\u3044:-847,\u305D\u306E\u5F8C:-497,\u3067\u3082\u306A:-599,\u3082\u306E\u3059:-707,\u3068\u3082\u3042:-358,\u304B\u3089\u306A:-163,\u308C\u3070\u306A:-43,\u3063\u3068\u3044:-226,\u3046\u3068\u3057:-98,\u304B\u308A\u3084:-41,\u308B\u306B\u3064:-144,\u3068\u306B\u306A:-55,\u305D\u308C\u4EE5:36,\u304F\u308C\u305D:27},TW3:{\u3068\u3044\u3046:432,\u306E\u307E\u307E:-604,\u3068\u3053\u308D:-1911,\u306E\u672C\u306F:-2632,"\u3001\u305D\u3057":-3342,\u3066\u3044\u308B:-2348,\u308B\u3053\u3068:-361,\u308B\u65B9\u306F:-2031,\u306B\u306A\u3063:-179,\u3089\u306A\u3044:-1729,\u3082\u306F\u3084:-998,\u3059\u3053\u3068:1045,\u3068\u3057\u3066:362,\u3068\u8A00\u3063:-1577,\u3068\u3068\u3082:-1951,\u3067\u3042\u308B:-963,\u304F\u3057\u3066:-1662,\u30FC\u3057\u305F:965,\u3066\u3057\u307E:-1168,\u3070\u306A\u3089:-520,\u306F\u307E\u3063:-1240,\u3068\u3057\u305F:-771,\u3067\u3042\u3063:-1063,\u3070\u3044\u3044:-871,\u306F\u305D\u308C:-759,\u3068\u540C\u6642:-949,\u308C\u4EE5\u4E0A:-503,\u306B\u3067\u3082:-691,\u3066\u304A\u304D:-512,\u3066\u307B\u3057:-512,\u304C\u3042\u3063:837,\u306F\u306A\u3044:-254,\u3068\u3044\u3063:-148,"\u300D\u3063\u3066":343,\u3066\u3044\u3046:253,\u3046\u3053\u3068:-86,"\u3001\u307E\u305F":-448,\u3046\u3044\u3046:-301,\u3066\u304F\u308C:-203,\u306B\u3059\u308B:-149,\u306B\u306A\u308B:-78,"\uFF0C\u305D\u308C":-46,\u3066\u306A\u3044:-9}};
+        const BUDOUX_JA_MODEL = {UW3:{"\u3002":6728,"\u3001":4793,\u3092:5613,\u306B:3832,\u306E:3728,\u306F:4247,\u304C:4149,\u3068:2957,\u308B:2755,\u304F:2852,\u3082:3216,\u3066:2448,\u3067:3460,\u305F:2223,\u3063:-1955,\u3044:1914,\u3046:1964,\u65B9:2774,\u306A:2289,\u3089:1418,"\uFF3D":2179,\u304B:1931,\u308A:1064,"\uFF0C":3562,"\uFF01":3285,\u30FC:-113,"\uFF1F":3707,\u3084:2168,\u3070:1685,\u3069:1948,"\uFF0E":2081,"\u30FB":1008,\u3064:1318,"\u2026":2476,\u3054:-2411,"\uFF09":2663,\u90E8:1626,"\u2606":2714,\u4E0A:540,"\u300D":1657,\u30C3:-2007,\u308C:375,"\u266A":2559,\u305A:2032,\u4EE5:-1912,\u3093:704,\u3060:895,\u3078:2163,\u308D:1051,\u30AF:342,\u96FB:-1749,\u7B11:2419,\u4ECA:1104,\u307E:-484,\u5206:1162,\u4E2D:1012,\u3050:2032,\u4EAC:-1416,\u4EBA:495,\u304A:-1350,\u30A4:-592,\u5229:-713,"\uFF10":-863,\u304D:491,\u3041:1313,\u9593:727,\u3059:959,\u30F3:-313,\u30D5:-1354,\u3083:1253,\u30B9:-1019,"\u300C":-1412,\u65E5:750,\u5EA6:1104,\u5F8C:1273,\u30B7:-1228,\u884C:-808,\u3005:1430,\u30A2:-842,\u30C9:-1098,\u5F53:-343,\u89B3:-1024,\u3076:1465,\u30EA:-626,\u5927:-904,\u3048:751,\u591C:1560,"\u300F":1445,"\uFF11":-635,\u79CB:1420,\u614B:-1193,\u6614:1693,\u4F53:1037,\u3080:1166,\u7A7A:796,"\uFF3B":-1062,\u5909:398,\u5B66:-641,\u7686:1406,\u6708:621,\u984C:1106,\u6A5F:-775,\u7136:591,\u3042:783,\u8D85:1029,"\u301C":526,\u305E:831,\u975E:849,\u3061:463,\u5149:-218,\u4FC2:555,\u5E74:352,\u307F:312,\u7531:478,"\uFF1E":696,\u611F:452,\u30D7:-431,\uFF4F:-603,\u756A:290,\u30BA:344,\u8272:657,\u3057:224,\u610F:-369,\u3073:341,\u5165:-491,\u3051:157,\u6240:622,\u81EA:-411,\u5834:-59,\u30E1:-203,"\u3000":311,\u6307:-356,\u6C17:69,\u982D:788,\u7740:-302,\u5225:286,\u51FA:-175,\u3071:455,\u30AB:-121,\u671D:316,"\u201D":313,\u54C1:139,\u679C:565,\u4E00:-71,\u8A9E:196,\u7A0B:262,\u5FDC:275,\u5BFA:135,\u6709:-208,\u751F:-143,\u795E:-190,\u60F3:209,\u4E0D:-171,\u5E97:200,"\uFF1A":111,\u30B0:38,\u30EC:-105,\u6599:-113,\u5C4B:71,\u30D1:-87,\u6C34:70,\u30B5:79,\u6E1B:86,\u56DE:28,\u30D0:-12,"\uFF15":-4},UW4:{"\u3002":-7454,\u306E:-4026,\u3066:-3886,\u304C:-3308,"\u3001":-7522,\u308B:-5031,\u306B:-4106,\u306F:-3340,\u3067:-3076,\u3063:-4215,\u3092:-4779,\u3042:564,\u3068:-2905,\u3046:-2139,\u305F:-1616,\u307E:-1127,\u306A:-1887,\u308A:-4104,\u3054:551,\u3057:-1826,\u308C:-4215,\u3053:-496,\u304F:-3009,\u3089:-4434,\u304B:-2652,\u305D:152,\u304D:-2034,\u3060:-1794,\u30FC:-2920,\u3044:-1560,\u307F:-1078,\u884C:374,\u7A7A:2550,\u3093:-3604,\u3082:-2695,\u3059:-1087,"\u300D":-5550,\u3055:-1889,\u601D:1398,\u3081:-1842,\u3051:-3319,"\u300C":2416,\u3084:-1292,\u6642:593,\u4EBA:598,\u4E00:541,\u4EAC:686,\u79C1:1919,"\uFF0C":-4270,\u8868:902,\u3064:-1274,"\uFF01":-4521,\u30C3:-2351,"\u30FB":-625,\u3088:-553,\u51B7:2511,"\uFF11":770,\u30F3:-2142,\u3048:-1671,\u6301:119,\u4F7F:1139,\u308F:-1549,\u65B9:-831,\u6765:435,"\uFF08":2512,\u3086:-2377,\u308D:-2910,\u30EB:-1250,\u624B:246,"\u2026":-2234,\u3058:-2235,"\uFF1F":-3518,\u4F55:1232,\u3069:-1238,"\uFF3B":1883,\u898B:508,\u3079:-2886,"\uFF09":-4231,\u5927:531,\u672C:-1158,\u5F7C:1311,\u7B11:-3521,\u5F53:271,"\uFF0E":-2893,\u65E5:288,\u305B:-1291,\u3070:-2305,\u4ECA:1115,\u30A4:-501,\u3061:-2020,\u6C17:410,\u5165:633,\u81EA:804,\u305A:-1738,"\uFF12":553,\u6700:1132,\u7528:-721,\u5E2F:-1198,\u304A:755,\u6709:910,\u643A:394,\u98DF:175,\u3083:-2476,\u9593:-350,\u591A:1041,\u3072:1304,\u4E2D:62,"\uFF3D":-1461,"\u300F":-3295,\u306D:-1755,\u767D:570,\u3041:-1446,\u6C34:337,\u98A8:759,\u30B3:329,\u304E:-1380,\u5408:-1101,\u30EA:-588,"\uFF10":-400,\u50D5:974,\u611F:216,"\u201D":-842,\u3087:-1617,\u5C0F:722,\u307C:-959,\u516C:685,"\uFF13":84,\u697D:380,"\u266A":-1513,"\u301C":-1208,"\u2606":-1315,\u5168:523,\u9053:276,\u4E8C:520,\u30B9:-228,\u5B50:-685,\u66F8:380,\u30C9:-58,\u4E0D:535,\u9AD8:245,\u7279:763,\u796D:408,\u8FD4:-363,\u614B:-544,\u3065:-1053,\u5B9F:477,\u5B9A:-355,\u5C11:444,\u8A71:355,\u8CB7:433,\u4ED6:388,\u305C:-896,\u8857:536,\u76EE:133,\uFF4F:-565,\u7684:-562,\u8FBC:-726,\u305E:-956,\u30E5:-549,\u3050:-787,\u30B5:147,\u7121:172,\u6771:517,\u590F:546,\u73FE:229,\u524D:-155,\u3076:-685,\u5834:121,\u63DB:-349,\u3052:-637,\u30BF:-256,\u30C7:205,\u5E74:-410,\u3073:-543,\u307B:-202,\u7269:-209,\u30D5:-202,\u8A00:146,\u5238:-589,\u3078:-432,\u30C8:-159,\u5916:180,\u3056:-354,\u79CB:360,\u96E3:227,\u30E7:-220,\u5473:93,\u6D41:325,\u5199:295,"\u3000":-221,\u65B0:91,\u30E9:-110,\u5E97:99,\u53C2:199,"\uFF15":52,"\uFF3E":-328,\u7F8E:167,\u3005:-202,\u4E09:85,\u958B:59,\u62BC:210,\u76F8:97,\u7518:106,\u5B89:114,\u56DE:-147,\u95A2:-151,\u53D6:-117,\u51FA:-33,\u52E2:-12,\u30E0:-52,"\u2212":-57,"\uFF16":24,\u767E:32,\uFF23:24,\u5C4B:-16,\u30AA:8,\u5BB6:16,\u30A3:-12,\u30AF:-4},UW5:{"\u3002":-2064,"\u3001":-1010,\u3067:-892,\u307E:-99,\u3059:-474,\u306A:-458,\u3063:997,\u308B:217,\u3066:222,\u306F:-855,\u304C:-518,\u304D:1186,\u3057:-365,\u3092:-637,\u3042:-552,\u65E5:790,\u3053:424,\u306B:-611,\u3048:686,\u3060:-539,\u3044:363,\u305D:-296,\u308D:-280,\u3093:1035,\u3079:1778,"\u30FB":-1055,\u3068:-630,\u307F:332,\u304B:223,\u3056:1423,\u5E2F:371,\u308F:580,\u308C:534,\u306E:-607,\u3089:233,\u3064:1267,\u3061:794,\u3046:383,\u3081:689,\u30EB:-478,\u3058:642,\u3055:-302,"\u300D":-1120,\u5408:456,\u3088:-273,\u305A:996,\u308A:353,\u307C:1417,\u304F:460,\u5E74:975,\u96FB:-290,\u305B:-306,\u51B7:1220,\u305F:203,\u4F7F:-1266,"\uFF01":-437,\u601D:-810,"\uFF3D":-483,\u3082:-128,\u5229:356,\u5B66:191,\u610F:739,\u3050:179,\u30D0:-257,\u30C8:-355,\u5F53:439,\u5206:201,\u3005:563,\u4F53:-1129,\u5834:469,\u3080:664,\u5238:-832,\u898B:-249,\u30A4:189,\u6765:-128,\u6599:584,\u5BFA:-493,\u624B:173,\u304E:262,"\uFF0E":-169,\u30BF:284,\u3070:302,\u6C34:-221,\u901A:-189,\u884C:-215,\u5148:-737,\u4E00:-212,\u7530:358,\u7D9A:-686,\u672C:41,\u30FC:24,\u30A2:-172,\u3087:338,"\uFF1F":-244,\u3073:222,\uFF4F:191,\u3078:-279,\u8981:114,\u4F55:-342,\u6700:-104,\u4E0A:-38,\u3051:38,"\u3000":-234,\u90FD:43,\u6210:93,\u7684:-118,\u30E9:59,\u4E2D:88,\u30F3:-25,"\uFF08":-97,\uFF2E:235,"\uFF17":-151,\u52B9:87,\u679A:95,"\uFF11":-41,\u3083:20,\u6709:-57,\u4EAC:-41,\u30AA:-102,\u964D:28,\u751F:-12,"\uFF09":-20,\u30E5:-4},UW2:{"\u3002":-1435,"\u3001":-1422,\u3092:-2559,\u304C:-1164,\u306F:-1025,\u3063:253,\u306B:-1053,\u4EE5:2191,\u308C:6,\u304B:-87,\u3066:-1038,\u3067:-850,\u5168:1718,\u3093:588,\u306E:-678,\u305D:-342,\u3086:1826,\u3081:94,\u3084:171,\u3068:-790,\u304F:-676,\u3046:-389,\u3082:-824,\u4E00:1094,\u3042:-137,\u3053:84,\u3055:563,\u5229:22,\u3060:329,\u3054:-701,\u6BCE:1711,\u3059:65,\u7D50:2020,\u5C11:607,\u5F7C:771,\u6700:450,\u304D:-546,\u540C:501,\u3088:599,\u6A5F:1124,\u4EBA:227,\u3048:118,\u307B:667,\u3044:-98,\u5927:361,\u308A:-391,\u304A:-412,"\u300C":-480,\u672C:699,\u624B:768,\u610F:558,\u95A2:892,\u4EAC:-332,\u76EE:-1046,\u308B:-265,\u305C:780,\u306A:-421,\u7740:-459,\u30B1:-265,\u984C:869,\u601D:-34,\u6211:-1566,\u3072:-1571,\u591A:282,\u4E0A:-219,\u305F:-140,\u30FC:281,\u3071:403,\u3069:67,\u6C34:310,\u632F:-1294,\u3070:-375,\u5915:692,\u3064:-293,\u7D76:1290,\u88CF:-1205,\u5BFA:-454,\u53CB:327,\u540D:308,\u5BB9:912,\u4ECA:280,\u307F:-131,\u30D5:-298,\u5165:-364,\u30F3:138,\u30A4:-180,\u9AD8:345,\u307E:-151,\u3089:-57,\u30B9:123,\u53D6:-279,\u6599:53,\u4E16:-929,\u30D1:295,\u96FB:310,\uFF52:1144,\u3005:180,"\uFF0C":-377,\u6253:427,"\uFF3E":149,\u843D:-586,\u30D7:-252,\u51B7:-564,\u8ECA:221,\u548C:397,\u7528:-220,\u7518:553,\u7684:174,\u4E0B:230,\u9078:254,\u6975:690,\u77E5:-368,\u30E9:-235,\u91CD:319,\u826F:164,\u30E1:-47,\u5B9F:126,\u6642:98,\u7ACB:-357,"\uFF3D":-114,\u76F8:242,"\uFF1A":201,\u4E57:-222,\u5973:-225,\u683C:351,\uFF28:-196,\u30A3:-50,\u611F:67,\u6B63:275,\u5F53:105,"\uFF3B":-37,\u3051:29,\u65E9:100,\u5F0F:33,\u30EB:8,\u30B5:-74,"\uFF14":45,"\uFF15":-44,\u5DDD:49,\u6B8B:40,\u4E09:20,\u898B:-8,\u30AB:-4,\u3083:4,\u660E:4},UW6:{\u304C:458,"\u3002":-261,\u3067:251,\u5165:1042,\u3057:496,\u306F:244,\u3054:-343,\u3042:-434,\u306B:259,\u7A7A:1574,\u3066:-48,\u3060:87,\u306E:74,\u3081:1567,\u306A:197,\u3055:523,\u3046:-76,\u5238:1647,\u3084:728,\u308A:471,\u307E:172,\u308D:319,\u3044:346,\u3092:168,\u304B:239,\u3093:363,\u3089:50,\u30EB:173,\u3063:269,\u30AF:-297,\u5F7C:-1380,\u3051:-161,"\uFF10":657,\u5BFA:710,\u614B:407,"\u30FB":-672,"\u3001":143,\u8FBC:694,\u3070:364,\u5834:-799,"\uFF1A":881,\u304F:196,\u3086:571,\u308B:83,\u6C17:448,\u30FC:-8,\u30BF:425,\u3071:888,\u7684:471,\u30E1:254,\u308F:215,\u30D4:833,\u305A:-550,\u30B1:-466,\u904E:936,\u9001:-1043,\u30B7:-165,\u30A4:-256,\u30AB:294,\u3082:-76,\u52B9:-690,\u308C:131,\u713C:761,\u305F:-5,\u6765:-262,\u65B9:-301,\u3064:66,\u6A5F:251,\u601D:-43,\u51FA:201,\u5370:379,\u3053:51,\u5E97:254,\u81EA:167,\u304E:322,\u3083:-136,\u7740:-113,\u53C2:278,\u9593:-73,\u4E0D:176,\u305E:227,\u5468:337,\u30D1:-119,"\u2026":-96,\u30F3:-25,\u3087:-138,\u56DE:-46,\u529B:-75,\u3073:53,"\uFF11":4,\u7DF4:36,\u751F:-24,\uFF2E:-48,\uFF33:-20,"\uFF19":8},BW2:{\u305F\u3068:1506,\u3068\u3044:288,\u3068\u304A:-3916,\u306E\u307F:-2778,\u3066\u3044:-1173,\u3067\u3042:-3424,\u306A\u3044:-2833,\u3067\u3059:-3140,\u305F\u307E:-2384,\u306E\u3067:-905,\u3044\u305F:-1757,\u3067\u304D:-2098,\u3046\u3084:-1836,\u306B\u3082:-1242,\u306B\u306F:-963,\u3067\u3082:-1866,\u306F\u306A:-294,\u304F\u306A:-1808,"\u3001\u305D":-1730,"\u3001\u3068":-636,\u308B\u3088:-1166,\u5E2F\u96FB:-1447,\u3066\u304A:-2417,\u305F\u3060:-3137,\u306E\u3088:-616,\u3067\u3057:-1972,\u307E\u305F:-2915,\u308B\u3068:-559,\u306A\u3069:-1328,\u306E\u6A5F:-1328,\u306E\u306F:-1154,\u304F\u3057:-1455,\u3082\u3042:-956,\u3044\u307E:-603,\u3066\u307F:-1631,\u3066\u3042:-2192,\u305F\u3044:-1203,\u3082\u3057:-546,\u306F\u3067:398,\u3044\u3064:-1249,\u304C\u3068:-484,\u306E\u3060:-995,\u3059\u3054:-1286,\u306F\u3044:-737,\u3046\u3069:-1333,\u4EBA\u304C:1448,\u3044\u3082:544,\u306B\u306A:-270,"\u30FB\u30FB":-1236,\u3066\u304D:-1175,\u6642\u9593:-828,\u306E\u524D:-673,\u306E\u3082:-751,\u306F\u3042:-1272,\u3069\u3053:-929,\u3067\u306F:-1166,\u304F\u3060:-995,\u3068\u306A:111,\u308C\u305F:-801,\u306A\u304F:-804,\u305F\u6642:453,\u3089\u306A:-87,"\u3001\u306A":-216,\u3068\u304B:-910,\u306B\u3057:-414,\u3066\u304F:-749,\u3067\u306A:-1185,\u308B\u5834:78,\u306E\u304B:-354,\u3068\u3082:-533,\u3057\u305F:-580,\u3082\u306A:-186,\u3068\u3053:-385,\u3044\u3057:-588,\u30FC\u30C9:-559,\u305F\u3088:-582,\u3044\u3088:-794,\u306F\u305A:-658,\u3070\u3044:-551,\u3066\u3082:-255,\u3044\u3044:-353,\u3068\u304D:-281,\u3066\u306F:27,\u3082\u3064:-372,\u306A\u304B:-225,\u306E\u304C:-360,\u306E\uFF11:-795,\u304F\u3055:-134,\u306F\u3058:-435,\u3082\u306E:-147,"\u3001\uFF11":-856,\u30FC\u306A:657,"\u3001\u6E05":-495,\u3068\u540C:-436,\u306B\u3067:-377,"\u3001\u307E":-262,\u3057\u3044:-318,\u3044\u306A:-109,\u306E\u65B9:319,\u3084\u3059:-414,\u305F\u3082:143,\u304C\u306A:82,\u3064\u306E:388,\u307E\u305B:-121,\u3068\u3059:-220,"\uFF3D\u4EAC":-271,\u3088\u3046:-85,\u308A\u306A:136,\u3067\u3044:-139,\u3044\u4EBA:105,\u308B\u306E:-109,\u30FC\u3067:125,\u3089\u3044:-107,\u306E\u307E:-45,\u306A\u3041:-53,\u3066\u305F:-82,\u6C17\u6301:-106,\u306A\u308A:81,\u3067\u306B:32,\u308B\u3067:28,\u306E\u5F8C:-32,\u4ECA\u65E5:-40,\u3093\u3067:24,\u3082\u3046:-12,\u3068\u306F:-4},BW1:{\u4EE5\u4E0A:1273,\u306E\u307F:2658,\u308C\u305F:1590,\u307E\u307E:2847,\u305F\u307E:2261,\u3044\u3046:338,\u304B\u3089:1803,\u3088\u3046:-1764,\u308A\u304C:-1370,\u3081\u3066:1033,\u305D\u306E:-1196,\u767D\u3044:2426,\u3063\u305F:161,\u3068\u3046:1397,\u3067\u306F:-501,\u305F\u3068:-1243,\u306A\u3044:827,\u3068\u304B:1743,\u3046\u306A:512,\u308B\u306E:-1611,\u3053\u3068:-1467,\u5229\u7528:1155,\u3067\u3082:756,\u3068\u304C:-1259,\u305F\u306E:-1570,\u3053\u306E:-1058,\u3088\u308A:1131,"\u3002\u30FB":2639,\u306E\u306F:1326,\u3057\u3044:842,"\u304C\u3001":1759,\u6700\u8FD1:1593,\u304B\u3082:-1285,\u30C3\u30AF:622,\u3082\u3046:1776,\u3066\u3082:636,\u3093\u306A:369,\u305F\u3089:943,\u3093\u3067:-747,\u304C\u3068:-1484,\u3082\u306E:-1092,\u308C\u3066:-1075,\u307E\u308A:1378,\u306B\u3082:652,\u5C11\u3057:1499,\u307E\u3060:1379,\u3068\u3044:-1037,\u308A\u3068:1131,\u3068\u304D:1494,\u308B\u3068:205,\u540C\u3058:1574,\u3082\u3064:1554,\u3053\u305D:1334,\u3055\u3093:451,"\u3067\u3001":726,"\u306F\u3001":527,\u3042\u308B:205,\u3060\u3051:713,\u306A\u3089:1205,"\u305F\uFF0E":1789,"\u3066\u3001":840,\u308C\u308B:473,\u306B\u306F:421,\u6C17\u306B:-66,\u601D\u3044:-1307,\u306A\u305C:1605,\u3046\u3084:-1437,\u306E\u9593:1274,\u3063\u3066:-155,"\u3044\u3001":-292,\u3082\u3057:1057,\u3048\u3070:807,\u304D\u306A:923,\u3093\u3068:-204,\u3066\u308B:615,"\u3001\u3068":386,\u307E\u308B:-282,\u305F\u3044:222,\u3044\u3067:-902,\u30B1\u30FC:-854,\u305F\u3060:581,\u3044\u306E:-311,\u3066\u3044:-581,\u308B\u3067:373,\u3068\u3067:938,\u304F\u3066:684,\u3044\u305F:369,\u3044\u308B:181,\u307E\u3041:482,\u305D\u308C:187,\u307E\u3067:406,\u666E\u6BB5:620,\u306E\u304C:605,\u308C\u3070:544,\u306E\u5F8C:946,\u30FC\u30B8:970,\u3057\u304B:49,\u306E\u3082:609,\u306A\u306E:-54,\u308B\u4EBA:668,\u53CB\u9054:846,\u306A\u304F:169,"\uFF01\uFF01":318,"\u3068\u3001":422,\u8CB7\u3044:-799,\u5927\u5909:359,"\uFF10\u5186":324,\u4F7F\u3044:-756,"\u3001\u4ECA":407,"\u306B\u3001":573,\u3081\u308B:-345,\u73FE\u5728:575,\u305F\u3081:581,\u6C17\u304C:370,\u30AF\u30EB:478,\u3093\u3060:313,\u304D\u305F:331,\u6765\u3066:493,\u3071\u308A:435,\u3067\u304D:-74,\u3079\u304D:564,\u304F\u308C:268,\u304D\u308A:466,\u53D6\u308A:-293,"\u3002\u3042":-543,\u3066\u305F:304,\u3053\u3046:-328,\u3066\u304F:-112,\u3084\u3089:275,\u306E\u4E0A:508,\u4F7F\u3046:230,\u3044\u3082:-376,"\u304B\u3001":-238,"\u3002\uFF13":372,\u3051\u3069:166,\u308B\u306B:-305,\u3068\u3082:71,\u308A\u306B:73,\u3058\u3066:195,"\u3082\u3001":165,\u4E00\u756A:100,\u3059\u308B:-78,\u3059\u3089:209,\u3044\u306A:-106,\u3046\u3068:-114,\u306A\u3069:204,\u56FD\u4EBA:143,\u306E\u6642:215,\u5B9F\u969B:189,\u308D\u3046:-193,\u3068\u306F:-77,\u3046\u3061:96,\u3069\u3046:58,"\u30FB\u30FB":87,\u305F\u308A:74,\u3068\u306B:-57,\u306F\uFF11:180,\u3046\u306E:-32,\u3058\u3083:-89,\u30E5\u30FC:28,\u4E00\u3064:-56,\u306B\u304B:36,\u308A\u306F:-12,\u898B\u3066:-4},UW1:{\u304A:980,\u306F:-281,\u307E:70,\u3046:349,\u3054:921,\u3068:102,\u308B:-32,\u3089:110,\u306A:-311,\u4E0A:-1236,\u306B:-339,\u3067:-111,\u5B66:179,\u3044:-69,\u308A:-86,"\u3001":-28,\u30D0:452,\u5F53:-977,\u304C:-164,\u96FB:145,\u3061:389,\u6C34:1514,\u3092:-149,\u3064:85,\u643A:-52,\u3063:192,\u304B:-151,"\uFF3B":-679,\u3086:-565,\u30FC:121,\u3093:176,\u30D5:-161,\u308D:227,\u884C:-21,\u3042:-60,\u3060:182,\u7528:648,\u5916:230,"\uFF10":232,\u30B9:-301,\u7A7A:-552,\u9593:358,\u81EA:442,\u3059:163,\u3057:-7,\u30B1:-283,\u6A5F:454,\u5229:-567,\u3084:-289,\u4F55:307,\u30C4:156,\u5C0F:306,\u5165:300,\u5B89:-487,\u65B0:434,\u30C1:131,\u3053:98,\u751F:269,\u3055:-140,"\uFF13":-298,\u56F0:671,\u30A4:258,\u30C3:224,\u8FBC:96,\u5EAD:580,\u554F:615,\u7530:144,"\u3002":-28,\u3082:-33,\u4F7F:-177,\u9AD8:204,\u5238:379,\u3081:-103,\u30D1:261,\u56FD:-467,\u69D8:370,\u30E9:129,\u793E:254,"\uFF01":110,\u632F:349,\u8A00:-136,\u7740:-48,\u30DA:353,\u307F:-44,"\uFF0E":-49,\u601D:107,\u898B:83,\u6B32:212,\u5C45:173,\u30E1:94,"\uFF1F":79,\u3056:158,\u64AE:-208,\u5927:33,\u9023:-100,\u9577:115,\u3087:-53,\u500B:-127,\u5468:40,\u9032:93,\u5C71:61,\u30B5:32,\u30DC:32,\u65B9:20,\u30F3:12,\u8CB7:-8,\u306D:-4},BW3:{\u3082\u306E:3658,\u3042\u308A:1182,\u307E\u3059:-1304,\u3044\u305F:591,\u3044\u3046:798,\u305D\u306E:2051,\u3044\u3044:1225,\u305F\u307E:1149,\u306E\u307F:2809,\u3067\u3082:1705,\u3042\u308B:-359,\u3088\u3046:-159,\u6301\u3063:1377,\u3068\u304D:1908,\u3068\u304A:1041,\u3068\u3044:-1177,\u306A\u3063:-544,\u306A\u308B:406,\u3053\u308D:-364,\u3068\u3046:-430,\u304B\u3051:2917,\u3053\u3068:975,\u624B\u306B:1163,\u4EE5\u4E0A:-1970,\u3053\u306E:1601,\u3057\u3066:352,\u3067\u304D:652,\u306F\u3057:3071,\u3068\u3066:2260,\u304B\u3089:-1074,\u30E1\u30FC:296,\u305D\u3046:-790,\u3082\u3089:2683,\u3061\u3087:2013,\u304B\u304B:1802,\u305F\u3081:910,\u3057\u307E:-186,\u3082\u3046:2313,"\u30FB\u30FB":-1608,\u3057\u305F:991,\u3081\u3066:-2007,\u3088\u308A:-1514,\u3068\u3082:1059,\u3044\u308D:772,\u3082\u3093:1116,\u3069\u3046:784,\u3059\u3054:1168,\u304A\u308A:-1312,\u307E\u3041:1409,\u305F\u3060:1447,\u304D\u3063:651,\u3060\u3051:-1043,\u6765\u305F:310,\u96FB\u8ECA:190,\u306F\u307E:1022,\u304D\u307E:-890,\u3057\u3083:1379,\u3057\u3044:-571,\u3068\u3063:989,\u307E\u3057:-902,\u3088\u304F:815,\u3055\u3093:-1344,\u304B\u3063:-920,\u3053\u308C:999,\u5834\u5408:69,\u3046\u307E:557,\u3081\u308B:-1596,\u3044\u3066:-473,\u306A\u3044:260,\u3059\u3050:1151,\u3067\u3059:-540,\u3084\u3063:464,\u3082\u3068:1360,"\u3059\u3002":-277,\u3044\u304B:537,\u4E2D\u3067:435,\u308F\u3051:-32,\u308F\u304B:697,\u3044\u308B:617,\u306A\u304B:151,\u8003\u3048:545,\u3068\u3053:787,\u3044\u3084:897,\u307E\u305F:-494,\u3053\u305D:-806,\u3082\u3063:729,\u307F\u305F:-758,\u3069\u3053:758,\u307E\u3060:374,\u304A\u8336:782,\u3042\u3063:-84,\u30D1\u30BD:446,\u304B\u3082:-516,\u304B\u3064:730,\u306A\u304F:184,\u3068\u308A:708,\u3046\u3061:225,\u307E\u3063:-266,\u3081\u3063:368,\u3044\u3089:687,\u307E\u305A:464,\u51FA\u6765:-456,\u307E\u305B:-464,\u3060\u3044:421,\u306A\u3089:-162,\u306F\u3044:351,\u3082\u3064:607,\u3053\u3053:647,\u307B\u3057:-356,\u305F\u3044:-308,\u3064\u3044:283,\u3064\u3051:354,\u3069\u306E:556,\u307E\u3067:-558,\u6599\u7406:67,\u4F7F\u3063:250,\u884C\u304D:-274,\u65E5\u672C:213,\u51FA\u3066:149,\u796D\u308A:361,\u30EB\u30FC:408,\u697D\u3057:197,\u3055\u3044:-317,\u3060\u308D:-548,\u9006\u306B:379,\u3064\u306A:305,\u3068\u3042:326,\u304A\u5E97:197,\u30A4\u30F3:186,\u66F8\u3044:164,\u307C\u304F:281,\u3093\u306F:289,\u4EBA\u306F:79,\u306A\u3069:-138,"\u3067\u3001":96,\u307E\u308A:-225,\u307F\u304C:-123,\u306F\u305A:44,\u7A0B\u5EA6:-73,\u305A\u3063:44,\u3057\u304F:-24,\u8FBC\u3093:-3},TW4:{\u3068\u3053\u308D:2298,\u304F\u3089\u3044:1840,\u3088\u3046\u306A:-2720,"\u3057\u305F\u3002":-1639,\u3067\u304D\u305F:2328,\u3042\u308A\u307E:-1854,\u3053\u3068\u304C:-955,\u304B\u306A\u308A:2910,"\u307E\u3059\u3002":-1449,\u3088\u3046\u306B:-1522,\u305D\u3046\u3067:-1026,"\u3044\u305F\u3002":1051,\u3060\u304B\u3089:995,\u3053\u3068\u306B:-907,\u3057\u304B\u3057:1612,\u3046\u3069\u3093:1004,\u30E1\u30FC\u30EB:369,\u3082\u3061\u308D:1602,\u3060\u3063\u305F:-1494,\u3060\u3063\u3066:523,\u3053\u3068\u3082:-539,\u3044\u308D\u3044:697,\u3088\u3046\u3067:-1413,\u3044\u304B\u306A:786,"\u3042\u308A\u3001":-558,"\u3067\u3082\u3001":675,\u3061\u306A\u307F:1556,"\u3053\u3068\u3002":678,\u3053\u3068\u3067:263,"\u306A\u3044\u3002":112,\u306A\u304B\u306A:855,\u30BD\u30D5\u30C8:704,\u3059\u308B\u3068:339,\u308F\u3051\u3067:-339,\u3044\u3048\u3070:647,\u306A\u304F\u306A:274,\u306A\u3093\u3066:-265,\u3057\u306A\u3044:519,\u307E\u3063\u3066:-644,\u306A\u3093\u3068:485,\u3053\u3068\u3092:228,\u3057\u3066\u304D:324,\u3057\u304B\u3082:790,\u3089\u3057\u3044:546,\u3042\u305F\u308A:-494,\u3059\u3054\u3044:197,\u3053\u3068\u306F:-199,\u3044\u304F\u3089:180,\u306A\u3093\u304B:98,\u3067\u304D\u307E:80,\u3061\u3087\u3063:190,"\u306E\u306F\u3001":150,\u3044\u3044\u3068:-70,\u305D\u3046\u3044:136,\u3057\u3066\u3082:-90,\u89B3\u5149\u5BA2:-70,\u304A\u3044\u3057:74,\u3044\u3063\u3071:98,"\u3044\u308B\u3002":52,\u3044\u307E\u3059:-20},TW3:{\u3082\u306A\u304F:-1963,\u3068\u3044\u3046:835,\u3068\u3053\u308D:-1715,\u3068\u3057\u3066:677,\u3066\u3044\u308B:-1633,\u306E\u307E\u307E:-1388,"\u3001\u3042\u308B":-2880,\u306F\u306A\u3044:-522,\u3059\u3053\u3068:762,\u3066\u3057\u307E:-1446,\u3089\u306A\u3044:-1178,\u3068\u3057\u305F:-1303,\u3068\u8A00\u3063:-1139,\u3066\u3044\u3046:588,\u306F\u305D\u308C:-915,\u3067\u3042\u308B:-808,\u306B\u306A\u3063:-35,"\u3001\u306A\u3093":-182,\u305F\u3053\u3068:-95,\u3067\u3042\u3063:-926,\u3068\u306A\u3063:309,\u3082\u3042\u308A:-283,\u3044\u3068\u3053:100,\u3070\u3044\u3044:-261,\u3082\u3044\u3044:-455,\u3067\u3042\u308A:-715,\u306A\u3093\u3067:470,\u3046\u3044\u3046:-319,\u308B\u3068\u304D:259,\u3066\u3044\u305F:-117,\u306B\u3057\u3066:-41,\u3067\u3057\u305F:-136},TW1:{\u3068\u3044\u3046:710,\u3088\u3046\u306A:1395,\u306E\u307E\u307E:1430,\u3057\u304B\u3057:2233,"\u30FB\u30FB\u30FB":1265,\u6301\u3063\u3066:-1918,\u306A\u304C\u3089:1900,\u304B\u306A\u308A:2064,"\u3002\u3053\u306E":-230,\u3084\u306F\u308A:2088,\u601D\u3063\u305F:877,\u3082\u306A\u304F:783,\u3092\u5229\u7528:-1416,\u306A\u3093\u3068:-712,\u305D\u3057\u3066:819,"\u3001\u305D\u308C":328,\u3067\u3042\u308B:375,"\u306A\u3044\u3001":-985,\u305D\u308C\u306F:-305,\u307E\u3057\u305F:-327,\u304B\u306A\u304B:703,\u3066\u3044\u308B:29,\u3063\u304B\u308A:775,\u304F\u3055\u3093:545,\u3061\u308D\u3093:463,\u3072\u3068\u3064:586,\u306F\u305D\u306E:-121,"\u3002\u305F\u3060":628,\u3059\u3054\u304F:328,\u30EA\u30FC\u30B0:349,\u3068\u3053\u308D:320,\u308D\u3044\u308D:327,\u308B\u3053\u3068:-347,\u3087\u3046\u3069:291,\u3066\u3044\u3066:133,\u304F\u3089\u3044:83,\u306A\u3063\u3066:-66,"\uFF10\uFF10\u5186":58,\u601D\u3063\u3066:-131,\u3068\u3057\u3066:28,\u8CB7\u3063\u3066:-32},TW2:{\u6C17\u306B\u5165:-4314,\u3068\u304C\u3042:-1364,\u3067\u306F\u306A:-1140,\u3093\u3067\u3044:-2225,\u3046\u306B\u306A:-921,\u304B\u3082\u3057:-382,\u305D\u3082\u305D:-1415,\u3057\u3066\u3044:-533,\u3057\u304B\u306A:526,\u3067\u3082\u3042:-1125,\u3068\u3082\u3042:-986,\u3063\u305F\u3053:-226,\u304B\u3089\u306A:-580,\u3048\u308B\u3053:-465,\u3057\u3066\u304A:-184,\u3067\u3082\u306A:-388,\u3063\u3066\u3044:45,\u3068\u306F\u3044:-16,\u3063\u3066\u3053:-20,\u306A\u3044\u3068:-32,\u3048\u3066\u3044:4}};
 
         class BudouXParser {
             constructor(model) {
@@ -2219,44 +1491,34 @@
                 }
             }
 
-            // 2. 終止文末表現（10〜40文字の範囲で文が完結している場合、複合終助詞「よね」「ですね」等も包含）
-            const endingRegex = /(です|ます|でした|ました|思います|思っています|感謝します|感謝いたします|証します|祈ります|お祈りします|信じます|ください|つもります|でしょう|ましょう|アーメン)(よね|ね|よ|か|わ|な|ぞ|。|！|？|s|$)/g;
+            // 2. 終止文末表現（10〜60文字の範囲で完結している文末表現を最優先で分割）
+            const endingRegex = /(です|ます|でした|ました|思います|思っています|感謝します|感謝いたします|証します|祈ります|お祈りします|信じます|ください|つもります|でしょう|ましょう|アーメン)(よね|ね|よ|か|わ|な|ぞ|。|！|？|\s|$)/g;
             let endMatch;
             while ((endMatch = endingRegex.exec(text)) !== null) {
                 const pos = endMatch.index + endMatch[0].length;
-                if (pos >= 10 && pos <= 40) {
+                if (pos >= 10 && pos <= 60) {
                     return pos;
                 }
             }
 
-            // 3. 22文字以上蓄積時の読点・接続助詞（文節境界に基づく分割）
+            // 3. 22文字以上蓄積時の読点・接続助詞
             if (text.length >= 22) {
-                const clauseRegex = /(、|ので|ですが|けれども|けれど|そして|また|だから|ために|について|において|の中で)/g;
+                const clauseRegex = /(、|ので|ですが|けれども|けれど|そして|また|だから|ために|に関して言えば|について言えば|に関して|について|において|の中で)/g;
                 let clauseMatch;
                 while ((clauseMatch = clauseRegex.exec(text)) !== null) {
                     const pos = clauseMatch.index + clauseMatch[0].length;
-                    if (pos >= 15 && pos <= 42) {
+                    if (pos >= 15 && pos <= 45) {
                         return pos;
                     }
                 }
             }
 
-            // 4. 長文時の終止表現（40文字以降にあっても末尾なら分割）
-            const endingRegexLong = /(です|ます|でした|ました|思います|思っています|感謝します|感謝いたします|証します|祈ります|お祈りします|信じます|ください|つもります|でしょう|ましょう|アーメン)(よね|ね|よ|か|わ|な|ぞ|。|！|？|s|$)/g;
-            let endMatchLong;
-            while ((endMatchLong = endingRegexLong.exec(text)) !== null) {
-                const pos = endMatchLong.index + endMatchLong[0].length;
-                if (pos >= 10 && pos <= 55) {
-                    return pos;
-                }
-            }
-
-            // 5. 35文字以上の長文時: BudouX 文節境界（自立語の前・助詞助動詞の後）に基づく分割（固定文字数スライス廃止）
-            if (text.length >= 35) {
+            // 4. 40文字以上の長文時: BudouX 文節境界（自立語の前・助詞助動詞の後）に基づく分割（固定文字数スライス廃止）
+            if (text.length >= 40) {
                 const boundaries = budouxParser.parseBoundaries(text);
                 let bestBoundary = -1;
                 for (const b of boundaries) {
-                    if (b >= 20 && b <= 40) {
+                    if (b >= 22 && b <= 45) {
                         bestBoundary = b;
                     }
                 }
@@ -2264,7 +1526,7 @@
                     return bestBoundary;
                 }
                 for (const b of boundaries) {
-                    if (b <= 45) {
+                    if (b <= 50) {
                         bestBoundary = b;
                     }
                 }
@@ -2299,26 +1561,49 @@
             return chunks;
         }
 
-        function stripCommittedPrefix(fullText, committedText) {
-            if (!committedText || !fullText) return fullText;
-            const normFull = fullText.replace(/[\s\u3000]+/g, '').toLowerCase();
-            const normCommitted = committedText.replace(/[\s\u3000]+/g, '').toLowerCase();
+        function stripCommittedChunks(fullText, committedChunks) {
+            if (!committedChunks || committedChunks.length === 0 || !fullText) return fullText;
 
-            if (normFull.startsWith(normCommitted)) {
-                let normIdx = 0;
+            const normFull = fullText.replace(/[\s\u3000、。！？]+/g, '').toLowerCase();
+
+            // 1. 直近にコミットされた文節（chunk）から逆順にアンカー検索
+            for (let i = committedChunks.length - 1; i >= 0; i--) {
+                const chunk = committedChunks[i];
+                const normChunk = chunk.replace(/[\s\u3000、。！？]+/g, '').toLowerCase();
+                if (!normChunk || normChunk.length < 3) continue;
+
+                const anchorIdx = normFull.indexOf(normChunk);
+                if (anchorIdx !== -1) {
+                    const endNormIdx = anchorIdx + normChunk.length;
+                    let normCount = 0;
+                    let rawIdx = 0;
+                    while (rawIdx < fullText.length && normCount < endNormIdx) {
+                        if (!/[\s\u3000、。！？]/.test(fullText[rawIdx])) {
+                            normCount++;
+                        }
+                        rawIdx++;
+                    }
+                    return fullText.substring(rawIdx).trim();
+                }
+            }
+
+            // 2. フォールバック: 表記揺れ（再デコード）等でアンカーが直接一致しない場合、コミット済み正規化文字数で近似位置を算出
+            let totalCommittedNormLen = committedChunks.reduce((acc, c) => acc + c.replace(/[\s\u3000、。！？]+/g, '').length, 0);
+            if (totalCommittedNormLen > 0 && totalCommittedNormLen < normFull.length) {
+                let normCount = 0;
                 let rawIdx = 0;
-                while (rawIdx < fullText.length && normIdx < normCommitted.length) {
-                    if (!/[\s\u3000]/.test(fullText[rawIdx])) {
-                        normIdx++;
+                while (rawIdx < fullText.length && normCount < totalCommittedNormLen) {
+                    if (!/[\s\u3000、。！？]/.test(fullText[rawIdx])) {
+                        normCount++;
                     }
                     rawIdx++;
                 }
                 return fullText.substring(rawIdx).trim();
-            } else if (fullText.startsWith(committedText)) {
-                return fullText.substring(committedText.length).trim();
             }
+
             return fullText;
         }
+
 
         // ==================== 接続者数カウンターの更新 ====================
         function updateViewerCount() {
@@ -2365,17 +1650,6 @@
 
             peer.on('error', function(err) {
                 console.error('PeerJS Host Error:', err);
-
-                // ホスト側のネットワーク警告をUI表示
-                if (speechStatus) {
-                    const origHTML = speechStatus.innerHTML;
-                    speechStatus.innerHTML = '<span class="w-2 h-2 mr-1.5 rounded-full bg-red-400 animate-pulse"></span> ⚠️ P2P接続エラー';
-                    speechStatus.className = 'inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-700';
-                    setTimeout(() => {
-                        speechStatus.innerHTML = origHTML;
-                        speechStatus.className = 'inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-600';
-                    }, 10000);
-                }
 
                 if (err.type === 'unavailable-id') {
                     console.warn('Saved Peer ID is unavailable. Generating a new one...');
@@ -2435,25 +1709,7 @@
             const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
             
             if (!SpeechRecognition) {
-                interimText.textContent = 'お使いのブラウザはWeb Speech APIに対応していません。';
-                // ブラウザ非対応時の目立つ警告パネルを表示
-                const warningHtml = `
-                    <div class="bg-red-100 text-red-800 p-4 rounded-xl border-2 border-red-300 shadow-md mb-4 flex items-start gap-3">
-                        <i class="fa-solid fa-circle-exclamation text-2xl text-red-500 shrink-0 mt-0.5"></i>
-                        <div>
-                            <p class="font-bold text-sm mb-1">⚠️ ブラウザ非対応</p>
-                            <p class="text-xs leading-relaxed">お使いのブラウザは音声認識（Web Speech API）に対応していません。<br>
-                            <strong>Google Chrome</strong> または <strong>Microsoft Edge</strong> でこのページを開いてください。</p>
-                        </div>
-                    </div>`;
-                if (interimText && interimText.parentNode) {
-                    interimText.parentNode.insertAdjacentHTML('beforebegin', warningHtml);
-                }
-                // 開始ボタンを無効化
-                if (toggleRecognitionBtn) {
-                    toggleRecognitionBtn.disabled = true;
-                    toggleRecognitionBtn.classList.add('opacity-50', 'cursor-not-allowed');
-                }
+                interimText.textContent = 'お使いのブラウザはWeb Speech APIに対応していません。Google ChromeまたはMicrosoft Edgeをご利用ください。';
                 return;
             }
 
@@ -2462,13 +1718,13 @@
             recognition.interimResults = true;
             recognition.lang = 'ja-JP';
 
-            // 直近の送信履歴（De-duplication用: { id, text, norm, timestamp }）
+                        // 直近の送信履歴（De-duplication用: { id, text, norm, timestamp }）
             // 音声認識の自動再起動（onstart）でクリアされないようセッション内で維持
             const recentSentHistory = [];
             let captionSequenceId = 0;
 
             function normalizeCaption(str) {
-                return (str || '').replace(/[\s\u3000]+/g, '').toLowerCase();
+                return (str || '').replace(/[\s\u3000、。！？]+/g, '').toLowerCase();
             }
 
             // 重複排除（De-duplication）付き配信・記録ディスパッチャー
@@ -2490,7 +1746,7 @@
                     const item = recentSentHistory[i];
                     const timeDiff = now - item.timestamp;
 
-                    // 1. 完全一致または空白無視の正規化一致
+                    // 1. 完全一致または空白・記号無視の正規化一致
                     if (item.text === cleanText || item.norm === normClean) {
                         return;
                     }
@@ -2543,8 +1799,8 @@
                 }
             }
 
-            // 未確定音声（interim）から先行コミット済みのテキストバッファ
-            let committedInterimText = '';
+            // 未確定音声（interim）から先行コミット済みの文節バッファ配列
+            const committedChunks = [];
 
             function safeStartRecognition() {
                 if (!isRecognizing) return;
@@ -2562,12 +1818,12 @@
 
             recognition.onstart = function() {
                 isRecognizing = true;
-                committedInterimText = '';
+                committedChunks.length = 0;
                 updateSpeechUI(true);
             };
 
             recognition.onend = function() {
-                committedInterimText = '';
+                committedChunks.length = 0;
                 if (isRecognizing) {
                     if (recognitionRestartTimer) clearTimeout(recognitionRestartTimer);
                     recognitionRestartTimer = setTimeout(() => {
@@ -2607,15 +1863,15 @@
                     const trimmedFinal = finalTranscript.trim();
                     if (trimmedFinal) {
                         const correctedFinal = fixScriptureReferences(replaceChurchTerms(trimmedFinal));
-                        // 先行コミット済みプレフィックスを除去した未確定確定差分のみを抽出
-                        const uncommittedFinal = stripCommittedPrefix(correctedFinal, committedInterimText);
+                        // 先行コミット済み文節をファジー・アンカー判定で除外した確定差分のみを抽出
+                        const uncommittedFinal = stripCommittedChunks(correctedFinal, committedChunks);
                         if (uncommittedFinal) {
                             const chunks = splitIntoSmartChunks(uncommittedFinal);
                             chunks.forEach(chunk => dispatchCaption(chunk));
                         }
                     }
                     // 確定イベント完了で未確定バッファと先行コミットステートを確実にクリア
-                    committedInterimText = '';
+                    committedChunks.length = 0;
                     interimText.textContent = '（次の音声入力を待機中...）';
                 }
 
@@ -2623,7 +1879,7 @@
                 if (interimTranscript) {
                     const correctedInterim = fixScriptureReferences(replaceChurchTerms(interimTranscript.trim()));
                     if (correctedInterim) {
-                        let unhandledInterim = stripCommittedPrefix(correctedInterim, committedInterimText);
+                        let unhandledInterim = stripCommittedChunks(correctedInterim, committedChunks);
 
                         // 未確定テキストが長くなり、文節区切りが検知されたらリアルタイムに先行確定コミット
                         let splitIdx = findSmartSplitIndex(unhandledInterim);
@@ -2631,9 +1887,9 @@
                             const chunk = unhandledInterim.substring(0, splitIdx).trim();
                             if (chunk) {
                                 dispatchCaption(chunk);
-                                committedInterimText += (committedInterimText ? ' ' : '') + chunk;
+                                committedChunks.push(chunk);
                             }
-                            unhandledInterim = stripCommittedPrefix(correctedInterim, committedInterimText);
+                            unhandledInterim = stripCommittedChunks(correctedInterim, committedChunks);
                             splitIdx = findSmartSplitIndex(unhandledInterim);
                         }
 
@@ -2643,7 +1899,7 @@
             };
 
             toggleRecognitionBtn.onclick = function() {
-                committedInterimText = '';
+                committedChunks.length = 0;
                 if (isRecognizing) {
                     isRecognizing = false;
                     recentSentHistory.length = 0;
@@ -2660,7 +1916,7 @@
                 hostTranscriptLog.innerHTML = '<p class="text-xs text-slate-400 text-center italic my-auto">ログをクリアしました</p>';
                 transcriptHistory.length = 0;
                 recentSentHistory.length = 0;
-                committedInterimText = '';
+                committedChunks.length = 0;
             };
         }
 
@@ -2682,17 +1938,6 @@
 
         // ログへの追加（ワンタップ辞書登録ボタン「➕ 辞書登録」付き）
         function appendHostTranscript(text) {
-            const cleanText = text.trim();
-            if (!cleanText) return;
-
-            // 直前のログと同一内容の場合は二重追加を防ぐ（正規化判定含む）
-            if (transcriptHistory.length > 0) {
-                const lastEntry = transcriptHistory[transcriptHistory.length - 1];
-                if (lastEntry.text === cleanText || lastEntry.text.replace(/[\s\u3000]+/g, '') === cleanText.replace(/[\s\u3000]+/g, '')) {
-                    return;
-                }
-            }
-
             const emptyMsg = hostTranscriptLog.querySelector('p');
             if (emptyMsg && emptyMsg.classList.contains('italic')) {
                 hostTranscriptLog.innerHTML = '';
@@ -2703,13 +1948,13 @@
 
             transcriptHistory.push({
                 time: timeStr,
-                text: cleanText,
+                text: text,
                 paused: wasPaused
             });
 
             const item = document.createElement('div');
 
-            const safeText = escapeHtml(cleanText);
+            const safeText = escapeHtml(text);
 
             if (wasPaused) {
                 item.className = 'bg-slate-200/70 p-3 rounded-lg border border-slate-300 shadow-sm opacity-70';
@@ -2752,13 +1997,6 @@
 
             peer.on('error', function(err) {
                 console.error('Viewer Peer Error:', err);
-                // ビューアー側のネットワーク警告をUI表示
-                if (peerConnectionStatus) {
-                    peerConnectionStatus.className = 'w-2 h-2 rounded-full bg-red-400 animate-pulse';
-                }
-                if (peerStatusText) {
-                    peerStatusText.textContent = '⚠️ 接続エラー - 自動再接続を試行します...';
-                }
                 scheduleViewerReconnect();
             });
 
@@ -2836,12 +2074,6 @@
             const TRANSLATE_TIMEOUT_MS = 5000;
             let rawTranslation = text;
 
-            // 翻訳キャッシュの確認（同一テキスト+言語の再翻訳を回避）
-            const cacheKey = `${targetLang}:${text.trim()}`;
-            if (translationCache.has(cacheKey)) {
-                return translationCache.get(cacheKey);
-            }
-
             try {
                 const controller1 = new AbortController();
                 const timer1 = setTimeout(() => controller1.abort(), TRANSLATE_TIMEOUT_MS);
@@ -2853,9 +2085,7 @@
                 const data = await res.json();
                 if (data && data.responseData && data.responseData.translatedText) {
                     rawTranslation = data.responseData.translatedText;
-                    const result = applyTargetGlossary(rawTranslation, targetLang);
-                    translationCache.set(cacheKey, result);
-                    return result;
+                    return applyTargetGlossary(rawTranslation, targetLang);
                 }
             } catch (err) {
                 if (err.name === 'AbortError') {
@@ -2865,7 +2095,6 @@
                 }
             }
 
-            // フォールバック: Google Translate Proxy (gtx)
             try {
                 const controller2 = new AbortController();
                 const timer2 = setTimeout(() => controller2.abort(), TRANSLATE_TIMEOUT_MS);
@@ -2877,9 +2106,7 @@
                 const data = await res.json();
                 if (data && data[0]) {
                     rawTranslation = data[0].map(item => item[0]).join('');
-                    const result = applyTargetGlossary(rawTranslation, targetLang);
-                    translationCache.set(cacheKey, result);
-                    return result;
+                    return applyTargetGlossary(rawTranslation, targetLang);
                 }
             } catch (err) {
                 if (err.name === 'AbortError') {
@@ -2887,22 +2114,9 @@
                 } else {
                     console.error('All translation attempts failed:', err);
                 }
-                // 翻訳完全失敗時のUI通知（聴講者に翻訳失敗を警告）
-                if (peerStatusText) {
-                    const originalStatusText = peerStatusText.textContent;
-                    peerStatusText.textContent = '⚠️ 翻訳サービス一時不調 - 原文表示中';
-                    peerStatusText.style.color = '#fbbf24';
-                    setTimeout(() => {
-                        peerStatusText.textContent = originalStatusText;
-                        peerStatusText.style.color = '';
-                    }, 8000);
-                }
             }
 
-            const fallbackResult = applyTargetGlossary(rawTranslation, targetLang);
-            // 失敗時もキャッシュして同じテキストで連続リトライしないようにする
-            translationCache.set(cacheKey, fallbackResult);
-            return fallbackResult;
+            return applyTargetGlossary(rawTranslation, targetLang);
         }
 
         function applyTargetGlossary(text, lang) {
@@ -2921,46 +2135,20 @@
 
         // ==================== Viewer 字幕表示 ====================
         function appendViewerCaption(translatedText, originalText, timestamp) {
-            const placeholder = document.getElementById('captionPlaceholder');
-            if (placeholder) {
-                placeholder.remove();
-            } else {
-                const emptyMsg = viewerCaptionFeed.querySelector('.italic');
-                if (emptyMsg && emptyMsg.parentNode === viewerCaptionFeed) {
-                    emptyMsg.remove();
-                }
-            }
-
-            viewerCardSequence++;
-
-            const totalCardsCount = document.getElementById('totalCardsCount');
-            if (totalCardsCount) {
-                totalCardsCount.textContent = viewerCardSequence;
-            }
-
-            // DOM蓄積対策: 最大100件を超えた場合、最も古いカードを削除
-            const MAX_CAPTION_CARDS = 100;
-            const existingCards = viewerCaptionFeed.querySelectorAll('.caption-card');
-            if (existingCards.length >= MAX_CAPTION_CARDS) {
-                existingCards[0].remove();
+            const emptyMsg = viewerCaptionFeed.querySelector('.italic');
+            if (emptyMsg) {
+                viewerCaptionFeed.innerHTML = '';
             }
 
             const currentSizeClass = fontClasses[currentFontSizeIndex];
             const item = document.createElement('div');
-            item.className = 'caption-card bg-slate-800/80 p-4 rounded-xl border border-slate-700/60 shadow-md backdrop-blur-sm transition-all';
-
-            // 言語切替時の一括再翻訳用に原文テキストとタイムスタンプをdata属性に保存
-            item.setAttribute('data-original', originalText || '');
-            item.setAttribute('data-timestamp', timestamp || '');
+            item.className = 'bg-slate-800/80 p-4 rounded-xl border border-slate-700/60 shadow-md backdrop-blur-sm transition-all';
             
             const isJapaneseMode = targetLangSelect.value === 'ja';
 
             item.innerHTML = `
                 <div class="flex justify-between items-center text-[10px] text-slate-400 mb-1.5 border-b border-slate-700/40 pb-1">
-                    <div class="flex items-center space-x-2">
-                        <span class="px-1.5 py-0.5 rounded bg-indigo-900/90 text-indigo-200 font-mono font-bold text-[10px] border border-indigo-500/30">#${viewerCardSequence}</span>
-                        <span><i class="fa-solid fa-globe mr-1 text-indigo-400"></i> ${escapeHtml(targetLangSelect.options[targetLangSelect.selectedIndex].text)}</span>
-                    </div>
+                    <span><i class="fa-solid fa-globe mr-1 text-indigo-400"></i> ${escapeHtml(targetLangSelect.options[targetLangSelect.selectedIndex].text)}</span>
                     <span>${timestamp || ''}</span>
                 </div>
                 <div class="${currentSizeClass} font-semibold text-white leading-relaxed">
@@ -2970,21 +2158,7 @@
             `;
 
             viewerCaptionFeed.appendChild(item);
-
-            if (isAutoScrollEnabled && !isUserScrolledUp) {
-                viewerCaptionFeed.scrollTop = viewerCaptionFeed.scrollHeight;
-            } else if (isUserScrolledUp) {
-                // スマートオートスクロール: ユーザーが過去ログを閲覧中なら新着通知を表示
-                const latestCardBtn = document.getElementById('latestCardBtn');
-                const latestCardBtnText = document.getElementById('latestCardBtnText');
-                if (latestCardBtn) {
-                    latestCardBtn.style.display = 'flex';
-                    if (latestCardBtnText) latestCardBtnText.textContent = '🆕 新着字幕あり ⬇';
-                    // バンプアニメーション
-                    latestCardBtn.style.transform = 'scale(1.15)';
-                    setTimeout(() => { latestCardBtn.style.transform = 'scale(1)'; }, 300);
-                }
-            }
+            viewerCaptionFeed.scrollTop = viewerCaptionFeed.scrollHeight;
         }
 
         function setupFontSizeButton() {
