@@ -1478,10 +1478,10 @@
         const budouxParser = new BudouXParser(BUDOUX_JA_MODEL);
 
         // ==================== BudouX 文節境界連動スマート分割ロジック ====================
-        function findSmartSplitIndex(text) {
+        function findSmartSplitIndex(text, isFinal = false) {
             if (!text || text.length < 10) return -1;
 
-            // 1. 文末記号（。！？\n）
+            // 1. 明示的な文末記号（。！？\n）
             const punctRegex = /[。！？\n]/g;
             let match;
             while ((match = punctRegex.exec(text)) !== null) {
@@ -1491,13 +1491,18 @@
                 }
             }
 
-            // 2. 終止文末表現（10〜60文字の範囲で完結している文末表現を最優先で分割）
-            const endingRegex = /(です|ます|でした|ました|思います|思っています|感謝します|感謝いたします|証します|祈ります|お祈りします|信じます|ください|つもります|でしょう|ましょう|アーメン)(よね|ね|よ|か|わ|な|ぞ|。|！|？|\s|$)/g;
+            // 2. 終止文末表現（isFinal確定時のみ $ 文字列末尾での切断を許可。未確定時は後続の音声や空白が続いた場合のみ切断）
+            const endingPattern = isFinal
+                ? /(です|ます|でした|ました|思います|思っています|感謝します|感謝いたします|証します|祈ります|お祈りします|信じます|ください|つもります|でしょう|ましょう|アーメン)(よね|ね|よ|か|わ|な|ぞ|。|！|？|[\s\u3000]+|$)/g
+                : /(です|ます|でした|ました|思います|思っています|感謝します|感謝いたします|証します|祈ります|お祈りします|信じます|ください|つもります|でしょう|ましょう|アーメン)(よね|ね|よ|か|わ|な|ぞ|。|！|？|[\s\u3000]+)/g;
+
             let endMatch;
-            while ((endMatch = endingRegex.exec(text)) !== null) {
+            while ((endMatch = endingPattern.exec(text)) !== null) {
                 const pos = endMatch.index + endMatch[0].length;
                 if (pos >= 10 && pos <= 60) {
-                    return pos;
+                    if (isFinal || pos <= text.length - 4 || /[。！？\s\u3000]/.test(text[pos - 1])) {
+                        return pos;
+                    }
                 }
             }
 
@@ -1508,18 +1513,22 @@
                 while ((clauseMatch = clauseRegex.exec(text)) !== null) {
                     const pos = clauseMatch.index + clauseMatch[0].length;
                     if (pos >= 15 && pos <= 45) {
-                        return pos;
+                        if (isFinal || pos <= text.length - 4) {
+                            return pos;
+                        }
                     }
                 }
             }
 
-            // 4. 40文字以上の長文時: BudouX 文節境界（自立語の前・助詞助動詞の後）に基づく分割（固定文字数スライス廃止）
+            // 4. 40文字以上の長文時: BudouX 文節境界（自立語の前・助詞助動詞の後）に基づく分割
             if (text.length >= 40) {
                 const boundaries = budouxParser.parseBoundaries(text);
                 let bestBoundary = -1;
                 for (const b of boundaries) {
                     if (b >= 22 && b <= 45) {
-                        bestBoundary = b;
+                        if (isFinal || b <= text.length - 4) {
+                            bestBoundary = b;
+                        }
                     }
                 }
                 if (bestBoundary !== -1) {
@@ -1527,7 +1536,9 @@
                 }
                 for (const b of boundaries) {
                     if (b <= 50) {
-                        bestBoundary = b;
+                        if (isFinal || b <= text.length - 4) {
+                            bestBoundary = b;
+                        }
                     }
                 }
                 if (bestBoundary !== -1) {
@@ -1544,7 +1555,7 @@
             const chunks = [];
 
             while (remaining.length > 0) {
-                const splitIdx = findSmartSplitIndex(remaining);
+                const splitIdx = findSmartSplitIndex(remaining, true);
                 if (splitIdx > 0 && splitIdx < remaining.length) {
                     const chunk = remaining.substring(0, splitIdx).trim();
                     if (chunk) {
