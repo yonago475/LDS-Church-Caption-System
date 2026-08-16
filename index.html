@@ -1119,6 +1119,8 @@
                 restoreViewerLanguage();
                 setupViewerNavButtons();
                 setupWakeLock();
+                checkInAppBrowser();
+                setupVisibilityReconnect(roomId);
                 initPeerViewer(roomId);
             } else {
                 isHost = true;
@@ -1137,6 +1139,34 @@
                 initAudioDeviceSelector();
                 initSpeechRecognition();
             }
+        }
+
+        // アプリ内ブラウザ（LINE/Instagram/FB等）の検知とSafari推奨案内
+        function checkInAppBrowser() {
+            const ua = navigator.userAgent || navigator.vendor || window.opera;
+            const isInApp = /Line|FBAN|FBAV|Instagram|Twitter|MicroMessenger/i.test(ua);
+            if (isInApp && !document.getElementById('inAppBrowserNotice')) {
+                const banner = document.createElement('div');
+                banner.id = 'inAppBrowserNotice';
+                banner.className = 'bg-amber-500 text-slate-950 px-3 py-2 text-xs font-bold text-center flex items-center justify-center gap-1.5 shadow-md sticky top-0 z-50';
+                banner.innerHTML = '<i class="fa-solid fa-compass"></i> 安定した字幕受信のため、右下の［…］または共有メニューから「Safariで開く」を選択してください';
+                document.body.insertBefore(banner, document.body.firstChild);
+            }
+        }
+
+        // iOS Safari バックグラウンド復帰時の自動再接続
+        function setupVisibilityReconnect(roomId) {
+            document.addEventListener('visibilitychange', () => {
+                if (document.visibilityState === 'visible' && !isHost && currentRoomId) {
+                    if (!hostConnection || !hostConnection.open || (peer && peer.disconnected)) {
+                        console.log('iOS Safari 復帰検知: WebRTC 接続を確認・再接続中...');
+                        if (peer && peer.disconnected) {
+                            peer.reconnect();
+                        }
+                        connectToHost(currentRoomId);
+                    }
+                }
+            });
         }
 
         // ==================== 言語選択の localStorage 記憶 & UI多言語切替 ====================
@@ -2129,14 +2159,29 @@
             }
         }
 
+        // ==================== 高信頼 WebRTC STUN サーバー設定（完全無料・NAT超え強化） ====================
+        const PEER_CONFIG = {
+            config: {
+                iceServers: [
+                    { urls: 'stun:stun.l.google.com:19302' },
+                    { urls: 'stun:stun1.l.google.com:19302' },
+                    { urls: 'stun:stun2.l.google.com:19302' },
+                    { urls: 'stun:stun3.l.google.com:19302' },
+                    { urls: 'stun:stun4.l.google.com:19302' },
+                    { urls: 'stun:stun.cloudflare.com:3478' }
+                ],
+                sdpSemantics: 'unified-plan'
+            }
+        };
+
         // ==================== Peer ID 固定化 & PeerJS Host ====================
         function initPeerHost() {
             const savedPeerId = localStorage.getItem('lds_caption_peer_id');
 
             if (savedPeerId) {
-                peer = new Peer(savedPeerId);
+                peer = new Peer(savedPeerId, PEER_CONFIG);
             } else {
-                peer = new Peer();
+                peer = new Peer(PEER_CONFIG);
             }
 
             peer.on('open', function(id) {
@@ -2151,9 +2196,31 @@
 
                 conn.on('open', function() {
                     updateViewerCount();
+
+                    // 新規参加リスナーへ直近の字幕（最新3〜5件）を即座に送信して初期表示（キャッチアップ機能）
+                    if (transcriptHistory.length > 0) {
+                        const recentCatchup = transcriptHistory.filter(h => !h.paused).slice(-5);
+                        recentCatchup.forEach((item, idx) => {
+                            try {
+                                conn.send({
+                                    type: 'caption',
+                                    id: 'catchup-' + idx + '-' + Date.now(),
+                                    text: item.text,
+                                    timestamp: item.time,
+                                    isHistory: true
+                                });
+                            } catch(e){}
+                        });
+                    }
                 });
 
                 conn.on('close', function() {
+                    peerConnections = peerConnections.filter(c => c !== conn);
+                    updateViewerCount();
+                });
+
+                conn.on('error', function(err) {
+                    console.warn('Host Connection Error:', err);
                     peerConnections = peerConnections.filter(c => c !== conn);
                     updateViewerCount();
                 });
@@ -2171,7 +2238,7 @@
                     console.warn('Saved Peer ID is unavailable. Generating a new one...');
                     localStorage.removeItem('lds_caption_peer_id');
                     peer.destroy();
-                    peer = new Peer();
+                    peer = new Peer(PEER_CONFIG);
                     peer.on('open', function(id) {
                         localStorage.setItem('lds_caption_peer_id', id);
                         roomIdDisplay.textContent = id;
@@ -2180,8 +2247,28 @@
                     peer.on('connection', function(conn) {
                         peerConnections.push(conn);
                         updateViewerCount();
-                        conn.on('open', function() { updateViewerCount(); });
+                        conn.on('open', function() {
+                            updateViewerCount();
+                            if (transcriptHistory.length > 0) {
+                                const recentCatchup = transcriptHistory.filter(h => !h.paused).slice(-5);
+                                recentCatchup.forEach((item, idx) => {
+                                    try {
+                                        conn.send({
+                                            type: 'caption',
+                                            id: 'catchup-' + idx + '-' + Date.now(),
+                                            text: item.text,
+                                            timestamp: item.time,
+                                            isHistory: true
+                                        });
+                                    } catch(e){}
+                                });
+                            }
+                        });
                         conn.on('close', function() {
+                            peerConnections = peerConnections.filter(c => c !== conn);
+                            updateViewerCount();
+                        });
+                        conn.on('error', function() {
                             peerConnections = peerConnections.filter(c => c !== conn);
                             updateViewerCount();
                         });
@@ -2198,7 +2285,8 @@
             if (baseUrl.startsWith('file://')) {
                 baseUrl = 'https://yonago475.github.io/LDS-Church-Caption-System/';
             }
-            const viewerUrl = `${baseUrl}?room=${peerId}`;
+            // openExternalBrowser=1 により、LINEのQRリーダー等で読み取った際に自動でSafari/Chromeを強制起動
+            const viewerUrl = `${baseUrl}?openExternalBrowser=1&room=${peerId}`;
 
             new QRCode(qrcodeContainer, {
                 text: viewerUrl,
@@ -2548,7 +2636,7 @@
 
         // ==================== 指数バックオフ付き自動再接続 (Viewer) ====================
         function initPeerViewer(roomId) {
-            peer = new Peer();
+            peer = new Peer(PEER_CONFIG);
 
             peer.on('open', function() {
                 connectToHost(roomId);
@@ -2570,7 +2658,8 @@
                 try { hostConnection.close(); } catch(e){}
             }
 
-            hostConnection = peer.connect(roomId);
+            // reliable: true により、モバイル回線でもパケットロスなく確実に字幕を届ける
+            hostConnection = peer.connect(roomId, { reliable: true });
 
             hostConnection.on('open', function() {
                 reconnectAttemptCount = 0;
@@ -2579,23 +2668,29 @@
                 peerConnectionStatus.className = 'w-2 h-2 rounded-full bg-emerald-400';
                 peerStatusText.textContent = 'ホストに接続完了';
 
-                if (viewerCaptionFeed.querySelector('.italic')) {
+                const emptyMsg = viewerCaptionFeed.querySelector('#captionPlaceholder') || viewerCaptionFeed.querySelector('.italic');
+                if (emptyMsg && viewerCardCount === 0) {
                     viewerCaptionFeed.innerHTML = `
                         <div class="text-emerald-400 text-xs text-center italic py-4 border-b border-slate-800">
-                            <i class="fa-solid fa-circle-check mr-1"></i> 配信に接続しました。字幕を待機中...
+                            <i class="fa-solid fa-circle-check mr-1"></i> 配信に接続しました。字幕を受信中...
                         </div>
                     `;
                 }
             });
 
             hostConnection.on('data', async function(data) {
-                if (data.type === 'caption') {
+                if (data.type === 'caption' && data.text) {
                     await handleIncomingCaption(data.text, data.timestamp);
                 }
             });
 
             hostConnection.on('close', function() {
                 console.warn('Host connection closed. Attempting auto reconnect...');
+                scheduleViewerReconnect();
+            });
+
+            hostConnection.on('error', function(err) {
+                console.warn('Host connection error:', err);
                 scheduleViewerReconnect();
             });
         }
@@ -2618,14 +2713,23 @@
         }
 
         async function handleIncomingCaption(japaneseText, timestamp) {
-            const targetLang = targetLangSelect.value;
+            const targetLang = targetLangSelect ? targetLangSelect.value : 'ja';
             let translatedText = japaneseText;
 
             if (targetLang !== 'ja') {
-                translatedText = await translateText(japaneseText, targetLang);
+                try {
+                    translatedText = await translateText(japaneseText, targetLang);
+                } catch (err) {
+                    console.warn('Translation error, using original Japanese:', err);
+                    translatedText = japaneseText;
+                }
             }
 
-            appendViewerCaption(translatedText, japaneseText, timestamp);
+            try {
+                appendViewerCaption(translatedText, japaneseText, timestamp);
+            } catch (err) {
+                console.error('Error appending viewer caption:', err);
+            }
         }
 
         // ==================== タイムアウト付き翻訳 & 多言語用語補正 ====================
