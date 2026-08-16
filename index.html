@@ -1549,7 +1549,10 @@
 
             // 終止表現・接続助詞パターンの定義
             const endingEndRegex = /(です|ます|でした|ました|思います|思っています|感謝します|感謝いたします|証します|祈ります|お祈りします|信じます|ください|つもります|でしょう|ましょう|アーメン)(よね|ね|よ|か|わ|な|ぞ|。|！|？|[\s\u3000]+)?$/;
-            const clauseEndRegex = /(、|ので|ですが|けれども|けれど|そして|また|だから|ために|に関して言えば|について言えば|に関して|について|において|の中で|によって)$/;
+            // 接続助詞（前行末尾に付く語）: また/そして/だから/しかし等の接続詞は除外
+            const clauseEndRegex = /(、|ので|ですが|けれども|けれど|ために|に関して言えば|について言えば|に関して|について|において|の中で|によって)$/;
+            // 接続詞（次行先頭に回すべき語）: その直前位置にボーナス
+            const nextLeadingConjunctionRegex = /^[\s\u3000]*(また|そして|しかし|だから|ですから|なお|さらに|あるいは|または)([\s\u3000、]|$)/;
 
             let bestScore = -Infinity;
             let bestPos = -1;
@@ -1571,6 +1574,8 @@
                 const prefixLen = prefix.length;
                 if (prefixLen < 8) continue;
 
+                const nextPart = text.substring(pos);
+
                 // 1. 表示文字数の正規分布重み（27文字をピーク、標準偏差7文字のガウス関数）
                 const diff = prefixLen - 27;
                 const lengthWeight = Math.exp(-(diff * diff) / (2 * 49)) * 100;
@@ -1578,13 +1583,17 @@
                 // 2. BudouX の確信度スコア
                 const confidenceScore = candidateMap.get(pos) || 0;
 
-                // 3. 終止表現・接続助詞・読点ボーナス
+                // 3. 終止表現・接続助詞・次行接続詞ボーナス
                 let bonus = 0;
                 if (endingEndRegex.test(prefix)) {
                     bonus += 150;
                 }
                 if (clauseEndRegex.test(prefix)) {
                     bonus += 70;
+                }
+                // 次行の先頭が接続詞で始まる場合、その直前位置にボーナス付与
+                if (nextLeadingConjunctionRegex.test(nextPart)) {
+                    bonus += 80;
                 }
                 if (/[、\s\u3000]$/.test(text.substring(0, pos))) {
                     bonus += 40;
