@@ -784,7 +784,29 @@
             "この選挙": "この聖句",
             "ある成功": "ある聖句",
             "シェイク": "聖句",
-            "親日": "真理"
+            "親日": "真理",
+
+            // --- 教会名・集会進行・クラス（2026/08/16 ログ分析フィードバック） ---
+            "まつじつせいといえすきりすときょうかい": "末日聖徒イエス・キリスト教会",
+            "まつじつせいと": "末日聖徒",
+            "松井先生とイエス・キリスト教会": "末日聖徒イエス・キリスト教会",
+            "松井先生とイエス": "末日聖徒イエス",
+            "松井先生と": "末日聖徒",
+            "松井先生": "末日聖徒",
+            "松井生徒": "末日聖徒",
+            "末日正当": "末日聖徒",
+            "末日生徒": "末日聖徒",
+            "馬車のお話": "話者のお話",
+            "ばしゃのおはなし": "話者のお話",
+            "ばしゃ": "話者",
+            "進められている": "勧められている",
+            "霊的な革新": "霊的な確信",
+            "協議と聖約": "教義と聖約",
+            "婦女協会": "扶助協会",
+            "長老店委員会": "長老定員会",
+            "長老店員会": "長老定員会",
+            "男女で暮らすに": "男女でクラスに",
+            "短めのクラス": "2つ目のクラス"
         };
 
         // ==================== 多言語教会用語辞書 (翻訳後テキストの後置換補正) ====================
@@ -2192,6 +2214,29 @@
             return -1;
         }
 
+        function splitIntoSmartChunks(text) {
+            if (!text) return [];
+            let remaining = text.trim();
+            const chunks = [];
+
+            while (remaining.length > 0) {
+                const splitIdx = findSmartSplitIndex(remaining);
+                if (splitIdx > 0 && splitIdx < remaining.length) {
+                    const chunk = remaining.substring(0, splitIdx).trim();
+                    if (chunk) {
+                        chunks.push(chunk);
+                    }
+                    remaining = remaining.substring(splitIdx).trim();
+                } else {
+                    if (remaining) {
+                        chunks.push(remaining);
+                    }
+                    break;
+                }
+            }
+            return chunks;
+        }
+
         // ==================== 接続者数カウンターの更新 ====================
         function updateViewerCount() {
             const activeCount = peerConnections.filter(c => c.open).length;
@@ -2403,6 +2448,9 @@
                 }
             }
 
+            // 未確定音声から先行確定した文節の累積オフセット
+            let accumulatedInterimOffset = 0;
+
             function safeStartRecognition() {
                 if (!isRecognizing) return;
                 try {
@@ -2419,10 +2467,12 @@
 
             recognition.onstart = function() {
                 isRecognizing = true;
+                accumulatedInterimOffset = 0;
                 updateSpeechUI(true);
             };
 
             recognition.onend = function() {
+                accumulatedInterimOffset = 0;
                 if (isRecognizing) {
                     if (recognitionRestartTimer) clearTimeout(recognitionRestartTimer);
                     recognitionRestartTimer = setTimeout(() => {
@@ -2457,26 +2507,48 @@
                     }
                 }
 
-                // 1. 確定テキスト（isFinal）のみを正式な字幕として送信・ログ記録
+                // 1. 確定テキスト（isFinal）の文節分割配信
                 if (finalTranscript) {
+                    accumulatedInterimOffset = 0;
                     const trimmedFinal = finalTranscript.trim();
                     if (trimmedFinal) {
                         const correctedFinal = fixScriptureReferences(replaceChurchTerms(trimmedFinal));
                         interimText.textContent = '（次の音声入力を待機中...）';
-                        dispatchCaption(correctedFinal);
+                        const chunks = splitIntoSmartChunks(correctedFinal);
+                        chunks.forEach(chunk => dispatchCaption(chunk));
                     }
                 }
 
-                // 2. 未確定テキスト（interim）はホスト画面のリアルタイムプレビュー表示のみに利用（重複送信を防ぐ）
+                // 2. 未確定テキスト（interim）のリアルタイム文節認識 & 先行分割配信
                 if (interimTranscript) {
                     const correctedInterim = fixScriptureReferences(replaceChurchTerms(interimTranscript.trim()));
                     if (correctedInterim) {
-                        interimText.textContent = correctedInterim;
+                        let unhandledInterim = correctedInterim.substring(accumulatedInterimOffset).trim();
+
+                        // 未確定テキストが長くなり、文節区切りが検知されたらリアルタイムに先行確定
+                        let splitIdx = findSmartSplitIndex(unhandledInterim);
+                        while (splitIdx > 0 && splitIdx < unhandledInterim.length) {
+                            const chunk = unhandledInterim.substring(0, splitIdx).trim();
+                            if (chunk) {
+                                dispatchCaption(chunk);
+                                const chunkEndPos = correctedInterim.indexOf(chunk, accumulatedInterimOffset) + chunk.length;
+                                if (chunkEndPos > accumulatedInterimOffset) {
+                                    accumulatedInterimOffset = chunkEndPos;
+                                } else {
+                                    accumulatedInterimOffset += splitIdx;
+                                }
+                            }
+                            unhandledInterim = correctedInterim.substring(accumulatedInterimOffset).trim();
+                            splitIdx = findSmartSplitIndex(unhandledInterim);
+                        }
+
+                        interimText.textContent = unhandledInterim || correctedInterim;
                     }
                 }
             };
 
             toggleRecognitionBtn.onclick = function() {
+                accumulatedInterimOffset = 0;
                 if (isRecognizing) {
                     isRecognizing = false;
                     recentSentHistory.length = 0;
@@ -2493,6 +2565,7 @@
                 hostTranscriptLog.innerHTML = '<p class="text-xs text-slate-400 text-center italic my-auto">ログをクリアしました</p>';
                 transcriptHistory.length = 0;
                 recentSentHistory.length = 0;
+                accumulatedInterimOffset = 0;
             };
         }
 
