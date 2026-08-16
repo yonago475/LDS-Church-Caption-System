@@ -507,6 +507,19 @@
             "道徳感": "道徳観",
             "みかたのかたより": "見方の偏り",
             "味方に偏り": "見方の偏り",
+            "みもと": "御元",
+            "身元に戻る": "御元に戻る",
+            "身元": "御元",
+            "身許": "御元",
+            "けんしん": "献身",
+            "検診と指導力": "献身と指導力",
+            "検診": "献身",
+            "しゅのほうほう": "主の方法",
+            "種の方法": "主の方法",
+            "種のみこころ": "主の御心",
+            "ちょうしゅう": "聴衆",
+            "徴収に向けて": "聴衆に向けて",
+            "徴収": "聴衆",
             "ばぷてすま": "バプテスマ",
             "あがない": "贖い",
             "赤ない": "贖い",
@@ -572,6 +585,25 @@
             "じょせふすみす": "ジョセフ・スミス",
             "じょせふ・すみす": "ジョセフ・スミス",
             "ぶりがむやんぐ": "ブリガム・ヤング",
+            "ぶりがみやんぐ": "ブリガム・ヤング",
+            "ブリガミヤング": "ブリガム・ヤング",
+            "ブリガムヤング": "ブリガム・ヤング",
+            "ブリガム・ヤング大学": "ブリガム・ヤング大学",
+            "ブリガムヤング大学": "ブリガム・ヤング大学",
+            "by you": "BYU",
+            "by u": "BYU",
+            "by U": "BYU",
+            "By U": "BYU",
+            "By you": "BYU",
+            "pyu": "BYU",
+            "びーわいゆー": "BYU",
+            "ビーワイユー": "BYU",
+            "すぺんさーだぶる": "スペンサー・W",
+            "スペンサー ダブル": "スペンサー・W",
+            "スペンサー・ダブル": "スペンサー・W",
+            "スペンサーダブル": "スペンサー・W",
+            "スペンサー・W・キンボール": "スペンサー・W・キンボール",
+            "キンボール大管長": "キンボール大管長",
             "りちゃーどえるえばんず": "リチャード・L・エヴァンズ",
             "リチャード エル エヴァンズ": "リチャード・L・エヴァンズ",
             "リチャード・エル・エヴァンズ": "リチャード・L・エヴァンズ",
@@ -1678,15 +1710,22 @@
         }
 
         function replaceChurchTerms(text) {
-            if (!text || Object.keys(churchDictionary).length === 0) return text;
+            if (!text) return text;
             let result = text;
-            const keys = Object.keys(churchDictionary).sort((a, b) => b.length - a.length);
 
-            for (const key of keys) {
-                if (!key) continue;
-                const val = churchDictionary[key];
-                const regex = new RegExp(escapeRegExp(key), "gi");
-                result = result.replace(regex, val);
+            // BYU, by you, by u, pyu の事前正規化
+            result = result.replace(/\b(by\s*you|by\s*u|pyu|びーわいゆー|ビーワイユー)\b/gi, 'BYU');
+            result = result.replace(/スペンサー\s*ダブル/gi, 'スペンサー・W');
+            result = result.replace(/リチャード\s*エル\s*エヴァンズ/gi, 'リチャード・L・エヴァンズ');
+
+            if (Object.keys(churchDictionary).length > 0) {
+                const keys = Object.keys(churchDictionary).sort((a, b) => b.length - a.length);
+                for (const key of keys) {
+                    if (!key) continue;
+                    const val = churchDictionary[key];
+                    const regex = new RegExp(escapeRegExp(key), "gi");
+                    result = result.replace(regex, val);
+                }
             }
             return result;
         }
@@ -1714,8 +1753,16 @@
             "ネルソン大管長",
             "ヒンクレー大管長",
             "モンソン大管長",
+            "スペンサー・W・キンボール大管長",
+            "スペンサー・W・キンボール",
+            "スペンサー・W",
             "オークス管長",
             "アイリング管長",
+            "リチャード・L・エヴァンズ長老",
+            "リチャード・L・エヴァンズ",
+            "ブリガム・ヤング大学",
+            "ブリガムヤング大学",
+            "BYU",
             "大管長",
             "神権の権能",
             "神権の鍵",
@@ -1740,6 +1787,10 @@
             "高価な真珠",
             "結び固め",
             "エンダウメント",
+            "第1世紀",
+            "第2世紀",
+            "第3世紀",
+            "第4世紀",
             // 複合助詞・連語（助詞＋語の途中での切断を完全ブロック）
             "に関して言えば",
             "について言えば",
@@ -1859,7 +1910,9 @@
             const leadingParticleRegex = /^[のをにがへとでも]/; // 助詞単体で次行が始まるのを禁止
             const leadingSuffixRegex = /^[さみ的感性者員化等度率界]/; // 接尾辞の前での切断禁止（例: 活発/さ）
             const leadingTitleRegex = /^(長老|大管長|管長|監督|兄弟|姉妹|使徒|会長)/; // 役職タイトルの直前での切断禁止
-            const attributiveAdjRegex = /(深い|高い|大きい|小さい|強い|尊い|重い|良い|新たな|重要な|大きな|小さな|特別な|聖なる|神聖な|霊的な)$/; // 連体形修飾の直後での切断禁止
+            const attributiveAdjRegex = /(深い|高い|大きい|小さい|強い|尊い|重い|良い|新たな|重要な|大きな|小さな|特別な|聖なる|神聖な|霊的な)[\s\u3000]*$/; // 連体形修飾の直後での切断禁止
+            const attributiveVerbRegex = /(する|できる|なる|ある|いる|得る|向かう|進む|果たす|歩む|行う|従う|受ける|言える|勝る|たる|祝った|語った|述べた|証した|信じた|祈った|行った|受けた|生じている|生きている|分かち合った|明かされる|頼る|成就させる)[\s\u3000]*$/;
+            const modifiedNounRegex = /^(運命|姿|人|時|こと|もの|ため|よう|道|教え|力|結果|方法|事実|約束|経験|言葉|責任|印象|計画|祝福)/;
             const adverbEndRegex = /(はっきり|しっかり|ゆっくり|まさに|すでに|常に|決して|まったく|とても|非常に|さらに)$/; // 副詞の直後での切断禁止
             const trailingCaseParticleRegex = /(?<!(です|ます|だ|の|た|だっ|な))[がをにはへとで]$/; // 格助詞で終わる中途半端な切断の禁止
 
@@ -1910,19 +1963,31 @@
                 if (attributiveAdjRegex.test(prefix)) {
                     continue;
                 }
-                // 5. 副詞（はっきり、しっかり...）の直後での分割を禁止
+                // 5. 連体形動詞＋被修飾名詞の分断を禁止（例: 成長する/運命、生きている/人）
+                if (attributiveVerbRegex.test(prefix) && modifiedNounRegex.test(nextPart.trim())) {
+                    continue;
+                }
+                // 6. 「第」＋数字・助数詞の分断を禁止（例: 第/2/世紀）
+                if (/第[\s\u3000]*[0-9０-９一二三四五六七八九十]*$/.test(prefix)) {
+                    continue;
+                }
+                // 7. 英単語の途中・単語間分断の禁止（例: by/U）
+                if (/[a-zA-Z]$/.test(prefix) && /^[a-zA-Z]/.test(nextPart.trim())) {
+                    continue;
+                }
+                // 8. 副詞（はっきり、しっかり...）の直後での分割を禁止
                 if (adverbEndRegex.test(prefix)) {
                     continue;
                 }
-                // 6. 「〜よう」単体の直後での分割を禁止
+                // 9. 「〜よう」単体の直後での分割を禁止
                 if (/よう$/.test(prefix) && !/ように$/.test(prefix)) {
                     continue;
                 }
-                // 7. 「〜もの」＋助詞の前での分割を禁止
+                // 10. 「〜もの」＋助詞の前での分割を禁止
                 if (/もの$/.test(prefix) && /^[とでには]/.test(nextPart.trim())) {
                     continue;
                 }
-                // 8. 単独格助詞（が、を、に、で...）で終わる中途半端な分割を禁止
+                // 11. 単独格助詞（が、を、に、で...）で終わる中途半端な分割を禁止
                 if (trailingCaseParticleRegex.test(prefix)) {
                     continue;
                 }
@@ -2232,6 +2297,7 @@
             let committedInCurrentUtterance = [];
             let silenceCommitTimer = null;
             let lastInterimText = '';
+            let lastProcessedFinalIndex = -1;
 
             function flushUnhandledInterim() {
                 if (silenceCommitTimer) {
@@ -2273,6 +2339,7 @@
                 isRecognizing = true;
                 committedInCurrentUtterance = [];
                 lastInterimText = '';
+                lastProcessedFinalIndex = -1;
                 updateSpeechUI(true);
             };
 
@@ -2305,11 +2372,13 @@
                 let finalTranscript = '';
 
                 for (let i = event.resultIndex; i < event.results.length; ++i) {
-                    const transcript = event.results[i][0].transcript;
                     if (event.results[i].isFinal) {
-                        finalTranscript += transcript;
+                        if (i > lastProcessedFinalIndex) {
+                            lastProcessedFinalIndex = i;
+                            finalTranscript += event.results[i][0].transcript;
+                        }
                     } else {
-                        interimTranscript += transcript;
+                        interimTranscript += event.results[i][0].transcript;
                     }
                 }
 
@@ -2381,6 +2450,7 @@
                 flushUnhandledInterim();
                 committedInCurrentUtterance = [];
                 lastInterimText = '';
+                lastProcessedFinalIndex = -1;
                 if (isRecognizing) {
                     isRecognizing = false;
                     recentSentHistory.length = 0;
@@ -2399,6 +2469,7 @@
                 recentSentHistory.length = 0;
                 committedInCurrentUtterance = [];
                 lastInterimText = '';
+                lastProcessedFinalIndex = -1;
             };
         }
 
