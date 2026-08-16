@@ -1477,73 +1477,131 @@
 
         const budouxParser = new BudouXParser(BUDOUX_JA_MODEL);
 
-        // ==================== BudouX 文節境界連動スマート分割ロジック ====================
+        // 固有名詞・重要教会用語（単語途中での分断を100%禁止）
+        const PROTECTED_TERMS = [
+            "末日聖徒イエス・キリスト教会",
+            "末日聖徒イエス・キリスト",
+            "イエス・キリスト教会",
+            "イエス・キリスト",
+            "末日聖徒",
+            "扶助協会",
+            "長老定員会",
+            "アロン神権",
+            "メルキゼデク神権",
+            "福音の教義",
+            "初等協会",
+            "中央幹部"
+        ];
+
+        function isInsideProtectedTerm(text, pos) {
+            for (const term of PROTECTED_TERMS) {
+                let idx = text.indexOf(term);
+                while (idx !== -1) {
+                    if (pos > idx && pos < idx + term.length) {
+                        return true;
+                    }
+                    idx = text.indexOf(term, idx + 1);
+                }
+            }
+            return false;
+        }
+
+        // ==================== BudouX 文節境界主軸スコアリング分割ロジック ====================
         function findSmartSplitIndex(text, isFinal = false) {
             if (!text || text.length < 10) return -1;
 
-            // 1. 明示的な文末記号（。！？\n）
+            // 1. 明示的な文末記号（。！？\n）がある場合、最優先でその直後を切断
             const punctRegex = /[。！？\n]/g;
-            let match;
-            while ((match = punctRegex.exec(text)) !== null) {
-                const pos = match.index + match[0].length;
+            let pMatch;
+            while ((pMatch = punctRegex.exec(text)) !== null) {
+                const pos = pMatch.index + pMatch[0].length;
                 if (pos >= 8) {
                     return pos;
                 }
             }
 
-            // 2. 終止文末表現（isFinal確定時のみ $ 文字列末尾での切断を許可。未確定時は後続の音声や空白が続いた場合のみ切断）
-            const endingPattern = isFinal
-                ? /(です|ます|でした|ました|思います|思っています|感謝します|感謝いたします|証します|祈ります|お祈りします|信じます|ください|つもります|でしょう|ましょう|アーメン)(よね|ね|よ|か|わ|な|ぞ|。|！|？|[\s\u3000]+|$)/g
-                : /(です|ます|でした|ました|思います|思っています|感謝します|感謝いたします|証します|祈ります|お祈りします|信じます|ください|つもります|でしょう|ましょう|アーメン)(よね|ね|よ|か|わ|な|ぞ|。|！|？|[\s\u3000]+)/g;
+            // 2. BudouX による文節境界候補を主軸として取得
+            const budouxBoundaries = budouxParser.parseBoundaries(text);
+            const candidateSet = new Set(budouxBoundaries);
 
-            let endMatch;
-            while ((endMatch = endingPattern.exec(text)) !== null) {
-                const pos = endMatch.index + endMatch[0].length;
-                if (pos >= 10 && pos <= 60) {
-                    if (isFinal || pos <= text.length - 4 || /[。！？\s\u3000]/.test(text[pos - 1])) {
-                        return pos;
-                    }
+            // 読点・空白の直後も境界候補に追加
+            const sepRegex = /[、\s\u3000]+/g;
+            let sMatch;
+            while ((sMatch = sepRegex.exec(text)) !== null) {
+                candidateSet.add(sMatch.index + sMatch[0].length);
+            }
+
+            // isFinal の場合はテキスト全体の末尾も候補
+            if (isFinal && text.length >= 10) {
+                candidateSet.add(text.length);
+            }
+
+            const candidates = Array.from(candidateSet).sort((a, b) => a - b);
+            if (candidates.length === 0) return -1;
+
+            // 終止表現・接続助詞パターンの定義
+            const endingEndRegex = /(です|ます|でした|ました|思います|思っています|感謝します|感謝いたします|証します|祈ります|お祈りします|信じます|ください|つもります|でしょう|ましょう|アーメン)(よね|ね|よ|か|わ|な|ぞ|。|！|？|[\s\u3000]+)?$/;
+            const clauseEndRegex = /(、|ので|ですが|けれども|けれど|そして|また|だから|ために|に関して言えば|について言えば|に関して|について|において|の中で|によって)$/;
+
+            let bestScore = -Infinity;
+            let bestPos = -1;
+
+            for (const pos of candidates) {
+                if (pos < 8) continue;
+
+                // 固有名詞の途中なら絶対に切断しない
+                if (isInsideProtectedTerm(text, pos)) {
+                    continue;
+                }
+
+                // 未確定（interim）時、末尾付近（後続が4文字未満）かつ文末記号がない場合は保留
+                if (!isFinal && pos > text.length - 4 && !/[。！？\s\u3000]/.test(text[pos - 1])) {
+                    continue;
+                }
+
+                const prefix = text.substring(0, pos).trim();
+                const prefixLen = prefix.length;
+                if (prefixLen < 8) continue;
+
+                let score = 0;
+
+                // A. 文字数長レンジスコア（字幕最適レンジ: 20〜34文字）
+                if (prefixLen >= 20 && prefixLen <= 34) {
+                    score += 60;
+                } else if (prefixLen >= 15 && prefixLen <= 40) {
+                    score += 40;
+                } else if (prefixLen > 40 && prefixLen <= 50) {
+                    score += 20;
+                } else if (prefixLen > 50) {
+                    score -= (prefixLen - 50) * 2;
+                } else if (prefixLen < 15) {
+                    score -= (15 - prefixLen) * 3;
+                }
+
+                // B. 終止表現ボーナス
+                if (endingEndRegex.test(prefix)) {
+                    score += 100;
+                }
+
+                // C. 接続助詞・読点ボーナス
+                if (clauseEndRegex.test(prefix)) {
+                    score += 50;
+                }
+
+                // D. 読点・空白直後ボーナス
+                if (/[、\s\u3000]$/.test(text.substring(0, pos))) {
+                    score += 30;
+                }
+
+                if (score > bestScore) {
+                    bestScore = score;
+                    bestPos = pos;
                 }
             }
 
-            // 3. 22文字以上蓄積時の読点・接続助詞
-            if (text.length >= 22) {
-                const clauseRegex = /(、|ので|ですが|けれども|けれど|そして|また|だから|ために|に関して言えば|について言えば|に関して|について|において|の中で)/g;
-                let clauseMatch;
-                while ((clauseMatch = clauseRegex.exec(text)) !== null) {
-                    const pos = clauseMatch.index + clauseMatch[0].length;
-                    if (pos >= 15 && pos <= 45) {
-                        if (isFinal || pos <= text.length - 4) {
-                            return pos;
-                        }
-                    }
-                }
-            }
-
-            // 4. 40文字以上の長文時: BudouX 文節境界（自立語の前・助詞助動詞の後）に基づく分割
-            if (text.length >= 40) {
-                const boundaries = budouxParser.parseBoundaries(text);
-                let bestBoundary = -1;
-                for (const b of boundaries) {
-                    if (b >= 22 && b <= 45) {
-                        if (isFinal || b <= text.length - 4) {
-                            bestBoundary = b;
-                        }
-                    }
-                }
-                if (bestBoundary !== -1) {
-                    return bestBoundary;
-                }
-                for (const b of boundaries) {
-                    if (b <= 50) {
-                        if (isFinal || b <= text.length - 4) {
-                            bestBoundary = b;
-                        }
-                    }
-                }
-                if (bestBoundary !== -1) {
-                    return bestBoundary;
-                }
+            // スコアが一定以上（または長文で分割が必要な場合）に採用
+            if (bestPos !== -1 && (bestScore >= 50 || (text.length >= 35 && bestScore > 0))) {
+                return bestPos;
             }
 
             return -1;
