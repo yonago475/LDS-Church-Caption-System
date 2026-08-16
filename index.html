@@ -734,7 +734,57 @@
             "みなにより": "御名により",
             "みなを通して": "御名を通して",
             "みなを通し": "御名を通し",
-            "御名と行い": "御名によりお話しし"
+            "御名と行い": "御名によりお話しし",
+
+            // --- 聖餐の祈り・最優先誤変換是正（2026/08/16 ログ分析による追加） ---
+            "芸能 シナ 神よ": "永遠の父なる神よ",
+            "エゲの父なる神": "永遠の父なる神",
+            "営農 内なる神": "永遠の父なる神",
+            "愛されて な と 様": "愛する天のお父様",
+            "手にいらっしゃいます": "天にいらっしゃいます",
+            "うんこの御霊": "御子の御霊",
+            "香港の御霊": "御子の御霊",
+            "うんこを覚えている": "御子を覚えている",
+            "うんこの体": "御子の体",
+            "うんこ": "御子",
+            "御子知": "御子の血",
+            "読めてください": "清めてください",
+            "宿泊してください": "祝福してください",
+            "1,3回": "聖餐会",
+            "ラーメン": "アーメン",
+
+            // --- 教会組織・集会・役職用語（2026/08/16 ログ分析による追加） ---
+            "米子 ワールド": "米子ワード",
+            "米子ワールド": "米子ワード",
+            "ワールド聖餐": "ワード聖餐",
+            "び ショップ": "ビショップ",
+            "神権士": "神権者",
+            "親権者": "神権者",
+            "名刺を果たして": "召しを果たして",
+            "名刺されました": "召されました",
+            "名刺され": "召され",
+            "感謝の介入": "感謝の解任",
+            "この定義に": "この提議に",
+            "その家を表してください": "その意を表してください",
+            "その家を表して": "その意を表して",
+            "その絵を表してください": "その意を表してください",
+            "その絵を表して": "その意を表して",
+            "電動": "伝道",
+            "成果体": "聖歌隊",
+            "歌詞を伺い": "証を伺い",
+
+            // --- 聖典・聖句関連（2026/08/16 ログ分析による追加） ---
+            "もらない人": "モロナイ書",
+            "モロナイ人": "モロナイ書",
+            "エステル機": "エステル記",
+            "エステル 機": "エステル記",
+            "モーセ 書": "モーセ書",
+            "第32杯": "第3ニーファイ",
+            "不協議と聖約": "教義と聖約",
+            "この選挙": "この聖句",
+            "ある成功": "ある聖句",
+            "シェイク": "聖句",
+            "親日": "真理"
         };
 
         // ==================== 多言語教会用語辞書 (翻訳後テキストの後置換補正) ====================
@@ -2284,7 +2334,74 @@
             recognition.interimResults = true;
             recognition.lang = 'ja-JP';
 
-            let lastFinalizedRawLength = 0;
+            // 直近の送信履歴（De-duplication用: { text, timestamp }）
+            // 音声認識の自動再起動（onstart）でクリアされないようセッション内で維持
+            const recentSentHistory = [];
+
+            // 重複排除（De-duplication）付き配信・記録ディスパッチャー
+            function dispatchCaption(text) {
+                if (!text) return;
+                const cleanText = text.trim();
+                if (!cleanText) return;
+
+                const now = Date.now();
+                // 15秒以上前の古い履歴を削除
+                while (recentSentHistory.length > 0 && (now - recentSentHistory[0].timestamp) > 15000) {
+                    recentSentHistory.shift();
+                }
+
+                // 直近履歴との重複判定
+                for (let i = recentSentHistory.length - 1; i >= 0; i--) {
+                    const item = recentSentHistory[i];
+                    const timeDiff = now - item.timestamp;
+
+                    // 1. 完全一致（15秒以内）
+                    if (item.text === cleanText) {
+                        return;
+                    }
+
+                    // 2. 直近5秒以内の部分重複判定（すでに送信済みの文が末尾または全体に含まれる場合）
+                    if (timeDiff < 5000) {
+                        if (item.text.endsWith(cleanText) || cleanText.endsWith(item.text) || item.text.includes(cleanText) || cleanText.includes(item.text)) {
+                            // 長さの差が小さい場合は実質同一フレーズとみなしてスキップ
+                            if (Math.abs(cleanText.length - item.text.length) < 8) {
+                                return;
+                            }
+                        }
+                    }
+                }
+
+                // 履歴に追加
+                recentSentHistory.push({
+                    text: cleanText,
+                    timestamp: now
+                });
+                if (recentSentHistory.length > 30) {
+                    recentSentHistory.shift();
+                }
+
+                if (isManualBroadcastMode) {
+                    // 手動配信モード: テキストエリアが空かつキューが空なら直接表示、そうでなければキューにストック
+                    const manualInput = document.getElementById('manualEditInput');
+                    if (manualInput) {
+                        if (manualInput.value.trim() === '' && manualBroadcastQueue.length === 0) {
+                            manualInput.value = cleanText;
+                            manualInput.focus();
+                        } else {
+                            manualBroadcastQueue.push(cleanText);
+                            updateManualQueueUI();
+                        }
+                    }
+                } else {
+                    // 自動配信モード: 即時配信 & ホストログ追加
+                    appendHostTranscript(cleanText);
+                    broadcastToViewers({
+                        type: 'caption',
+                        text: cleanText,
+                        timestamp: new Date().toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+                    });
+                }
+            }
 
             function safeStartRecognition() {
                 if (!isRecognizing) return;
@@ -2302,12 +2419,10 @@
 
             recognition.onstart = function() {
                 isRecognizing = true;
-                lastFinalizedRawLength = 0;
                 updateSpeechUI(true);
             };
 
             recognition.onend = function() {
-                lastFinalizedRawLength = 0;
                 if (isRecognizing) {
                     if (recognitionRestartTimer) clearTimeout(recognitionRestartTimer);
                     recognitionRestartTimer = setTimeout(() => {
@@ -2342,85 +2457,21 @@
                     }
                 }
 
-                // 1. ブラウザ標準の確定（isFinal）
+                // 1. 確定テキスト（isFinal）のみを正式な字幕として送信・ログ記録
                 if (finalTranscript) {
-                    const rawFinalRemaining = finalTranscript.slice(lastFinalizedRawLength).trim();
-                    lastFinalizedRawLength = 0;
-
-                    if (rawFinalRemaining) {
-                        const correctedFinal = fixScriptureReferences(replaceChurchTerms(rawFinalRemaining));
+                    const trimmedFinal = finalTranscript.trim();
+                    if (trimmedFinal) {
+                        const correctedFinal = fixScriptureReferences(replaceChurchTerms(trimmedFinal));
                         interimText.textContent = '（次の音声入力を待機中...）';
-
-                        if (isManualBroadcastMode) {
-                            // 手動配信モード: テキストエリアが空かつキューが空なら直接表示、そうでなければキューにストック
-                            const manualInput = document.getElementById('manualEditInput');
-                            if (manualInput) {
-                                if (manualInput.value.trim() === '' && manualBroadcastQueue.length === 0) {
-                                    manualInput.value = correctedFinal;
-                                    manualInput.focus();
-                                } else {
-                                    manualBroadcastQueue.push(correctedFinal);
-                                    updateManualQueueUI();
-                                }
-                            }
-                        } else {
-                            // 自動配信モード: 即時配信
-                            appendHostTranscript(correctedFinal);
-                            broadcastToViewers({
-                                type: 'caption',
-                                text: correctedFinal,
-                                timestamp: new Date().toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
-                            });
-                        }
+                        dispatchCaption(correctedFinal);
                     }
                 }
 
-                // 2. 仮テキスト（interim）のホスト側表示とスマート分割
+                // 2. 未確定テキスト（interim）はホスト画面のリアルタイムプレビュー表示のみに利用（重複送信を防ぐ）
                 if (interimTranscript) {
-                    const rawInterimRemaining = interimTranscript.slice(lastFinalizedRawLength);
-
-                    if (rawInterimRemaining) {
-                        // 提案B: 辞書置換を分割判定の前に適用し、「大使のウッド」等の分断を防止
-                        const correctedInterimFull = fixScriptureReferences(replaceChurchTerms(rawInterimRemaining));
-                        const splitIdx = findSmartSplitIndex(correctedInterimFull);
-
-                        if (splitIdx > 0) {
-                            const correctedChunk = correctedInterimFull.slice(0, splitIdx).trim();
-                            const correctedRemainder = correctedInterimFull.slice(splitIdx);
-
-                            // rawベースのオフセット近似: 辞書置換で文字列長が変わるため、
-                            // 置換後テキストの消費比率からraw側のオフセットを推定
-                            const ratioConsumed = splitIdx / correctedInterimFull.length;
-                            lastFinalizedRawLength = Math.round(rawInterimRemaining.length * ratioConsumed);
-
-                            if (correctedChunk) {
-                                if (isManualBroadcastMode) {
-                                    // 手動配信モード: テキストエリアが空かつキューが空なら直接表示、そうでなければキューにストック
-                                    const manualInput = document.getElementById('manualEditInput');
-                                    if (manualInput) {
-                                        if (manualInput.value.trim() === '' && manualBroadcastQueue.length === 0) {
-                                            manualInput.value = correctedChunk;
-                                            manualInput.focus();
-                                        } else {
-                                            manualBroadcastQueue.push(correctedChunk);
-                                            updateManualQueueUI();
-                                        }
-                                    }
-                                } else {
-                                    // 自動配信モード: 即時配信
-                                    appendHostTranscript(correctedChunk);
-                                    broadcastToViewers({
-                                        type: 'caption',
-                                        text: correctedChunk,
-                                        timestamp: new Date().toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
-                                    });
-                                }
-                            }
-
-                            interimText.textContent = correctedRemainder || '（音声入力を継続中...）';
-                        } else {
-                            interimText.textContent = correctedInterimFull;
-                        }
+                    const correctedInterim = fixScriptureReferences(replaceChurchTerms(interimTranscript.trim()));
+                    if (correctedInterim) {
+                        interimText.textContent = correctedInterim;
                     }
                 }
             };
@@ -2428,7 +2479,7 @@
             toggleRecognitionBtn.onclick = function() {
                 if (isRecognizing) {
                     isRecognizing = false;
-                    lastFinalizedRawLength = 0;
+                    recentSentHistory.length = 0;
                     if (recognitionRestartTimer) clearTimeout(recognitionRestartTimer);
                     try { recognition.stop(); } catch(e){}
                     updateSpeechUI(false);
@@ -2441,6 +2492,7 @@
             clearTranscriptsBtn.onclick = function() {
                 hostTranscriptLog.innerHTML = '<p class="text-xs text-slate-400 text-center italic my-auto">ログをクリアしました</p>';
                 transcriptHistory.length = 0;
+                recentSentHistory.length = 0;
             };
         }
 
@@ -2462,6 +2514,17 @@
 
         // ログへの追加（ワンタップ辞書登録ボタン「➕ 辞書登録」付き）
         function appendHostTranscript(text) {
+            const cleanText = text.trim();
+            if (!cleanText) return;
+
+            // 直前のログと同一内容の場合は二重追加を防ぐ
+            if (transcriptHistory.length > 0) {
+                const lastEntry = transcriptHistory[transcriptHistory.length - 1];
+                if (lastEntry.text === cleanText) {
+                    return;
+                }
+            }
+
             const emptyMsg = hostTranscriptLog.querySelector('p');
             if (emptyMsg && emptyMsg.classList.contains('italic')) {
                 hostTranscriptLog.innerHTML = '';
@@ -2472,13 +2535,13 @@
 
             transcriptHistory.push({
                 time: timeStr,
-                text: text,
+                text: cleanText,
                 paused: wasPaused
             });
 
             const item = document.createElement('div');
 
-            const safeText = escapeHtml(text);
+            const safeText = escapeHtml(cleanText);
 
             if (wasPaused) {
                 item.className = 'bg-slate-200/70 p-3 rounded-lg border border-slate-300 shadow-sm opacity-70';
