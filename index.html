@@ -2237,6 +2237,27 @@
             return chunks;
         }
 
+        function stripCommittedPrefix(fullText, committedText) {
+            if (!committedText || !fullText) return fullText;
+            const normFull = fullText.replace(/[\s\u3000]+/g, '').toLowerCase();
+            const normCommitted = committedText.replace(/[\s\u3000]+/g, '').toLowerCase();
+
+            if (normFull.startsWith(normCommitted)) {
+                let normIdx = 0;
+                let rawIdx = 0;
+                while (rawIdx < fullText.length && normIdx < normCommitted.length) {
+                    if (!/[\s\u3000]/.test(fullText[rawIdx])) {
+                        normIdx++;
+                    }
+                    rawIdx++;
+                }
+                return fullText.substring(rawIdx).trim();
+            } else if (fullText.startsWith(committedText)) {
+                return fullText.substring(committedText.length).trim();
+            }
+            return fullText;
+        }
+
         // ==================== 接続者数カウンターの更新 ====================
         function updateViewerCount() {
             const activeCount = peerConnections.filter(c => c.open).length;
@@ -2379,9 +2400,14 @@
             recognition.interimResults = true;
             recognition.lang = 'ja-JP';
 
-            // 直近の送信履歴（De-duplication用: { text, timestamp }）
+            // 直近の送信履歴（De-duplication用: { id, text, norm, timestamp }）
             // 音声認識の自動再起動（onstart）でクリアされないようセッション内で維持
             const recentSentHistory = [];
+            let captionSequenceId = 0;
+
+            function normalizeCaption(str) {
+                return (str || '').replace(/[\s\u3000]+/g, '').toLowerCase();
+            }
 
             // 重複排除（De-duplication）付き配信・記録ディスパッチャー
             function dispatchCaption(text) {
@@ -2390,38 +2416,44 @@
                 if (!cleanText) return;
 
                 const now = Date.now();
-                // 15秒以上前の古い履歴を削除
-                while (recentSentHistory.length > 0 && (now - recentSentHistory[0].timestamp) > 15000) {
+                const normClean = normalizeCaption(cleanText);
+
+                // 120秒以上前の古い履歴を削除
+                while (recentSentHistory.length > 0 && (now - recentSentHistory[0].timestamp) > 120000) {
                     recentSentHistory.shift();
                 }
 
-                // 直近履歴との重複判定
+                // 直近履歴との重複判定（完全一致・正規化一致・近接重複）
                 for (let i = recentSentHistory.length - 1; i >= 0; i--) {
                     const item = recentSentHistory[i];
                     const timeDiff = now - item.timestamp;
 
-                    // 1. 完全一致（15秒以内）
-                    if (item.text === cleanText) {
+                    // 1. 完全一致または空白無視の正規化一致
+                    if (item.text === cleanText || item.norm === normClean) {
                         return;
                     }
 
-                    // 2. 直近5秒以内の部分重複判定（すでに送信済みの文が末尾または全体に含まれる場合）
-                    if (timeDiff < 5000) {
-                        if (item.text.endsWith(cleanText) || cleanText.endsWith(item.text) || item.text.includes(cleanText) || cleanText.includes(item.text)) {
-                            // 長さの差が小さい場合は実質同一フレーズとみなしてスキップ
-                            if (Math.abs(cleanText.length - item.text.length) < 8) {
+                    // 2. 直近10秒以内の部分重複判定（すでに送信済みの文が末尾または全体に含まれる場合）
+                    if (timeDiff < 10000) {
+                        if (item.norm.endsWith(normClean) || normClean.endsWith(item.norm) || item.norm.includes(normClean) || normClean.includes(item.norm)) {
+                            if (Math.abs(normClean.length - item.norm.length) < 8) {
                                 return;
                             }
                         }
                     }
                 }
 
+                captionSequenceId++;
+                const timeStr = new Date().toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
                 // 履歴に追加
                 recentSentHistory.push({
+                    id: captionSequenceId,
                     text: cleanText,
+                    norm: normClean,
                     timestamp: now
                 });
-                if (recentSentHistory.length > 30) {
+                if (recentSentHistory.length > 100) {
                     recentSentHistory.shift();
                 }
 
@@ -2442,14 +2474,15 @@
                     appendHostTranscript(cleanText);
                     broadcastToViewers({
                         type: 'caption',
+                        id: captionSequenceId,
                         text: cleanText,
-                        timestamp: new Date().toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+                        timestamp: timeStr
                     });
                 }
             }
 
-            // 未確定音声から先行確定した文節の累積オフセット
-            let accumulatedInterimOffset = 0;
+            // 未確定音声（interim）から先行コミット済みのテキストバッファ
+            let committedInterimText = '';
 
             function safeStartRecognition() {
                 if (!isRecognizing) return;
@@ -2467,12 +2500,12 @@
 
             recognition.onstart = function() {
                 isRecognizing = true;
-                accumulatedInterimOffset = 0;
+                committedInterimText = '';
                 updateSpeechUI(true);
             };
 
             recognition.onend = function() {
-                accumulatedInterimOffset = 0;
+                committedInterimText = '';
                 if (isRecognizing) {
                     if (recognitionRestartTimer) clearTimeout(recognitionRestartTimer);
                     recognitionRestartTimer = setTimeout(() => {
@@ -2507,38 +2540,38 @@
                     }
                 }
 
-                // 1. 確定テキスト（isFinal）の文節分割配信
+                // 1. 確定テキスト（isFinal）のコミット処理
                 if (finalTranscript) {
-                    accumulatedInterimOffset = 0;
                     const trimmedFinal = finalTranscript.trim();
                     if (trimmedFinal) {
                         const correctedFinal = fixScriptureReferences(replaceChurchTerms(trimmedFinal));
-                        interimText.textContent = '（次の音声入力を待機中...）';
-                        const chunks = splitIntoSmartChunks(correctedFinal);
-                        chunks.forEach(chunk => dispatchCaption(chunk));
+                        // 先行コミット済みプレフィックスを除去した未確定確定差分のみを抽出
+                        const uncommittedFinal = stripCommittedPrefix(correctedFinal, committedInterimText);
+                        if (uncommittedFinal) {
+                            const chunks = splitIntoSmartChunks(uncommittedFinal);
+                            chunks.forEach(chunk => dispatchCaption(chunk));
+                        }
                     }
+                    // 確定イベント完了で未確定バッファと先行コミットステートを確実にクリア
+                    committedInterimText = '';
+                    interimText.textContent = '（次の音声入力を待機中...）';
                 }
 
                 // 2. 未確定テキスト（interim）のリアルタイム文節認識 & 先行分割配信
                 if (interimTranscript) {
                     const correctedInterim = fixScriptureReferences(replaceChurchTerms(interimTranscript.trim()));
                     if (correctedInterim) {
-                        let unhandledInterim = correctedInterim.substring(accumulatedInterimOffset).trim();
+                        let unhandledInterim = stripCommittedPrefix(correctedInterim, committedInterimText);
 
-                        // 未確定テキストが長くなり、文節区切りが検知されたらリアルタイムに先行確定
+                        // 未確定テキストが長くなり、文節区切りが検知されたらリアルタイムに先行確定コミット
                         let splitIdx = findSmartSplitIndex(unhandledInterim);
                         while (splitIdx > 0 && splitIdx < unhandledInterim.length) {
                             const chunk = unhandledInterim.substring(0, splitIdx).trim();
                             if (chunk) {
                                 dispatchCaption(chunk);
-                                const chunkEndPos = correctedInterim.indexOf(chunk, accumulatedInterimOffset) + chunk.length;
-                                if (chunkEndPos > accumulatedInterimOffset) {
-                                    accumulatedInterimOffset = chunkEndPos;
-                                } else {
-                                    accumulatedInterimOffset += splitIdx;
-                                }
+                                committedInterimText += (committedInterimText ? ' ' : '') + chunk;
                             }
-                            unhandledInterim = correctedInterim.substring(accumulatedInterimOffset).trim();
+                            unhandledInterim = stripCommittedPrefix(correctedInterim, committedInterimText);
                             splitIdx = findSmartSplitIndex(unhandledInterim);
                         }
 
@@ -2548,7 +2581,7 @@
             };
 
             toggleRecognitionBtn.onclick = function() {
-                accumulatedInterimOffset = 0;
+                committedInterimText = '';
                 if (isRecognizing) {
                     isRecognizing = false;
                     recentSentHistory.length = 0;
@@ -2565,7 +2598,7 @@
                 hostTranscriptLog.innerHTML = '<p class="text-xs text-slate-400 text-center italic my-auto">ログをクリアしました</p>';
                 transcriptHistory.length = 0;
                 recentSentHistory.length = 0;
-                accumulatedInterimOffset = 0;
+                committedInterimText = '';
             };
         }
 
@@ -2590,10 +2623,10 @@
             const cleanText = text.trim();
             if (!cleanText) return;
 
-            // 直前のログと同一内容の場合は二重追加を防ぐ
+            // 直前のログと同一内容の場合は二重追加を防ぐ（正規化判定含む）
             if (transcriptHistory.length > 0) {
                 const lastEntry = transcriptHistory[transcriptHistory.length - 1];
-                if (lastEntry.text === cleanText) {
+                if (lastEntry.text === cleanText || lastEntry.text.replace(/[\s\u3000]+/g, '') === cleanText.replace(/[\s\u3000]+/g, '')) {
                     return;
                 }
             }
