@@ -1457,13 +1457,15 @@
                     p += m?.get(text.substring(i - 2, i + 1)) || 0;
                     p += S?.get(text.substring(i - 1, i + 2)) || 0;
                     p += k?.get(text.substring(i, i + 3)) || 0;
-                    if (p > 0) boundaries.push(i);
+                    if (p > 0) {
+                        boundaries.push({ index: i, score: p });
+                    }
                 }
                 return boundaries;
             }
             parse(text) {
                 if (!text) return [];
-                const boundaries = this.parseBoundaries(text);
+                const boundaries = this.parseBoundaries(text).map(b => b.index);
                 const result = [];
                 let start = 0;
                 for (const b of boundaries) {
@@ -1520,24 +1522,30 @@
                 }
             }
 
-            // 2. BudouX による文節境界候補を主軸として取得
-            const budouxBoundaries = budouxParser.parseBoundaries(text);
-            const candidateSet = new Set(budouxBoundaries);
+            // 2. BudouX による文節境界候補と確信度スコアを取得
+            const budouxItems = budouxParser.parseBoundaries(text);
+            const candidateMap = new Map();
+
+            budouxItems.forEach(item => {
+                candidateMap.set(item.index, Math.min(item.score / 100, 50));
+            });
 
             // 読点・空白の直後も境界候補に追加
             const sepRegex = /[、\s\u3000]+/g;
             let sMatch;
             while ((sMatch = sepRegex.exec(text)) !== null) {
-                candidateSet.add(sMatch.index + sMatch[0].length);
+                const p = sMatch.index + sMatch[0].length;
+                const current = candidateMap.get(p) || 0;
+                candidateMap.set(p, Math.max(current, 30));
             }
 
             // isFinal の場合はテキスト全体の末尾も候補
             if (isFinal && text.length >= 10) {
-                candidateSet.add(text.length);
+                candidateMap.set(text.length, 20);
             }
 
-            const candidates = Array.from(candidateSet).sort((a, b) => a - b);
-            if (candidates.length === 0) return -1;
+            const candidatePositions = Array.from(candidateMap.keys()).sort((a, b) => a - b);
+            if (candidatePositions.length === 0) return -1;
 
             // 終止表現・接続助詞パターンの定義
             const endingEndRegex = /(です|ます|でした|ました|思います|思っています|感謝します|感謝いたします|証します|祈ります|お祈りします|信じます|ください|つもります|でしょう|ましょう|アーメン)(よね|ね|よ|か|わ|な|ぞ|。|！|？|[\s\u3000]+)?$/;
@@ -1546,7 +1554,7 @@
             let bestScore = -Infinity;
             let bestPos = -1;
 
-            for (const pos of candidates) {
+            for (const pos of candidatePositions) {
                 if (pos < 8) continue;
 
                 // 固有名詞の途中なら絶対に切断しない
@@ -1563,44 +1571,35 @@
                 const prefixLen = prefix.length;
                 if (prefixLen < 8) continue;
 
-                let score = 0;
+                // 1. 表示文字数の正規分布重み（27文字をピーク、標準偏差7文字のガウス関数）
+                const diff = prefixLen - 27;
+                const lengthWeight = Math.exp(-(diff * diff) / (2 * 49)) * 100;
 
-                // A. 文字数長レンジスコア（字幕最適レンジ: 20〜34文字）
-                if (prefixLen >= 20 && prefixLen <= 34) {
-                    score += 60;
-                } else if (prefixLen >= 15 && prefixLen <= 40) {
-                    score += 40;
-                } else if (prefixLen > 40 && prefixLen <= 50) {
-                    score += 20;
-                } else if (prefixLen > 50) {
-                    score -= (prefixLen - 50) * 2;
-                } else if (prefixLen < 15) {
-                    score -= (15 - prefixLen) * 3;
-                }
+                // 2. BudouX の確信度スコア
+                const confidenceScore = candidateMap.get(pos) || 0;
 
-                // B. 終止表現ボーナス
+                // 3. 終止表現・接続助詞・読点ボーナス
+                let bonus = 0;
                 if (endingEndRegex.test(prefix)) {
-                    score += 100;
+                    bonus += 150;
                 }
-
-                // C. 接続助詞・読点ボーナス
                 if (clauseEndRegex.test(prefix)) {
-                    score += 50;
+                    bonus += 70;
                 }
-
-                // D. 読点・空白直後ボーナス
                 if (/[、\s\u3000]$/.test(text.substring(0, pos))) {
-                    score += 30;
+                    bonus += 40;
                 }
 
-                if (score > bestScore) {
-                    bestScore = score;
+                const totalScore = lengthWeight + confidenceScore + bonus;
+
+                if (totalScore > bestScore) {
+                    bestScore = totalScore;
                     bestPos = pos;
                 }
             }
 
             // スコアが一定以上（または長文で分割が必要な場合）に採用
-            if (bestPos !== -1 && (bestScore >= 50 || (text.length >= 35 && bestScore > 0))) {
+            if (bestPos !== -1 && (bestScore >= 80 || (text.length >= 35 && bestScore > 40))) {
                 return bestPos;
             }
 
