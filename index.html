@@ -901,27 +901,35 @@
         const wakeLockText = document.getElementById('wakeLockText');
 
         // ==================== 初期化 ====================
-        window.onload = function() {
-            if (window.location.protocol === 'file:') {
-                localFileWarning.classList.remove('hidden');
-            }
+        window.onload = async function() {
+            try {
+                if (window.location.protocol === 'file:') {
+                    localFileWarning.classList.remove('hidden');
+                }
 
-            loadDictionary();
-            checkMode();
-            setupFontSizeButton();
-            setupBulkDictionaryEvents();
-            setupJsonBackupEvents();
-            setupAudioGuideToggle();
-            setupSingleDictionaryForm();
-            setupDictListDelegation();
-            setupHostLogDelegation();
+                loadDictionary();
+                checkMode();
+                setupFontSizeButton();
+                setupBulkDictionaryEvents();
+                setupJsonBackupEvents();
+                setupAudioGuideToggle();
+                setupSingleDictionaryForm();
+                setupDictListDelegation();
+                setupHostLogDelegation();
 
-            if (refreshAudioDevicesBtn) {
-                refreshAudioDevicesBtn.onclick = initAudioDeviceSelector;
-            }
+                if (refreshAudioDevicesBtn) {
+                    refreshAudioDevicesBtn.onclick = initAudioDeviceSelector;
+                }
 
-            if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
-                navigator.mediaDevices.addEventListener('devicechange', initAudioDeviceSelector);
+                if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
+                    navigator.mediaDevices.addEventListener('devicechange', initAudioDeviceSelector);
+                }
+            } catch (err) {
+                console.error('初期化エラー:', err);
+                if (modeBadge) {
+                    modeBadge.textContent = '初期化エラー';
+                    modeBadge.className = 'text-xs px-3 py-1 rounded-full font-medium bg-red-800 text-red-100 border border-red-700';
+                }
             }
         };
 
@@ -1420,7 +1428,7 @@
         }
 
         function escapeRegExp(string) {
-            return string.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+            return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
         }
 
         // ==================== 聖典参照パターン補正 ====================
