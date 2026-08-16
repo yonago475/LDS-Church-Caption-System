@@ -491,6 +491,22 @@
             "制約の道": "聖約の道",
             "制約": "聖約",
             "誓約": "聖約",
+            "しんこう": "信仰",
+            "進行": "信仰",
+            "教会への進行": "教会への信仰",
+            "せいぶん": "聖文",
+            "成分": "聖文",
+            "製文": "聖文",
+            "せいてん": "聖典",
+            "しんり": "真理",
+            "心理": "真理",
+            "まねいて": "招いて",
+            "真似ておられます": "招いておられます",
+            "真似て": "招いて",
+            "どうとくかん": "道徳観",
+            "道徳感": "道徳観",
+            "みかたのかたより": "見方の偏り",
+            "味方に偏り": "見方の偏り",
             "ばぷてすま": "バプテスマ",
             "あがない": "贖い",
             "赤ない": "贖い",
@@ -553,10 +569,13 @@
             "りあほな": "リアホナ",
             "めし": "召し",
 
-            // --- モルモン書・歴史人物 ---
             "じょせふすみす": "ジョセフ・スミス",
             "じょせふ・すみす": "ジョセフ・スミス",
             "ぶりがむやんぐ": "ブリガム・ヤング",
+            "りちゃーどえるえばんず": "リチャード・L・エヴァンズ",
+            "リチャード エル エヴァンズ": "リチャード・L・エヴァンズ",
+            "リチャード・エル・エヴァンズ": "リチャード・L・エヴァンズ",
+            "リチャードエルエヴァンズ": "リチャード・L・エヴァンズ",
             "にーふぁい": "ニーファイ",
             "りーはい": "リーハイ",
             "あるま": "アルマ",
@@ -1838,6 +1857,11 @@
             const clauseEndRegex = /(、|ので|から|ですが|けれども|けれど|ために|ように|して|あって|であり|つつ|たら|なら|に関して言えば|について言えば|に関して|について|において|の中で|によって)$/;
             const nextLeadingConjunctionRegex = /^[\s\u3000]*(また|そして|しかし|だから|ですから|なお|さらに|あるいは|または)([\s\u3000、]|$)/;
             const leadingParticleRegex = /^[のをにがへとでも]/; // 助詞単体で次行が始まるのを禁止
+            const leadingSuffixRegex = /^[さみ的感性者員化等度率界]/; // 接尾辞の前での切断禁止（例: 活発/さ）
+            const leadingTitleRegex = /^(長老|大管長|管長|監督|兄弟|姉妹|使徒|会長)/; // 役職タイトルの直前での切断禁止
+            const attributiveAdjRegex = /(深い|高い|大きい|小さい|強い|尊い|重い|良い|新たな|重要な|大きな|小さな|特別な|聖なる|神聖な|霊的な)$/; // 連体形修飾の直後での切断禁止
+            const adverbEndRegex = /(はっきり|しっかり|ゆっくり|まさに|すでに|常に|決して|まったく|とても|非常に|さらに)$/; // 副詞の直後での切断禁止
+            const trailingCaseParticleRegex = /(?<!(です|ます|だ|の|た|だっ|な))[がをにはへとで]$/; // 格助詞で終わる中途半端な切断の禁止
 
             function isEndingMatch(prefix) {
                 return endingEndRegex.test(prefix);
@@ -1869,8 +1893,37 @@
 
                 const nextPart = text.substring(pos);
 
-                // 助詞単体（の、を、に、が...）で始まる位置での分割を禁止
+                // 文法ルールによる切断禁止ガード
+                // 1. 助詞単体（の、を、に、が...）で始まる位置での分割を禁止
                 if (isLeadingParticle(nextPart)) {
+                    continue;
+                }
+                // 2. 接尾辞（さ、的、感、性、者、員...）の前での分割を禁止（例: 活発/さ）
+                if (leadingSuffixRegex.test(nextPart.trim())) {
+                    continue;
+                }
+                // 3. 役職タイトル（長老、大管長...）の前での分割を禁止
+                if (leadingTitleRegex.test(nextPart.trim())) {
+                    continue;
+                }
+                // 4. 連体形形容詞（深い、高い、聖なる...）の直後での分割を禁止
+                if (attributiveAdjRegex.test(prefix)) {
+                    continue;
+                }
+                // 5. 副詞（はっきり、しっかり...）の直後での分割を禁止
+                if (adverbEndRegex.test(prefix)) {
+                    continue;
+                }
+                // 6. 「〜よう」単体の直後での分割を禁止
+                if (/よう$/.test(prefix) && !/ように$/.test(prefix)) {
+                    continue;
+                }
+                // 7. 「〜もの」＋助詞の前での分割を禁止
+                if (/もの$/.test(prefix) && /^[とでには]/.test(nextPart.trim())) {
+                    continue;
+                }
+                // 8. 単独格助詞（が、を、に、で...）で終わる中途半端な分割を禁止
+                if (trailingCaseParticleRegex.test(prefix)) {
                     continue;
                 }
 
@@ -2129,15 +2182,15 @@
 
                 const now = Date.now();
 
-                // 直近8秒以内の同一文節・包含重複を防止（それ以前の発話は許可）
+                // 直近45秒以内の同一文節・包含重複を防止（直近すでにログや画面に送られた文節の重複再送を防止）
                 for (let i = recentSentHistory.length - 1; i >= 0; i--) {
                     const item = recentSentHistory[i];
-                    if (now - item.timestamp > 8000) break;
+                    if (now - item.timestamp > 45000) break;
                     if (item.norm === normClean) {
                         return;
                     }
-                    if (now - item.timestamp < 4000 && (item.norm.includes(normClean) || normClean.includes(item.norm))) {
-                        if (Math.abs(normClean.length - item.norm.length) < 6) {
+                    if (now - item.timestamp < 15000 && (item.norm.includes(normClean) || normClean.includes(item.norm))) {
+                        if (Math.abs(normClean.length - item.norm.length) < 8) {
                             return;
                         }
                     }
