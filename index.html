@@ -404,9 +404,13 @@
             "精算会": "聖餐会",
             "清算会": "聖餐会",
             "だいかんちょう": "大管長",
+            "大官庁": "大管長",
+            "大官長": "大管長",
             "かんちょう": "管長",
             "館長": "管長",
             "官長": "管長",
+            "末日性": "末日聖徒",
+            "末日性と": "末日聖徒",
             "かんとく": "監督",
             "ふじょきょうかい": "扶助協会",
             "扶助教会": "扶助協会",
@@ -480,7 +484,13 @@
             "しんけん": "神権",
             "真剣": "神権",
             "神件": "神権",
+            "親権": "神権",
+            "親権の権能": "神権の権能",
             "しんけんのかぎ": "神権の鍵",
+            "せいやく": "聖約",
+            "制約の道": "聖約の道",
+            "制約": "聖約",
+            "誓約": "聖約",
             "ばぷてすま": "バプテスマ",
             "あがない": "贖い",
             "赤ない": "贖い",
@@ -494,9 +504,17 @@
             "心電": "神殿",
             "せいれい": "聖霊",
             "精霊": "聖霊",
+            "天皇を受ける": "聖霊を受ける",
             "てんのちち": "天の父",
             "てんのおとうさま": "天のお父様",
+            "オン チチ": "天の父",
+            "オンチチ": "天の父",
+            "おんちち": "天の父",
+            "音父": "天の父",
             "かみさま": "神様",
+            "がいとう": "外套",
+            "街灯": "外套",
+            "外衣": "外套",
             "えんだうめんと": "エンダウメント",
             "ふういん": "封印",
             "むすびがため": "結び固め",
@@ -1674,6 +1692,17 @@
             "イエス・キリスト教会",
             "イエス・キリスト",
             "末日聖徒",
+            "ネルソン大管長",
+            "ヒンクレー大管長",
+            "モンソン大管長",
+            "オークス管長",
+            "アイリング管長",
+            "大管長",
+            "神権の権能",
+            "神権の鍵",
+            "聖約の道",
+            "知恵の言葉",
+            "救いの計画",
             "扶助協会",
             "長老定員会",
             "アロン神権",
@@ -1681,6 +1710,17 @@
             "福音の教義",
             "初等協会",
             "中央幹部",
+            "十二使徒",
+            "七十人",
+            "祝福師",
+            "天の父",
+            "天のお父様",
+            "救い主",
+            "モルモン書",
+            "教義と聖約",
+            "高価な真珠",
+            "結び固め",
+            "エンダウメント",
             // 複合助詞・連語（助詞＋語の途中での切断を完全ブロック）
             "に関して言えば",
             "について言えば",
@@ -1735,7 +1775,7 @@
                 }
             }
 
-            // 2. BudouX による文節境界候補と確信度スコアの取得
+            // 2. BudouX による文節境界候補の取得
             const parser = getBudouXParser();
             let budouxBoundaries = [];
             if (parser) {
@@ -1761,25 +1801,24 @@
             const candidateMap = new Map();
             const candidateInfoMap = new Map();
 
-            // BudouX の文節境界候補を登録
+            // BudouX の文節境界候補を登録（文法候補として10点付与）
             budouxBoundaries.forEach(b => {
                 if (typeof b === 'number') {
-                    candidateMap.set(b, 35);
+                    candidateMap.set(b, 10);
                     candidateInfoMap.set(b, { budouX: true });
                 } else if (b && typeof b.index === 'number') {
-                    const score = b.score ? Math.min(b.score / 100, 50) : 35;
-                    candidateMap.set(b.index, score);
+                    candidateMap.set(b.index, 10);
                     candidateInfoMap.set(b.index, { budouX: true });
                 }
             });
 
-            // 読点・空白の直後も境界候補に追加（separator フラグ付与）
+            // 読点・空白の直後も境界候補に追加
             const sepRegex = /[、\s\u3000]+/g;
             let sMatch;
             while ((sMatch = sepRegex.exec(text)) !== null) {
                 const p = sMatch.index + sMatch[0].length;
                 const current = candidateMap.get(p) || 0;
-                candidateMap.set(p, Math.max(current, 30));
+                candidateMap.set(p, Math.max(current, 25));
                 const prev = candidateInfoMap.get(p) || {};
                 candidateInfoMap.set(p, { ...prev, separator: true });
             }
@@ -1795,9 +1834,10 @@
             if (candidatePositions.length === 0) return -1;
 
             // 終止表現・接続助詞パターンの定義
-            const endingEndRegex = /(です|ます|でした|ました|思います|思っています|感謝します|感謝いたします|証します|祈ります|お祈りします|信じます|ください|つもります|でしょう|ましょう|アーメン)(よね|ね|よ|か|わ|な|ぞ|。|！|？|[\s\u3000]+)?$/;
-            const clauseEndRegex = /(、|ので|ですが|けれども|けれど|ために|に関して言えば|について言えば|に関して|について|において|の中で|によって)$/;
+            const endingEndRegex = /(です|ます|でした|ました|ません|ましょう|ください|祈ります|お祈りします|感謝します|感謝いたします|証します|思います|思っています|信じます|願います|あります|います|行います|アーメン)(よね|ね|よ|か|わ|な|ぞ|。|！|？|[\s\u3000]+)?$/;
+            const clauseEndRegex = /(、|ので|から|ですが|けれども|けれど|ために|ように|して|あって|であり|つつ|たら|なら|に関して言えば|について言えば|に関して|について|において|の中で|によって)$/;
             const nextLeadingConjunctionRegex = /^[\s\u3000]*(また|そして|しかし|だから|ですから|なお|さらに|あるいは|または)([\s\u3000、]|$)/;
+            const leadingParticleRegex = /^[のをにがへとでも]/; // 助詞単体で次行が始まるのを禁止
 
             function isEndingMatch(prefix) {
                 return endingEndRegex.test(prefix);
@@ -1807,6 +1847,9 @@
             }
             function isNextLeadingConjunctionMatch(nextPart) {
                 return nextLeadingConjunctionRegex.test(nextPart);
+            }
+            function isLeadingParticle(nextPart) {
+                return leadingParticleRegex.test(nextPart.trim());
             }
 
             let bestScore = -Infinity;
@@ -1820,22 +1863,27 @@
                     continue;
                 }
 
-                // 未確定（interim）時、末尾付近（後続が4文字未満）かつ文末記号がない場合は保留
-                if (!isFinal && pos > text.length - 4 && !/[。！？\s\u3000]/.test(text[pos - 1])) {
-                    continue;
-                }
-
                 const prefix = text.substring(0, pos).trim();
                 const prefixLen = prefix.length;
                 if (prefixLen < 8) continue;
 
                 const nextPart = text.substring(pos);
 
-                // 1. 表示文字数の正規分布重み（27文字をピーク、標準偏差7文字のガウス関数、最大40点に最適化）
-                const diff = prefixLen - 27;
-                const lengthWeight = Math.exp(-(diff * diff) / (2 * 49)) * 40;
+                // 助詞単体（の、を、に、が...）で始まる位置での分割を禁止
+                if (isLeadingParticle(nextPart)) {
+                    continue;
+                }
 
-                // 2. 確信度スコア
+                // 未確定（interim）時、末尾付近（後続が4文字未満）かつ文末記号がない場合は保留
+                if (!isFinal && pos > text.length - 4 && !/[。！？\s\u3000]/.test(text[pos - 1])) {
+                    continue;
+                }
+
+                // 1. 表示文字数の正規分布重み（28文字をピーク、標準偏差8文字、最大30点）
+                const diff = prefixLen - 28;
+                const lengthWeight = Math.exp(-(diff * diff) / (2 * 64)) * 30;
+
+                // 2. 確信度スコア（BudouX / 読点）
                 const confidenceScore = candidateMap.get(pos) || 0;
 
                 // 3. 終止表現・接続助詞・次行接続詞ボーナス
@@ -1844,13 +1892,13 @@
                     bonus += 150;
                 }
                 if (isClauseEndMatch(prefix)) {
-                    bonus += 70;
+                    bonus += 80;
                 }
                 if (isNextLeadingConjunctionMatch(nextPart)) {
                     bonus += 80;
                 }
                 if (/[、\s\u3000]$/.test(text.substring(0, pos))) {
-                    bonus += 40;
+                    bonus += 35;
                 }
 
                 const totalScore = lengthWeight + confidenceScore + bonus;
@@ -1861,8 +1909,8 @@
                 }
             }
 
-            // スコアが一定以上（または長文で分割が必要な場合）に採用
-            if (bestPos !== -1 && (bestScore >= 30 || (text.length >= 35 && bestScore > 20))) {
+            // 採用判定: 文末・節末の明確な区切り（score >= 65）、または35文字以上の長文時の自然なBudouX境界（score >= 35）
+            if (bestPos !== -1 && (bestScore >= 65 || (text.length >= 35 && bestScore >= 35))) {
                 return bestPos;
             }
 
@@ -1898,13 +1946,7 @@
             const normCommitted = committedText.replace(/[\s\u3000、。！？]+/g, '').toLowerCase();
             if (!normCommitted) return fullText;
 
-            if (normFull.length <= normCommitted.length) {
-                if (normFull === normCommitted) return "";
-                return fullText;
-            }
-
-            // 1. 先頭一致（もっとも一般的なケース）
-            if (normFull.startsWith(normCommitted)) {
+            if (normFull === normCommitted || normFull.startsWith(normCommitted)) {
                 let normCount = 0;
                 let rawIdx = 0;
                 while (rawIdx < fullText.length && normCount < normCommitted.length) {
@@ -1916,7 +1958,7 @@
                 return fullText.substring(rawIdx).trim();
             }
 
-            // 2. アンカー一致（テキスト途中にコミット済み文節が存在する場合）
+            // アンカー一致
             const anchorIdx = normFull.indexOf(normCommitted);
             if (anchorIdx !== -1) {
                 const cutNormLen = anchorIdx + normCommitted.length;
@@ -1931,7 +1973,26 @@
                 return fullText.substring(rawIdx).trim();
             }
 
-            // 3. マッチしない場合（新規発話の開始など）は、テキストを切り落とさずにそのまま返す
+            // ファジー先頭一致（確定時に漢字変換が1-2文字変わった場合の重複再送防止）
+            if (normFull.length >= normCommitted.length - 2) {
+                const checkLen = Math.min(normFull.length, normCommitted.length);
+                let matchCount = 0;
+                for (let i = 0; i < checkLen; i++) {
+                    if (normFull[i] === normCommitted[i]) matchCount++;
+                }
+                if (matchCount / checkLen >= 0.75) {
+                    let normCount = 0;
+                    let rawIdx = 0;
+                    while (rawIdx < fullText.length && normCount < normCommitted.length) {
+                        if (!/[\s\u3000、。！？]/.test(fullText[rawIdx])) {
+                            normCount++;
+                        }
+                        rawIdx++;
+                    }
+                    return fullText.substring(rawIdx).trim();
+                }
+            }
+
             return fullText;
         }
 
@@ -2114,8 +2175,8 @@
                 });
             }
 
-            // 現在の発話セグメントで先行コミット済みの文字列
-            let committedInCurrentUtterance = '';
+            // 現在の発話セグメントで先行コミット済みの文字列リスト
+            let committedInCurrentUtterance = [];
             let silenceCommitTimer = null;
             let lastInterimText = '';
 
@@ -2125,14 +2186,17 @@
                     silenceCommitTimer = null;
                 }
                 if (lastInterimText && lastInterimText.trim()) {
-                    const unhandled = stripCommittedPrefix(lastInterimText.trim(), committedInCurrentUtterance);
-                    if (unhandled) {
+                    let unhandled = lastInterimText.trim();
+                    for (const committed of committedInCurrentUtterance) {
+                        unhandled = stripCommittedPrefix(unhandled, committed);
+                    }
+                    if (unhandled && unhandled.trim().length >= 2) {
                         const chunks = splitIntoSmartChunks(unhandled);
                         chunks.forEach(chunk => {
                             dispatchCaption(chunk);
                         });
                     }
-                    committedInCurrentUtterance = '';
+                    committedInCurrentUtterance = [];
                     lastInterimText = '';
                     interimText.textContent = '（次の音声入力を待機中...）';
                 }
@@ -2154,7 +2218,7 @@
 
             recognition.onstart = function() {
                 isRecognizing = true;
-                committedInCurrentUtterance = '';
+                committedInCurrentUtterance = [];
                 lastInterimText = '';
                 updateSpeechUI(true);
             };
@@ -2206,16 +2270,18 @@
                     const trimmedFinal = finalTranscript.trim();
                     if (trimmedFinal) {
                         const correctedFinal = fixScriptureReferences(replaceChurchTerms(trimmedFinal));
-                        // このセグメントで未コミットの確定差分を抽出して送信
-                        const uncommittedFinal = stripCommittedPrefix(correctedFinal, committedInCurrentUtterance);
-                        if (uncommittedFinal) {
+                        let uncommittedFinal = correctedFinal;
+                        for (const committed of committedInCurrentUtterance) {
+                            uncommittedFinal = stripCommittedPrefix(uncommittedFinal, committed);
+                        }
+                        if (uncommittedFinal && uncommittedFinal.trim().length >= 2) {
                             const chunks = splitIntoSmartChunks(uncommittedFinal);
                             chunks.forEach(chunk => {
                                 dispatchCaption(chunk);
                             });
                         }
                     }
-                    committedInCurrentUtterance = '';
+                    committedInCurrentUtterance = [];
                     lastInterimText = '';
                     interimText.textContent = '（次の音声入力を待機中...）';
                 }
@@ -2225,7 +2291,10 @@
                     const correctedInterim = fixScriptureReferences(replaceChurchTerms(interimTranscript.trim()));
                     if (correctedInterim) {
                         lastInterimText = correctedInterim;
-                        let unhandledInterim = stripCommittedPrefix(correctedInterim, committedInCurrentUtterance);
+                        let unhandledInterim = correctedInterim;
+                        for (const committed of committedInCurrentUtterance) {
+                            unhandledInterim = stripCommittedPrefix(unhandledInterim, committed);
+                        }
 
                         // 未確定テキストが長くなり、文節区切りが検知されたらリアルタイムに先行確定コミット
                         let splitIdx = findSmartSplitIndex(unhandledInterim);
@@ -2233,9 +2302,12 @@
                             const chunk = unhandledInterim.substring(0, splitIdx).trim();
                             if (chunk) {
                                 dispatchCaption(chunk);
-                                committedInCurrentUtterance += (committedInCurrentUtterance ? ' ' : '') + chunk;
+                                committedInCurrentUtterance.push(chunk);
                             }
-                            unhandledInterim = stripCommittedPrefix(correctedInterim, committedInCurrentUtterance);
+                            unhandledInterim = correctedInterim;
+                            for (const committed of committedInCurrentUtterance) {
+                                unhandledInterim = stripCommittedPrefix(unhandledInterim, committed);
+                            }
                             splitIdx = findSmartSplitIndex(unhandledInterim);
                         }
 
@@ -2243,7 +2315,7 @@
 
                         // 話者が息継ぎや発話を終えて無音（1.2秒）になった場合、残余テキストを自動確定フラッシュ
                         if (silenceCommitTimer) clearTimeout(silenceCommitTimer);
-                        if (unhandledInterim && unhandledInterim.trim()) {
+                        if (unhandledInterim && unhandledInterim.trim().length >= 2) {
                             silenceCommitTimer = setTimeout(() => {
                                 flushUnhandledInterim();
                             }, 1200);
@@ -2254,7 +2326,7 @@
 
             toggleRecognitionBtn.onclick = function() {
                 flushUnhandledInterim();
-                committedInCurrentUtterance = '';
+                committedInCurrentUtterance = [];
                 lastInterimText = '';
                 if (isRecognizing) {
                     isRecognizing = false;
@@ -2272,7 +2344,7 @@
                 hostTranscriptLog.innerHTML = '<p class="text-xs text-slate-400 text-center italic my-auto">ログをクリアしました</p>';
                 transcriptHistory.length = 0;
                 recentSentHistory.length = 0;
-                committedInCurrentUtterance = '';
+                committedInCurrentUtterance = [];
                 lastInterimText = '';
             };
         }
