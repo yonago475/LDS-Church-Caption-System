@@ -1075,6 +1075,49 @@
             };
         }
 
+        function deleteDictItem(key) {
+            delete churchDictionary[key];
+            saveDictionary();
+            resetDictForm();
+        }
+
+        function resetDictForm() {
+            dictKey.value = '';
+            dictVal.value = '';
+            editingKey.value = '';
+            saveDictBtnText.textContent = "単語を追加";
+            saveDictIcon.className = "fa-solid fa-plus mr-1";
+            cancelEditBtn.classList.add('hidden');
+        }
+
+        function setupSingleDictionaryForm() {
+            addDictForm.onsubmit = function(e) {
+                e.preventDefault();
+                const k = dictKey.value.trim();
+                const v = dictVal.value.trim();
+                const oldK = editingKey.value;
+
+                if (!k || !v) return;
+
+                if (oldK && oldK !== k) {
+                    delete churchDictionary[oldK];
+                }
+
+                churchDictionary[k] = v;
+                saveDictionary();
+                resetDictForm();
+            };
+
+            cancelEditBtn.onclick = resetDictForm;
+
+            clearAllDictBtn.onclick = function() {
+                if (Object.keys(churchDictionary).length === 0) return;
+                churchDictionary = {};
+                saveDictionary();
+                resetDictForm();
+            };
+        }
+
         function setupAudioGuideToggle() {
             if (togglePcAudioGuideBtn && pcAudioGuideBox) {
                 togglePcAudioGuideBtn.onclick = function() {
@@ -1278,34 +1321,6 @@
             saveDictIcon.className = "fa-solid fa-check mr-1";
             cancelEditBtn.classList.remove('hidden');
             dictKey.focus();
-        }
-
-        function deleteDictItem(key) {
-            delete churchDictionary[key];
-            saveDictionary();
-            resetDictForm();
-        }
-
-
-                if (!k || !v) return;
-
-                if (oldK && oldK !== k) {
-                    delete churchDictionary[oldK];
-                }
-
-                churchDictionary[k] = v;
-                saveDictionary();
-                resetDictForm();
-            };
-
-            cancelEditBtn.onclick = resetDictForm;
-
-            clearAllDictBtn.onclick = function() {
-                if (Object.keys(churchDictionary).length === 0) return;
-                churchDictionary = {};
-                saveDictionary();
-                resetDictForm();
-            };
         }
 
         function setupBulkDictionaryEvents() {
