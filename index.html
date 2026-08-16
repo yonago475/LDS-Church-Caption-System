@@ -1843,32 +1843,36 @@
                     recentSentHistory.shift();
                 }
 
-                if (isManualBroadcastMode) {
-                    // 手動配信モード: テキストエリアが空かつキューが空なら直接表示、そうでなければキューにストック
-                    const manualInput = document.getElementById('manualEditInput');
-                    if (manualInput) {
-                        if (manualInput.value.trim() === '' && manualBroadcastQueue.length === 0) {
-                            manualInput.value = cleanText;
-                            manualInput.focus();
-                        } else {
-                            manualBroadcastQueue.push(cleanText);
-                            updateManualQueueUI();
-                        }
-                    }
-                } else {
-                    // 自動配信モード: 即時配信 & ホストログ追加
-                    appendHostTranscript(cleanText);
-                    broadcastToViewers({
-                        type: 'caption',
-                        id: captionSequenceId,
-                        text: cleanText,
-                        timestamp: timeStr
-                    });
-                }
+                // 即時配信 & ホストログ追加
+                appendHostTranscript(cleanText);
+                broadcastToViewers({
+                    type: 'caption',
+                    id: captionSequenceId,
+                    text: cleanText,
+                    timestamp: timeStr
+                });
             }
 
             // 未確定音声（interim）から先行コミット済みの文節バッファ配列
             const committedChunks = [];
+            let silenceCommitTimer = null;
+            let currentUnhandledInterim = '';
+
+            function flushUnhandledInterim() {
+                if (silenceCommitTimer) {
+                    clearTimeout(silenceCommitTimer);
+                    silenceCommitTimer = null;
+                }
+                if (currentUnhandledInterim && currentUnhandledInterim.trim()) {
+                    const chunks = splitIntoSmartChunks(currentUnhandledInterim.trim());
+                    chunks.forEach(chunk => {
+                        dispatchCaption(chunk);
+                        committedChunks.push(chunk);
+                    });
+                    currentUnhandledInterim = '';
+                    interimText.textContent = '（次の音声入力を待機中...）';
+                }
+            }
 
             function safeStartRecognition() {
                 if (!isRecognizing) return;
@@ -1887,10 +1891,12 @@
             recognition.onstart = function() {
                 isRecognizing = true;
                 committedChunks.length = 0;
+                currentUnhandledInterim = '';
                 updateSpeechUI(true);
             };
 
             recognition.onend = function() {
+                flushUnhandledInterim();
                 committedChunks.length = 0;
                 if (isRecognizing) {
                     if (recognitionRestartTimer) clearTimeout(recognitionRestartTimer);
@@ -1909,6 +1915,7 @@
                     updateSpeechUI(false);
                     interimText.textContent = 'マイクへのアクセス許可が必要です。ブラウザのマイク権限を許可してください。';
                 } else if (event.error === 'no-speech') {
+                    flushUnhandledInterim();
                     interimText.textContent = '（音声入力を待機中...）';
                 }
             };
@@ -1928,6 +1935,12 @@
 
                 // 1. 確定テキスト（isFinal）のコミット処理
                 if (finalTranscript) {
+                    if (silenceCommitTimer) {
+                        clearTimeout(silenceCommitTimer);
+                        silenceCommitTimer = null;
+                    }
+                    currentUnhandledInterim = '';
+
                     const trimmedFinal = finalTranscript.trim();
                     if (trimmedFinal) {
                         const correctedFinal = fixScriptureReferences(replaceChurchTerms(trimmedFinal));
@@ -1961,12 +1974,22 @@
                             splitIdx = findSmartSplitIndex(unhandledInterim);
                         }
 
+                        currentUnhandledInterim = unhandledInterim;
                         interimText.textContent = unhandledInterim || correctedInterim;
+
+                        // 話者が息継ぎや発話を終えて無音（1.2秒）になった場合、残余テキストを自動確定フラッシュ
+                        if (silenceCommitTimer) clearTimeout(silenceCommitTimer);
+                        if (currentUnhandledInterim && currentUnhandledInterim.trim()) {
+                            silenceCommitTimer = setTimeout(() => {
+                                flushUnhandledInterim();
+                            }, 1200);
+                        }
                     }
                 }
             };
 
             toggleRecognitionBtn.onclick = function() {
+                flushUnhandledInterim();
                 committedChunks.length = 0;
                 if (isRecognizing) {
                     isRecognizing = false;
