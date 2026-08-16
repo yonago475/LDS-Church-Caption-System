@@ -10,6 +10,8 @@
     <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
     <!-- QRCode.js for Generating Room QR Codes -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <!-- BudouX for Natural Japanese Phrase Segmentation -->
+    <script src="https://unpkg.com/budoux/bundle/budoux-ja.min.js"></script>
     <!-- FontAwesome for Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
@@ -1711,6 +1713,14 @@
             return false;
         }
 
+        let budouxParser = null;
+        function getBudouXParser() {
+            if (!budouxParser && window.BudouX && typeof window.BudouX.loadDefaultJapaneseParser === 'function') {
+                budouxParser = window.BudouX.loadDefaultJapaneseParser();
+            }
+            return budouxParser;
+        }
+
         // ==================== 自然な文節境界スコアリング分割ロジック ====================
         function findSmartSplitIndex(text, isFinal = false) {
             if (!text || text.length < 10) return -1;
@@ -1725,9 +1735,43 @@
                 }
             }
 
-            // 2. 境界候補と確信度スコアの算出
+            // 2. BudouX による文節境界候補と確信度スコアの取得
+            const parser = getBudouXParser();
+            let budouxBoundaries = [];
+            if (parser) {
+                try {
+                    if (typeof parser.parseBoundaries === 'function') {
+                        budouxBoundaries = parser.parseBoundaries(text) || [];
+                    } else if (typeof parser.parse === 'function') {
+                        const tokens = parser.parse(text) || [];
+                        let cumLen = 0;
+                        tokens.forEach(tok => {
+                            cumLen += tok.length;
+                            if (cumLen < text.length) {
+                                budouxBoundaries.push(cumLen);
+                            }
+                        });
+                    }
+                } catch (e) {
+                    console.warn('BudouX parsing error:', e);
+                }
+            }
+
+            // 3. 境界候補と確信度スコアの算出
             const candidateMap = new Map();
             const candidateInfoMap = new Map();
+
+            // BudouX の文節境界候補を登録
+            budouxBoundaries.forEach(b => {
+                if (typeof b === 'number') {
+                    candidateMap.set(b, 35);
+                    candidateInfoMap.set(b, { budouX: true });
+                } else if (b && typeof b.index === 'number') {
+                    const score = b.score ? Math.min(b.score / 100, 50) : 35;
+                    candidateMap.set(b.index, score);
+                    candidateInfoMap.set(b.index, { budouX: true });
+                }
+            });
 
             // 読点・空白の直後も境界候補に追加（separator フラグ付与）
             const sepRegex = /[、\s\u3000]+/g;
