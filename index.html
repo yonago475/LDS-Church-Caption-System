@@ -11,7 +11,7 @@
     <!-- QRCode.js for Generating Room QR Codes -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <!-- BudouX for Natural Japanese Phrase Segmentation -->
-    <script src="https://unpkg.com/budoux/bundle/budoux-ja.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/budoux@0.6.2/bundle/budoux-ja.min.js"></script>
     <!-- FontAwesome for Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
@@ -1825,8 +1825,14 @@
 
         let budouxParser = null;
         function getBudouXParser() {
-            if (!budouxParser && window.BudouX && typeof window.BudouX.loadDefaultJapaneseParser === 'function') {
-                budouxParser = window.BudouX.loadDefaultJapaneseParser();
+            if (!budouxParser) {
+                const b = window.BudouX || window.budoux;
+                if (b && typeof b.loadDefaultJapaneseParser === 'function') {
+                    budouxParser = b.loadDefaultJapaneseParser();
+                } else if (typeof BudouXParser !== 'undefined') {
+                    const model = typeof BUDOUX_JA_MODEL !== 'undefined' ? BUDOUX_JA_MODEL : {};
+                    budouxParser = new BudouXParser(model);
+                }
             }
             return budouxParser;
         }
