@@ -2059,11 +2059,12 @@
                 peerConnectionStatus.className = 'w-2 h-2 rounded-full bg-emerald-400';
                 peerStatusText.textContent = 'ホストに接続完了';
 
-                if (viewerCaptionFeed.querySelector('.italic')) {
-                    viewerCaptionFeed.innerHTML = `
-                        <div class="text-emerald-400 text-xs text-center italic py-4 border-b border-slate-800">
-                            <i class="fa-solid fa-circle-check mr-1"></i> 配信に接続しました。字幕を待機中...
-                        </div>
+                const placeholder = document.getElementById('captionPlaceholder');
+                if (placeholder) {
+                    placeholder.innerHTML = `
+                        <i class="fa-solid fa-circle-check text-3xl mb-3 block text-emerald-400"></i>
+                        配信に接続しました。字幕を待機中...<br>
+                        <span class="text-xs text-slate-500">Connected to stream. Waiting for captions...</span>
                     `;
                 }
             });
@@ -2174,9 +2175,9 @@
 
         // ==================== Viewer 字幕表示 ====================
         function appendViewerCaption(translatedText, originalText, timestamp) {
-            const emptyMsg = viewerCaptionFeed.querySelector('.italic');
-            if (emptyMsg) {
-                viewerCaptionFeed.innerHTML = '';
+            const placeholder = document.getElementById('captionPlaceholder');
+            if (placeholder) {
+                placeholder.remove();
             }
 
             // 長時間集会でのメモリ消費抑制: 画面内のカードが上限を超えた場合、最古のカードを安全にDOMから除去
