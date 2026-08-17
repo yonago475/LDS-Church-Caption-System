@@ -1750,6 +1750,7 @@
             recognition.onstart = function() {
                 isRecognizing = true;
                 currentUnhandledInterim = '';
+                interimText.textContent = '🎤 音声を認識しています... マイクに向かって話してください';
                 updateSpeechUI(true);
             };
 
@@ -1770,10 +1771,20 @@
                 if (event.error === 'not-allowed') {
                     isRecognizing = false;
                     updateSpeechUI(false);
-                    interimText.textContent = 'マイクへのアクセス許可が必要です。ブラウザのマイク権限を許可してください。';
+                    if (window.location.protocol === 'file:') {
+                        interimText.innerHTML = '<span class="text-red-600 font-bold">⚠️ Google Chromeの仕様により、ローカルファイル（file://）では音声認識が動作しません。<br>GitHub Pages（https://）またはローカルサーバー（http://localhost）で開いてください。</span>';
+                    } else {
+                        interimText.innerHTML = '<span class="text-red-600 font-bold">⚠️ マイクへのアクセス許可が必要です。アドレスバー左側の鍵アイコンからマイクを「許可」してください。</span>';
+                    }
+                } else if (event.error === 'audio-capture') {
+                    interimText.innerHTML = '<span class="text-red-600 font-bold">⚠️ マイクが見つからないか、他のアプリに専有されています。マイク接続を確認してください。</span>';
+                } else if (event.error === 'network') {
+                    interimText.innerHTML = '<span class="text-amber-600 font-bold">⚠️ 音声認識サーバーとの通信エラーが発生しました。インターネット接続を確認してください。</span>';
                 } else if (event.error === 'no-speech') {
                     flushUnhandledInterim();
-                    interimText.textContent = '（音声入力を待機中...）';
+                    if (isRecognizing) {
+                        interimText.textContent = '🎤 音声を認識しています... マイクに向かって話してください';
+                    }
                 }
             };
 
@@ -1859,8 +1870,10 @@
                     if (recognitionRestartTimer) clearTimeout(recognitionRestartTimer);
                     try { recognition.stop(); } catch(e){}
                     updateSpeechUI(false);
+                    interimText.textContent = '「▶ 音声認識スタート」を押して発話してください...';
                 } else {
                     isRecognizing = true;
+                    interimText.textContent = 'マイク起動中...';
                     safeStartRecognition();
                 }
             };
