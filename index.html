@@ -447,6 +447,20 @@
             "食材": "贖罪",
             "植栽": "贖罪",
             "イエス・キリストの食材": "イエス・キリストの贖罪",
+            "無限の食材": "無限の贖罪",
+            "げつせまね": "ゲツセマネ",
+            "決戦まで": "ゲツセマネ",
+            "決戦までと": "ゲツセマネと",
+            "カルバリ": "カルバリ",
+            "堕落したように": "堕落した世に",
+            "不穏なように": "不穏な世に",
+            "世に打ち勝つ": "世に打ち勝つ",
+            "世に勝っている": "世に勝っている",
+            "心理の歪曲": "真理の歪曲",
+            "重要な心理": "重要な真理",
+            "心理を喜び": "真理を喜び",
+            "偽りを避難し": "偽りを非難し",
+            "非難し": "非難し",
             "しんこう": "信仰",
             "進行はゆるぎない": "信仰は揺るぎない",
             "進行は揺るぎない": "信仰は揺るぎない",
@@ -1566,18 +1580,18 @@
             return false;
         }
 
-        // 終止表現・文末述語パターン（接続助詞「ので/から/が/て/たら/なら」が直後に続く中間節は除外）
-        const SENTENCE_ENDINGS = /(です|ます|でした|ました|ません|ませんでした|ましょう|ください|くださいません|思います|思っています|願います|祈ります|お祈りします|証します|感謝します|感謝いたします|信じます|言えます|あります|ありません|ありませんでした|なります|なりません|いけません|できません|アーメン)(?!(ので|から|が|て|ねば|ば|たら|なら))([よねよかなぞねえわ。！？]*)(\s*)/g;
+        // 終止表現・文末述語パターン（疑問文末・終止形・命令・禁止・願望・勧誘）
+        const SENTENCE_ENDINGS = /(でしょうか|ですか|ますか|でしたか|ましたか|なのか|だろうか|ないでしょうか|です|ます|でした|ました|ません|ませんでした|ましょう|ください|くださいません|なさい|思います|思っています|願います|祈ります|お祈りします|証します|感謝します|感謝いたします|信じます|言えます|あります|ありません|ありませんでした|なります|なりません|いけません|できません|のです|のだ|のである|ことです|ことだ|ことである|アーメン)(?!(ので|から|が|て|ねば|ば|たら|なら|より|ほど|とき|時))([よねよかなぞねえわ。！？?]*)/g;
 
         function findSmartSplitIndex(text, isFinal = false) {
-            if (!text || text.length < 8) return -1;
+            if (!text || text.length < 6) return -1;
 
             // 1. 文末記号（。！？\n）がある場合、最優先でその直後を切断
             const punctRegex = /[。！？\n]/g;
             let pMatch;
             while ((pMatch = punctRegex.exec(text)) !== null) {
                 const pos = pMatch.index + pMatch[0].length;
-                if (pos >= 6) {
+                if (pos >= 4) {
                     return pos;
                 }
             }
@@ -1587,7 +1601,7 @@
             let eMatch;
             while ((eMatch = SENTENCE_ENDINGS.exec(text)) !== null) {
                 const pos = eMatch.index + eMatch[0].length;
-                if (pos >= 6 && !isInsideProtectedTerm(text, pos)) {
+                if (pos >= 4 && !isInsideProtectedTerm(text, pos)) {
                     const nextPart = text.substring(pos).trim();
                     if (nextPart.length > 0 || isFinal) {
                         return pos; // 文末が完成した時点で確実に1文章として分割
@@ -1855,13 +1869,14 @@
                     clearTimeout(silenceCommitTimer);
                     silenceCommitTimer = null;
                 }
-                if (currentUnhandledText && currentUnhandledText.trim()) {
-                    const chunks = splitIntoSmartChunks(currentUnhandledText.trim());
+                const textToFlush = currentUnhandledText ? currentUnhandledText.trim() : '';
+                currentUnhandledText = '';
+                if (textToFlush) {
+                    const chunks = splitIntoSmartChunks(textToFlush);
                     chunks.forEach(chunk => {
                         dispatchCaption(chunk);
                     });
-                    lastCommittedInterim += currentUnhandledText;
-                    currentUnhandledText = '';
+                    lastCommittedInterim += textToFlush;
                     interimText.textContent = '（次の音声入力を待機中...）';
                 }
             }
@@ -2026,18 +2041,19 @@
             };
 
             toggleRecognitionBtn.onclick = function() {
-                flushUnhandledInterim();
-                lastCommittedInterim = '';
-                currentUnhandledText = '';
                 if (isRecognizing) {
                     isRecognizing = false;
-                    recentSentHistory.length = 0;
+                    flushUnhandledInterim();
+                    lastCommittedInterim = '';
+                    currentUnhandledText = '';
                     if (recognitionRestartTimer) clearTimeout(recognitionRestartTimer);
                     try { recognition.stop(); } catch(e){}
                     updateSpeechUI(false);
                     interimText.textContent = '「▶ 音声認識スタート」を押して発話してください...';
                 } else {
                     isRecognizing = true;
+                    lastCommittedInterim = '';
+                    currentUnhandledText = '';
                     interimText.textContent = 'マイク起動中...';
                     safeStartRecognition();
                 }
