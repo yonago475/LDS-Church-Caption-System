@@ -12,7 +12,8 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <!-- FontAwesome for Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-<script src="./src/findSmartSplitIndex.js"></script>
+    <!-- BudouX for Machine-Learning Japanese Word & Phrase Boundaries -->
+    <script src="https://unpkg.com/budoux/bundle/budoux-ja.min.js"></script>
     <style>
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic", Meiryo, "Helvetica Neue", Arial, sans-serif;
@@ -1518,6 +1519,171 @@
             });
 
             return text;
+        }
+
+        // ==================== 文節スマート分割エンジン ====================
+        const PROTECTED_TERMS = [
+            "末日聖徒イエス・キリスト教会",
+            "末日聖徒イエス・キリスト",
+            "イエス・キリスト教会",
+            "イエス・キリスト",
+            "末日聖徒",
+            "扶助協会",
+            "長老定員会",
+            "アロン神権",
+            "メルキゼデク神権",
+            "福音の教義",
+            "初等協会",
+            "中央幹部",
+            "に関して言えば",
+            "について言えば",
+            "にとって言えば",
+            "に関して",
+            "について",
+            "において",
+            "にとって",
+            "によって",
+            "に向けて",
+            "につれる",
+            "としても",
+            "としては",
+            "の中で",
+            "だけでなく",
+            "のみならず",
+            "にかけて"
+        ];
+
+        function isInsideProtectedTerm(text, pos) {
+            for (const term of PROTECTED_TERMS) {
+                let idx = text.indexOf(term);
+                while (idx !== -1) {
+                    if (pos > idx && pos < idx + term.length) {
+                        return true;
+                    }
+                    idx = text.indexOf(term, idx + 1);
+                }
+            }
+            return false;
+        }
+
+        // 終止表現・文末述語パターン（接続助詞「ので/から/が/て」が後続する場合は除外）
+        const SENTENCE_ENDINGS = /(です|ます|でした|ました|ません|ませんでした|ましょう|ください|くださいません|思います|思っています|願います|祈ります|お祈りします|証します|感謝します|感謝いたします|信じます|言えます|あります|ありません|ありませんでした|なります|なりません|いけません|できません|アーメン)(?!(ので|から|が|て|ねば|ば|たら|なら))([よねよかなぞねえわ。！？]*)(\s*)/g;
+
+        function findSmartSplitIndex(text, isFinal = false) {
+            if (!text || text.length < 10) return -1;
+
+            // 1. 文末記号（。！？\n）がある場合、最優先でその直後を切断
+            const punctRegex = /[。！？\n]/g;
+            let pMatch;
+            while ((pMatch = punctRegex.exec(text)) !== null) {
+                const pos = pMatch.index + pMatch[0].length;
+                if (pos >= 8) {
+                    return pos;
+                }
+            }
+
+            const candidateMap = new Map();
+
+            // 2. BudouX 機械学習パーサーによる文節境界候補の取得
+            if (typeof budoux !== 'undefined' && typeof budoux.loadDefaultJapaneseParser === 'function') {
+                try {
+                    if (!window._budouxParser) {
+                        window._budouxParser = budoux.loadDefaultJapaneseParser();
+                    }
+                    const boundaries = window._budouxParser.parse(text);
+                    let cumLen = 0;
+                    for (let i = 0; i < boundaries.length - 1; i++) {
+                        cumLen += boundaries[i].length;
+                        if (cumLen >= 8) {
+                            const current = candidateMap.get(cumLen) || 0;
+                            candidateMap.set(cumLen, Math.max(current, 35));
+                        }
+                    }
+                } catch (e) {
+                    // BudouX 実行エラー時は自然フォールバック
+                }
+            }
+
+            // 3. 読点・空白の直後
+            const sepRegex = /[、\s\u3000]+/g;
+            let sMatch;
+            while ((sMatch = sepRegex.exec(text)) !== null) {
+                const p = sMatch.index + sMatch[0].length;
+                if (p >= 8) {
+                    const current = candidateMap.get(p) || 0;
+                    candidateMap.set(p, Math.max(current, 30));
+                }
+            }
+
+            // 4. 文末述語・終止表現の直後（句読点がなくても1文章ごとに分割する最重要アンカー）
+            SENTENCE_ENDINGS.lastIndex = 0;
+            let eMatch;
+            while ((eMatch = SENTENCE_ENDINGS.exec(text)) !== null) {
+                const p = eMatch.index + eMatch[0].length;
+                if (p >= 8) {
+                    const current = candidateMap.get(p) || 0;
+                    candidateMap.set(p, Math.max(current, 100));
+                }
+            }
+
+            // 5. isFinal の場合はテキスト全体の末尾も候補
+            if (isFinal && text.length >= 10) {
+                candidateMap.set(text.length, 20);
+            }
+
+            const candidatePositions = Array.from(candidateMap.keys()).sort((a, b) => a - b);
+            if (candidatePositions.length === 0) return -1;
+
+            const endingEndRegex = /(です|ます|でした|ました|ません|ませんでした|ましょう|ください|思います|思っています|願います|祈ります|お祈りします|証します|感謝します|感謝いたします|信じます|言えます|あります|ありません|なります|なりません|いけません|できません|アーメン)(?!(ので|から|が|て|ねば|ば|たら|なら))([よねよかなぞねえわ。！？]*)?$/;
+            const clauseEndRegex = /(、|ので|ですが|けれども|けれど|ために|に関して|について|において|の中で|によって)$/;
+            const nextLeadingConjunctionRegex = /^[\s\u3000]*(また|そして|しかし|だから|ですから|なお|さらに|あるいは|または|第[一二三四五12345]|それゆえ|どうぞ)([\s\u3000、]|$)/;
+
+            let bestScore = -Infinity;
+            let bestPos = -1;
+
+            for (const pos of candidatePositions) {
+                if (pos < 8) continue;
+                if (isInsideProtectedTerm(text, pos)) continue;
+
+                if (!isFinal && pos > text.length - 4 && !/[。！？\s\u3000]/.test(text[pos - 1])) {
+                    continue;
+                }
+
+                const prefix = text.substring(0, pos).trim();
+                const prefixLen = prefix.length;
+                if (prefixLen < 8) continue;
+
+                const nextPart = text.substring(pos);
+
+                // 1文の理想長（15〜35文字）
+                const diff = prefixLen - 25;
+                const lengthWeight = Math.exp(-(diff * diff) / (2 * 64)) * 30;
+                const confidenceScore = candidateMap.get(pos) || 0;
+
+                let bonus = 0;
+                if (endingEndRegex.test(prefix)) bonus += 120;
+                if (clauseEndRegex.test(prefix)) bonus += 40;
+                if (nextLeadingConjunctionRegex.test(nextPart)) bonus += 60;
+                if (/[、\s\u3000]$/.test(text.substring(0, pos))) bonus += 30;
+
+                const totalScore = lengthWeight + confidenceScore + bonus;
+
+                // 1文が完成（文末述語）しており、後続にまだ発話が続く場合は即座に1文章として分割
+                if (endingEndRegex.test(prefix) && nextPart.trim().length >= 6) {
+                    return pos;
+                }
+
+                if (totalScore > bestScore) {
+                    bestScore = totalScore;
+                    bestPos = pos;
+                }
+            }
+
+            if (bestPos !== -1 && (bestScore >= 30 || (text.length >= 30 && bestScore > 20))) {
+                return bestPos;
+            }
+
+            return -1;
         }
 
         function splitIntoSmartChunks(text) {
