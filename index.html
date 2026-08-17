@@ -1501,7 +1501,7 @@
             const chunks = [];
 
             while (remaining.length > 0) {
-                const splitIdx = findSmartSplitIndex(remaining, true);
+                const splitIdx = typeof findSmartSplitIndex === 'function' ? findSmartSplitIndex(remaining, true) : -1;
                 if (splitIdx > 0 && splitIdx < remaining.length) {
                     const chunk = remaining.substring(0, splitIdx).trim();
                     if (chunk) {
@@ -1518,49 +1518,29 @@
             return chunks;
         }
 
-        function stripCommittedChunks(fullText, committedChunks) {
-            if (!committedChunks || committedChunks.length === 0 || !fullText) return fullText;
+        // 未確定（interim）音声からすでに分割送信した文節プレフィックスを除外
+        function stripCommittedChunks(fullText, currentCommittedChunks) {
+            if (!currentCommittedChunks || currentCommittedChunks.length === 0 || !fullText) return fullText;
 
-            const normFull = fullText.replace(/[\s\u3000、。！？]+/g, '').toLowerCase();
-            const totalCommittedNormLen = committedChunks.reduce((acc, c) => acc + c.replace(/[\s\u3000、。！？]+/g, '').length, 0);
-
-            // 全文の正規化長がコミット済み文字数以下なら、すでに全てコミット済み（空文字を返して重複再送を防止）
-            if (normFull.length <= totalCommittedNormLen) {
-                return "";
-            }
-
-            // 1. 直近にコミットされた文節からアンカー検索
-            let maxMatchedEndNormIdx = 0;
-            for (let i = committedChunks.length - 1; i >= 0; i--) {
-                const chunk = committedChunks[i];
+            let remaining = fullText.trim();
+            for (const chunk of currentCommittedChunks) {
                 const normChunk = chunk.replace(/[\s\u3000、。！？]+/g, '').toLowerCase();
-                if (!normChunk || normChunk.length < 3) continue;
+                if (!normChunk) continue;
 
-                const anchorIdx = normFull.indexOf(normChunk);
-                if (anchorIdx !== -1) {
-                    const endNormIdx = anchorIdx + normChunk.length;
-                    if (endNormIdx > maxMatchedEndNormIdx) {
-                        maxMatchedEndNormIdx = endNormIdx;
+                const normRemaining = remaining.replace(/[\s\u3000、。！？]+/g, '').toLowerCase();
+                if (normRemaining.startsWith(normChunk)) {
+                    let normCount = 0;
+                    let rawIdx = 0;
+                    while (rawIdx < remaining.length && normCount < normChunk.length) {
+                        if (!/[\s\u3000、。！？]/.test(remaining[rawIdx])) {
+                            normCount++;
+                        }
+                        rawIdx++;
                     }
+                    remaining = remaining.substring(rawIdx).trim();
                 }
             }
-
-            // アンカーマッチ最末尾位置と累積コミット長のうち大きい方をカットオフ位置に採用
-            const targetNormCut = Math.max(maxMatchedEndNormIdx, totalCommittedNormLen);
-            if (targetNormCut >= normFull.length) {
-                return "";
-            }
-
-            let normCount = 0;
-            let rawIdx = 0;
-            while (rawIdx < fullText.length && normCount < targetNormCut) {
-                if (!/[\s\u3000、。！？]/.test(fullText[rawIdx])) {
-                    normCount++;
-                }
-                rawIdx++;
-            }
-
-            return fullText.substring(rawIdx).trim();
+            return remaining;
         }
 
 
@@ -1677,8 +1657,7 @@
             recognition.interimResults = true;
             recognition.lang = 'ja-JP';
 
-            // セッション内全送信済み正規化テキストの重複排除 Set（時間で破棄せずセッション中永久保持）
-            const sessionSentNormSet = new Set();
+            // 直近の送信履歴（時間窓付き: 直近6秒以内の完全重複や直前発話との重複を防止）
             const recentSentHistory = [];
             let captionSequenceId = 0;
 
@@ -1695,42 +1674,31 @@
                 const normClean = normalizeCaption(cleanText);
                 if (!normClean) return;
 
-                // 1. セッション全体での完全一致・正規化一致判定（時間制限なしで100%永久遮断）
-                if (sessionSentNormSet.has(normClean)) {
-                    return;
-                }
+                const now = Date.now();
 
-                // 2. 過去の送信済み文節との部分重複・包含判定
+                // 直近6秒以内の同一文節重複を排除（ミリ秒単位の重複やマイクエコーを防止しつつ、時間経過後の同一単語「アーメン」等の再発話は許可）
                 for (let i = recentSentHistory.length - 1; i >= 0; i--) {
                     const item = recentSentHistory[i];
+                    if (now - item.timestamp > 6000) break;
+
                     if (item.norm === normClean) {
                         return;
                     }
-                    if (item.norm.includes(normClean) || normClean.includes(item.norm)) {
-                        if (Math.abs(normClean.length - item.norm.length) < 6) {
-                            return;
-                        }
+                    if (item.norm.includes(normClean) && Math.abs(normClean.length - item.norm.length) < 4) {
+                        return;
                     }
                 }
 
-                // 3. 直近に送信した複数チャンクの連結文字列との部分一致判定（遅延確定・再起動時の重複を完全遮断）
-                const recentCombined = recentSentHistory.slice(-8).map(h => h.norm).join('');
-                if (recentCombined && recentCombined.includes(normClean)) {
-                    return;
-                }
-
                 captionSequenceId++;
-                const now = Date.now();
                 const timeStr = new Date().toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
-                sessionSentNormSet.add(normClean);
                 recentSentHistory.push({
                     id: captionSequenceId,
                     text: cleanText,
                     norm: normClean,
                     timestamp: now
                 });
-                if (recentSentHistory.length > 500) {
+                if (recentSentHistory.length > 50) {
                     recentSentHistory.shift();
                 }
 
@@ -1744,7 +1712,7 @@
                 });
             }
 
-            // 未確定音声（interim）から先行コミット済みの文節バッファ配列（セッション単位で履歴維持）
+            // 未確定音声（interim）から先行コミット済みの文節バッファ配列
             const committedChunks = [];
             let silenceCommitTimer = null;
             let currentUnhandledInterim = '';
@@ -1758,12 +1726,9 @@
                     const chunks = splitIntoSmartChunks(currentUnhandledInterim.trim());
                     chunks.forEach(chunk => {
                         dispatchCaption(chunk);
-                        committedChunks.push(chunk);
                     });
-                    if (committedChunks.length > 100) {
-                        committedChunks.splice(0, committedChunks.length - 100);
-                    }
                     currentUnhandledInterim = '';
+                    committedChunks.length = 0;
                     interimText.textContent = '（次の音声入力を待機中...）';
                 }
             }
@@ -1836,19 +1801,17 @@
                     const trimmedFinal = finalTranscript.trim();
                     if (trimmedFinal) {
                         const correctedFinal = fixScriptureReferences(replaceChurchTerms(trimmedFinal));
-                        // 先行コミット済み文節をファジー・アンカー判定で除外した確定差分のみを抽出
+                        // 先行コミット済みの文節（未確定時に分割送信した部分）を先頭から除外
                         const uncommittedFinal = stripCommittedChunks(correctedFinal, committedChunks);
                         if (uncommittedFinal) {
                             const chunks = splitIntoSmartChunks(uncommittedFinal);
                             chunks.forEach(chunk => {
                                 dispatchCaption(chunk);
-                                committedChunks.push(chunk);
                             });
-                            if (committedChunks.length > 100) {
-                                committedChunks.splice(0, committedChunks.length - 100);
-                            }
                         }
                     }
+                    // この発話が確定したので、未確定追跡用 committedChunks はリセットして次の発話に備える
+                    committedChunks.length = 0;
                     interimText.textContent = '（次の音声入力を待機中...）';
                 }
 
@@ -1859,18 +1822,18 @@
                         let unhandledInterim = stripCommittedChunks(correctedInterim, committedChunks);
 
                         // 未確定テキストが長くなり、文節区切りが検知されたらリアルタイムに先行確定コミット
-                        let splitIdx = findSmartSplitIndex(unhandledInterim);
+                        let splitIdx = typeof findSmartSplitIndex === 'function' ? findSmartSplitIndex(unhandledInterim) : -1;
                         while (splitIdx > 0 && splitIdx < unhandledInterim.length) {
                             const chunk = unhandledInterim.substring(0, splitIdx).trim();
                             if (chunk) {
                                 dispatchCaption(chunk);
                                 committedChunks.push(chunk);
                             }
-                            if (committedChunks.length > 100) {
-                                committedChunks.splice(0, committedChunks.length - 100);
+                            if (committedChunks.length > 50) {
+                                committedChunks.splice(0, committedChunks.length - 50);
                             }
                             unhandledInterim = stripCommittedChunks(correctedInterim, committedChunks);
-                            splitIdx = findSmartSplitIndex(unhandledInterim);
+                            splitIdx = typeof findSmartSplitIndex === 'function' ? findSmartSplitIndex(unhandledInterim) : -1;
                         }
 
                         currentUnhandledInterim = unhandledInterim;
@@ -1905,7 +1868,6 @@
             clearTranscriptsBtn.onclick = function() {
                 hostTranscriptLog.innerHTML = '<p class="text-xs text-slate-400 text-center italic my-auto">ログをクリアしました</p>';
                 transcriptHistory.length = 0;
-                sessionSentNormSet.clear();
                 recentSentHistory.length = 0;
                 committedChunks.length = 0;
             };
