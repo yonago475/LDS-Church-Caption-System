@@ -160,6 +160,45 @@
                                 <i class="fa-solid fa-trash-can mr-2"></i> 表示クリア
                             </button>
                         </div>
+
+                        <!-- 配信モード切替スイッチ (自動配信 / 手動確認配信) -->
+                        <div class="flex items-center justify-between bg-slate-100 p-1.5 rounded-xl border border-slate-200 mt-2 mb-3">
+                            <span class="text-xs font-bold text-slate-600 pl-2 flex items-center">
+                                <i class="fa-solid fa-tower-broadcast mr-1.5 text-indigo-600"></i>配信モード:
+                            </span>
+                            <div class="flex space-x-1">
+                                <button id="modeAutoBtn" type="button" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-white text-indigo-700 shadow-sm border border-slate-200 transition-all flex items-center">
+                                    <i class="fa-solid fa-bolt mr-1.5 text-amber-500"></i>自動配信 (リアルタイム)
+                                </button>
+                                <button id="modeManualBtn" type="button" class="px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-600 hover:text-slate-900 transition-all flex items-center">
+                                    <i class="fa-solid fa-pen-to-square mr-1.5 text-indigo-500"></i>手動確認配信
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- 手動配信エディターボックス (手動モード時のみ表示) -->
+                        <div id="manualBroadcastArea" class="hidden mt-3 p-4 bg-indigo-50/70 rounded-xl border border-indigo-200 space-y-3">
+                            <div class="flex items-center justify-between">
+                                <span class="text-xs font-bold text-indigo-950 flex items-center">
+                                    <i class="fa-solid fa-pen-nib mr-1.5 text-indigo-600"></i>手動配信キュー（確認・編集後に送信）
+                                </span>
+                                <span class="text-[11px] text-indigo-600 font-medium hidden sm:inline">ショートカット: <kbd class="px-1.5 py-0.5 bg-white border border-indigo-300 rounded font-mono text-[10px] shadow-sm">Ctrl + Enter</kbd> で送信</span>
+                            </div>
+                            <textarea id="manualCaptionInput" rows="2" class="w-full p-2.5 bg-white border border-indigo-300 rounded-xl text-sm font-medium text-slate-900 placeholder-slate-400 focus:ring-2 focus:ring-indigo-500 focus:outline-none shadow-sm resize-y" placeholder="音声認識されたテキストがここに入ります。キーボードで直接編集して「配信」ボタンを押してください..."></textarea>
+                            <div class="flex items-center justify-between gap-2">
+                                <div class="text-[11px] text-slate-500 flex items-center">
+                                    <i class="fa-solid fa-circle-info mr-1 text-slate-400"></i>送信すると全聴講者のスマホへ即座に届きます
+                                </div>
+                                <div class="flex space-x-2">
+                                    <button id="discardManualBtn" type="button" class="px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-600 text-xs font-semibold rounded-lg border border-slate-300 transition-all flex items-center">
+                                        <i class="fa-solid fa-xmark mr-1 text-red-500"></i>破棄
+                                    </button>
+                                    <button id="sendManualBtn" type="button" class="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-lg shadow-sm transition-all flex items-center">
+                                        <i class="fa-solid fa-paper-plane mr-1.5"></i>聴講者へ配信
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
                     </div>
 
                     <!-- Live Interim Output Box -->
@@ -937,6 +976,15 @@
         const pauseIcon = document.getElementById('pauseIcon');
         const broadcastPauseBadge = document.getElementById('broadcastPauseBadge');
 
+        // 手動配信モード関連DOM要素
+        let isManualMode = false;
+        const modeAutoBtn = document.getElementById('modeAutoBtn');
+        const modeManualBtn = document.getElementById('modeManualBtn');
+        const manualBroadcastArea = document.getElementById('manualBroadcastArea');
+        const manualCaptionInput = document.getElementById('manualCaptionInput');
+        const sendManualBtn = document.getElementById('sendManualBtn');
+        const discardManualBtn = document.getElementById('discardManualBtn');
+
         const audioDeviceSelect = document.getElementById('audioDeviceSelect');
         const refreshAudioDevicesBtn = document.getElementById('refreshAudioDevicesBtn');
         const audioLevelBar = document.getElementById('audioLevelBar');
@@ -1002,6 +1050,7 @@
             setupSingleDictionaryForm();
             setupDictListDelegation();
             setupHostLogDelegation();
+            setupManualBroadcastControls();
 
             if (refreshAudioDevicesBtn) {
                 refreshAudioDevicesBtn.onclick = initAudioDeviceSelector;
@@ -1045,6 +1094,7 @@
                 modeBadge.className = "text-xs px-3 py-1 rounded-full font-medium bg-indigo-800 text-indigo-100 border border-indigo-700";
 
                 setupPauseBroadcastButton();
+                setupManualBroadcastControls();
                 setupDownloadButton();
                 initPeerHost();
                 initAudioDeviceSelector();
@@ -1135,6 +1185,60 @@
                     pauseBtnText.textContent = '配信一時停止';
                 }
             };
+        }
+
+        // ==================== 手動配信モード (確認・編集後に送信) コントロール ====================
+        function setupManualBroadcastControls() {
+            if (modeAutoBtn && modeManualBtn) {
+                modeAutoBtn.onclick = function() {
+                    isManualMode = false;
+                    modeAutoBtn.className = "px-3 py-1.5 rounded-lg text-xs font-semibold bg-white text-indigo-700 shadow-sm border border-slate-200 transition-all flex items-center";
+                    modeManualBtn.className = "px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-600 hover:text-slate-900 transition-all flex items-center";
+                    if (manualBroadcastArea) manualBroadcastArea.classList.add('hidden');
+                };
+
+                modeManualBtn.onclick = function() {
+                    isManualMode = true;
+                    modeManualBtn.className = "px-3 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 text-white shadow-sm transition-all flex items-center";
+                    modeAutoBtn.className = "px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-600 hover:text-slate-900 transition-all flex items-center";
+                    if (manualBroadcastArea) {
+                        manualBroadcastArea.classList.remove('hidden');
+                        if (manualCaptionInput) manualCaptionInput.focus();
+                    }
+                };
+            }
+
+            function sendManualCaption() {
+                if (!manualCaptionInput) return;
+                const text = manualCaptionInput.value.trim();
+                if (!text) return;
+                const corrected = fixScriptureReferences(replaceChurchTerms(text));
+                dispatchCaption(corrected);
+                manualCaptionInput.value = '';
+                manualCaptionInput.focus();
+            }
+
+            if (sendManualBtn) {
+                sendManualBtn.onclick = sendManualCaption;
+            }
+
+            if (discardManualBtn) {
+                discardManualBtn.onclick = function() {
+                    if (manualCaptionInput) {
+                        manualCaptionInput.value = '';
+                        manualCaptionInput.focus();
+                    }
+                };
+            }
+
+            if (manualCaptionInput) {
+                manualCaptionInput.onkeydown = function(e) {
+                    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+                        e.preventDefault();
+                        sendManualCaption();
+                    }
+                };
+            }
         }
 
         // ==================== 文字起こしログのダウンロード ====================
@@ -1886,6 +1990,20 @@
                 });
             }
 
+            // 配信モードに応じたチャンク処理（自動配信時は直接dispatch、手動モード時はエディターへ蓄積）
+            function handleRecognizedChunk(chunk) {
+                if (!chunk) return;
+                if (isManualMode) {
+                    if (manualCaptionInput) {
+                        const currentVal = manualCaptionInput.value.trim();
+                        manualCaptionInput.value = currentVal ? `${currentVal} ${chunk}` : chunk;
+                        manualCaptionInput.scrollTop = manualCaptionInput.scrollHeight;
+                    }
+                } else {
+                    dispatchCaption(chunk);
+                }
+            }
+
             // 現在の未確定音声ストリームにおける送信済み累積プレフィックス
             let lastCommittedInterim = '';
             let silenceCommitTimer = null;
@@ -1901,7 +2019,7 @@
                 if (textToFlush) {
                     const chunks = splitIntoSmartChunks(textToFlush);
                     chunks.forEach(chunk => {
-                        dispatchCaption(chunk);
+                        handleRecognizedChunk(chunk);
                     });
                     lastCommittedInterim += textToFlush;
                     interimText.textContent = '（次の音声入力を待機中...）';
@@ -2010,7 +2128,7 @@
                         if (uncommittedFinal) {
                             const chunks = splitIntoSmartChunks(uncommittedFinal);
                             chunks.forEach(chunk => {
-                                dispatchCaption(chunk);
+                                handleRecognizedChunk(chunk);
                             });
                         }
                     }
@@ -2046,7 +2164,7 @@
                         while (splitIdx > 0 && splitIdx < unhandled.length) {
                             const chunk = unhandled.substring(0, splitIdx).trim();
                             if (chunk) {
-                                dispatchCaption(chunk);
+                                handleRecognizedChunk(chunk);
                                 lastCommittedInterim += chunk;
                             }
                             unhandled = unhandled.substring(splitIdx).trim();
