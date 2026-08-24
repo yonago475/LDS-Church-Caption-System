@@ -1370,6 +1370,76 @@
             };
         }
 
+        // ==================== 配信ディスパッチャー & 重複排除 (自動・手動共通) ====================
+        const recentSentHistory = [];
+        let captionSequenceId = 0;
+
+        function normalizeCaption(str) {
+            return (str || '').replace(/[\s\u3000、。！？]+/g, '').toLowerCase();
+        }
+
+        // 重複排除（De-duplication）付き配信・記録ディスパッチャー
+        function dispatchCaption(text) {
+            if (!text) return;
+            const cleanText = text.trim();
+            if (!cleanText) return;
+
+            const normClean = normalizeCaption(cleanText);
+            if (!normClean) return;
+
+            const now = Date.now();
+
+            // 1. 直前の送信テキストとの完全一致・先頭重複を完全遮断
+            if (recentSentHistory.length > 0) {
+                const lastItem = recentSentHistory[recentSentHistory.length - 1];
+                // 直前と同じ文（2重送信）を完全破棄
+                if (lastItem.norm === normClean) {
+                    return;
+                }
+                // 直前の文が今回の文の先頭プレフィックスとして完全に含まれている場合、重複部分を切り落とす
+                if (normClean.startsWith(lastItem.norm) && lastItem.norm.length >= 4) {
+                    const trimmed = cleanText.substring(lastItem.text.length).trim();
+                    if (!trimmed) return;
+                    return dispatchCaption(trimmed);
+                }
+            }
+
+            // 2. 直近5秒以内のエコー・ミリ秒単位の重複排除
+            for (let i = recentSentHistory.length - 1; i >= 0; i--) {
+                const item = recentSentHistory[i];
+                if (now - item.timestamp > 5000) break;
+
+                if (item.norm === normClean) {
+                    return;
+                }
+                if (item.norm.includes(normClean) && Math.abs(normClean.length - item.norm.length) < 4) {
+                    return;
+                }
+            }
+
+            captionSequenceId++;
+            const timeStr = new Date().toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+            recentSentHistory.push({
+                id: captionSequenceId,
+                text: cleanText,
+                norm: normClean,
+                timestamp: now
+            });
+            if (recentSentHistory.length > 50) {
+                recentSentHistory.shift();
+            }
+
+            // 即時配信 & ホストログ追加
+            appendHostTranscript(cleanText);
+            broadcastToViewers({
+                type: 'caption',
+                id: captionSequenceId,
+                text: cleanText,
+                timestamp: timeStr
+            });
+        }
+
         // ==================== 手動配信モード (確認・編集後に送信) コントロール ====================
         function setupManualBroadcastControls() {
             if (modeAutoBtn && modeManualBtn) {
@@ -2121,76 +2191,6 @@
             recognition.continuous = true;
             recognition.interimResults = true;
             recognition.lang = 'ja-JP';
-
-            // 直近の送信履歴（重複排除用）
-            const recentSentHistory = [];
-            let captionSequenceId = 0;
-
-            function normalizeCaption(str) {
-                return (str || '').replace(/[\s\u3000、。！？]+/g, '').toLowerCase();
-            }
-
-            // 重複排除（De-duplication）付き配信・記録ディスパッチャー
-            function dispatchCaption(text) {
-                if (!text) return;
-                const cleanText = text.trim();
-                if (!cleanText) return;
-
-                const normClean = normalizeCaption(cleanText);
-                if (!normClean) return;
-
-                const now = Date.now();
-
-                // 1. 直前の送信テキストとの完全一致・先頭重複を完全遮断
-                if (recentSentHistory.length > 0) {
-                    const lastItem = recentSentHistory[recentSentHistory.length - 1];
-                    // 直前と同じ文（2重送信）を完全破棄
-                    if (lastItem.norm === normClean) {
-                        return;
-                    }
-                    // 直前の文が今回の文の先頭プレフィックスとして完全に含まれている場合、重複部分を切り落とす
-                    if (normClean.startsWith(lastItem.norm) && lastItem.norm.length >= 4) {
-                        const trimmed = cleanText.substring(lastItem.text.length).trim();
-                        if (!trimmed) return;
-                        return dispatchCaption(trimmed);
-                    }
-                }
-
-                // 2. 直近5秒以内のエコー・ミリ秒単位の重複排除
-                for (let i = recentSentHistory.length - 1; i >= 0; i--) {
-                    const item = recentSentHistory[i];
-                    if (now - item.timestamp > 5000) break;
-
-                    if (item.norm === normClean) {
-                        return;
-                    }
-                    if (item.norm.includes(normClean) && Math.abs(normClean.length - item.norm.length) < 4) {
-                        return;
-                    }
-                }
-
-                captionSequenceId++;
-                const timeStr = new Date().toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-
-                recentSentHistory.push({
-                    id: captionSequenceId,
-                    text: cleanText,
-                    norm: normClean,
-                    timestamp: now
-                });
-                if (recentSentHistory.length > 50) {
-                    recentSentHistory.shift();
-                }
-
-                // 即時配信 & ホストログ追加
-                appendHostTranscript(cleanText);
-                broadcastToViewers({
-                    type: 'caption',
-                    id: captionSequenceId,
-                    text: cleanText,
-                    timestamp: timeStr
-                });
-            }
 
             // 配信モードに応じたチャンク処理（自動配信時は直接dispatch、手動モード時はエディターへ蓄積）
             function handleRecognizedChunk(chunk) {
