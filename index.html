@@ -3287,13 +3287,16 @@
                     clearTimeout(silenceCommitTimer);
                     silenceCommitTimer = null;
                 }
-                // 話者の息継ぎポーズ（1.2秒）を検知した場合、Chromeの音声認識を安全にstop()して確定イベント（isFinal）を自律発火させる（二重送信の完全防止）
-                if (isRecognizing && currentUnhandledText) {
-                    try {
-                        recognition.stop();
-                    } catch (e) {}
-                }
+                const textToFlush = currentUnhandledText ? currentUnhandledText.trim() : '';
                 currentUnhandledText = '';
+                if (textToFlush) {
+                    lastCommittedInterim = textToFlush;
+                    const chunks = splitIntoSmartChunks(textToFlush);
+                    chunks.forEach(chunk => {
+                        handleRecognizedChunk(chunk);
+                    });
+                    interimText.textContent = '（次の音声入力を待機中...）';
+                }
             }
 
             function safeStartRecognition() {
@@ -3319,6 +3322,7 @@
             };
 
             recognition.onend = function() {
+                flushUnhandledInterim();
                 lastCommittedInterim = '';
                 if (isRecognizing) {
                     if (recognitionRestartTimer) clearTimeout(recognitionRestartTimer);
@@ -3374,12 +3378,21 @@
 
                     const trimmedFinal = finalTranscript.trim();
                     if (trimmedFinal) {
+                        // flushUnhandledInterim で直前にコミットされたテキストと完全一致する場合は重複防止のためスキップ
+                        const normFinal = normalizeCaption(trimmedFinal);
+                        const normLast = normalizeCaption(lastCommittedInterim);
+                        if (normFinal && normLast && normFinal === normLast) {
+                            lastCommittedInterim = '';
+                            interimText.textContent = '（次の音声入力を待機中...）';
+                            return;
+                        }
+
+                        lastCommittedInterim = trimmedFinal;
                         const chunks = splitIntoSmartChunks(trimmedFinal);
                         chunks.forEach(chunk => {
                             handleRecognizedChunk(chunk);
                         });
                     }
-                    lastCommittedInterim = '';
                     interimText.textContent = '（次の音声入力を待機中...）';
                 }
 
