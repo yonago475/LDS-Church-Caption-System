@@ -141,6 +141,58 @@
                             </ol>
                         </div>
 
+                        <!-- AI Contextual Correction Card (Gemini) -->
+                        <div class="bg-gradient-to-br from-indigo-900/90 to-purple-900/90 text-white p-4 rounded-2xl shadow-sm border border-indigo-700/60 mb-4 space-y-3">
+                            <div class="flex items-center justify-between flex-wrap gap-2">
+                                <div class="flex items-center space-x-2">
+                                    <span class="p-1.5 bg-purple-500/30 rounded-lg text-purple-300 border border-purple-400/30">
+                                        <i class="fa-solid fa-wand-magic-sparkles text-sm"></i>
+                                    </span>
+                                    <div>
+                                        <h4 class="text-xs font-bold text-white flex items-center gap-1.5">
+                                            AI 文脈自動補正 (Gemini連携)
+                                            <span id="geminiStatusBadge" class="text-[10px] px-2 py-0.5 rounded-full font-bold bg-slate-700 text-slate-300">未設定</span>
+                                        </h4>
+                                        <p class="text-[11px] text-indigo-200">「ステーキ」と「ステーク」等の同音異義語を文脈からAIが自動判別</p>
+                                    </div>
+                                </div>
+                                <div class="flex items-center space-x-2">
+                                    <label class="relative inline-flex items-center cursor-pointer">
+                                        <input type="checkbox" id="geminiAiToggle" class="sr-only peer">
+                                        <div class="w-9 h-5 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-purple-600"></div>
+                                        <span class="ml-2 text-xs font-semibold text-indigo-100" id="geminiToggleLabel">AI補正: OFF</span>
+                                    </label>
+                                </div>
+                            </div>
+
+                            <!-- API Key Input & Actions Row -->
+                            <div class="flex flex-col sm:flex-row gap-2 pt-1">
+                                <div class="relative flex-1">
+                                    <input type="password" id="geminiApiKeyInput" placeholder="Google AI Studio の APIキーを入力 (AIzaSy...)" class="w-full px-3 py-1.5 text-xs bg-indigo-950/70 border border-indigo-500/50 rounded-lg text-white placeholder-indigo-300/50 focus:ring-2 focus:ring-purple-400 focus:outline-none font-mono">
+                                    <button id="toggleApiKeyVisibilityBtn" type="button" class="absolute right-2.5 top-1/2 -translate-y-1/2 text-indigo-300 hover:text-white text-xs" title="キーの表示/非表示">
+                                        <i class="fa-solid fa-eye" id="apiKeyEyeIcon"></i>
+                                    </button>
+                                </div>
+                                <div class="flex gap-1.5 shrink-0">
+                                    <button id="saveApiKeyBtn" type="button" class="px-3 py-1.5 bg-purple-600 hover:bg-purple-500 text-white font-semibold text-xs rounded-lg transition-colors shadow-sm flex items-center">
+                                        <i class="fa-solid fa-floppy-disk mr-1"></i> 保存
+                                    </button>
+                                    <button id="testGeminiBtn" type="button" class="px-3 py-1.5 bg-indigo-800 hover:bg-indigo-700 text-indigo-100 font-semibold text-xs rounded-lg transition-colors border border-indigo-600/60 flex items-center">
+                                        <i class="fa-solid fa-bolt mr-1 text-amber-400"></i> 接続テスト
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- Test Result Box -->
+                            <div id="geminiTestResultBox" class="hidden p-2.5 bg-indigo-950/90 rounded-lg border border-purple-500/40 text-xs space-y-1 animate-fadeIn">
+                                <div class="flex justify-between items-center text-[11px] text-purple-200 font-bold">
+                                    <span><i class="fa-solid fa-circle-check text-emerald-400 mr-1"></i> AIテスト結果:</span>
+                                    <span id="geminiLatencyText" class="font-mono text-[10px] text-purple-300"></span>
+                                </div>
+                                <div id="geminiTestOutput" class="text-xs text-white font-medium pl-1"></div>
+                            </div>
+                        </div>
+
                         <!-- Main Action Buttons -->
                         <div class="flex flex-wrap gap-3 my-4">
                             <button id="toggleRecognitionBtn" class="flex-1 sm:flex-initial inline-flex items-center justify-center px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-xl shadow-sm transition-all text-sm">
@@ -1373,11 +1425,28 @@
         // ログダウンロード用の文字起こし履歴バッファ
         const transcriptHistory = [];
 
+        // Gemini AI 文脈補正機能用状態
+        let geminiApiKey = localStorage.getItem('lds_gemini_api_key') || '';
+        let isGeminiAiEnabled = localStorage.getItem('lds_gemini_ai_enabled') === 'true';
+
         // ==================== DOM要素参照 ====================
         const hostSection = document.getElementById('hostSection');
         const viewerSection = document.getElementById('viewerSection');
         const modeBadge = document.getElementById('modeBadge');
         const localFileWarning = document.getElementById('localFileWarning');
+
+        // Gemini AI 関連DOM要素
+        const geminiAiToggle = document.getElementById('geminiAiToggle');
+        const geminiToggleLabel = document.getElementById('geminiToggleLabel');
+        const geminiStatusBadge = document.getElementById('geminiStatusBadge');
+        const geminiApiKeyInput = document.getElementById('geminiApiKeyInput');
+        const toggleApiKeyVisibilityBtn = document.getElementById('toggleApiKeyVisibilityBtn');
+        const apiKeyEyeIcon = document.getElementById('apiKeyEyeIcon');
+        const saveApiKeyBtn = document.getElementById('saveApiKeyBtn');
+        const testGeminiBtn = document.getElementById('testGeminiBtn');
+        const geminiTestResultBox = document.getElementById('geminiTestResultBox');
+        const geminiTestOutput = document.getElementById('geminiTestOutput');
+        const geminiLatencyText = document.getElementById('geminiLatencyText');
 
         const toggleRecognitionBtn = document.getElementById('toggleRecognitionBtn');
         const recognizeBtnText = document.getElementById('recognizeBtnText');
@@ -1519,6 +1588,7 @@
 
                 setupPauseBroadcastButton();
                 setupManualBroadcastControls();
+                setupGeminiAiControls();
                 setupDownloadButton();
                 initPeerHost();
                 initAudioDeviceSelector();
@@ -2351,6 +2421,194 @@
             return text;
         }
 
+        // ==================== Gemini AI 文脈自動補正 ====================
+        const GEMINI_SYSTEM_PROMPT = `あなたは末日聖徒イエス・キリスト教会（LDS Church）の集会・説教・祈りの音声テキストを校正するAIアシスタントです。
+音声認識された日本語テキストを受け取り、文脈を考慮して教会特有の誤認識を正しい教会用語に補正してください。
+
+【厳格な校正ルール】
+1. 日常会話や一般的な表現（例: 料理の「ステーキ」、料理の「食材」、天気の「晴天」、交通の「運行」など）は文脈が一般的なら絶対に書き換えず、そのまま維持してください。
+2. 教会・教義・聖典・集会・組織・祈りの文脈である場合のみ、適切な教会用語（例: 「ステーク」「贖罪」「聖典」「聖餐会」「天の御父」「御名」「バプテスマ」「神権」「初等協会」「扶助協会」など）に補正してください。
+3. 文意や話し手の口調を損なわず、余計な解説、挨拶、引用符（「」等）は一切付けずに、補正後の文章のみをプレーンテキストで1行で出力してください。`;
+
+        async function correctWithGemini(rawText) {
+            if (!isGeminiAiEnabled || !geminiApiKey || !rawText || !rawText.trim()) {
+                return fixScriptureReferences(replaceChurchTerms(rawText));
+            }
+
+            const cleanInput = rawText.trim();
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 2000); // 2秒タイムアウトで高速フォールバック
+
+            try {
+                // Gemini 2.0 Flash (高速・低遅延) を呼び出し
+                const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${encodeURIComponent(geminiApiKey)}`;
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    signal: controller.signal,
+                    body: JSON.stringify({
+                        systemInstruction: {
+                            parts: [{ text: GEMINI_SYSTEM_PROMPT }]
+                        },
+                        contents: [
+                            {
+                                parts: [{ text: `以下の発話を文脈に沿って校正してください:\n${cleanInput}` }]
+                            }
+                        ],
+                        generationConfig: {
+                            temperature: 0.1,
+                            maxOutputTokens: 250
+                        }
+                    })
+                });
+
+                clearTimeout(timeoutId);
+
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+
+                const data = await response.json();
+                const aiOutput = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+
+                if (aiOutput && aiOutput.length > 0) {
+                    return fixScriptureReferences(aiOutput);
+                }
+            } catch (err) {
+                console.warn('Gemini AI補正エラー（辞書フォールバック）:', err.message);
+            } finally {
+                clearTimeout(timeoutId);
+            }
+
+            // フォールバック: 従来の正規表現辞書置換
+            return fixScriptureReferences(replaceChurchTerms(rawText));
+        }
+
+        function updateGeminiUIState() {
+            if (!geminiStatusBadge || !geminiToggleLabel) return;
+            if (isGeminiAiEnabled && geminiApiKey) {
+                geminiStatusBadge.className = 'text-[10px] px-2 py-0.5 rounded-full font-bold bg-purple-500/40 text-purple-200 border border-purple-400/50';
+                geminiStatusBadge.textContent = '有効 (Gemini 2.0 Flash)';
+                geminiToggleLabel.textContent = 'AI補正: ON';
+                geminiToggleLabel.className = 'ml-2 text-xs font-semibold text-emerald-300';
+            } else if (geminiApiKey) {
+                geminiStatusBadge.className = 'text-[10px] px-2 py-0.5 rounded-full font-bold bg-amber-500/30 text-amber-200 border border-amber-400/40';
+                geminiStatusBadge.textContent = '一時停止中';
+                geminiToggleLabel.textContent = 'AI補正: OFF';
+                geminiToggleLabel.className = 'ml-2 text-xs font-semibold text-slate-300';
+            } else {
+                geminiStatusBadge.className = 'text-[10px] px-2 py-0.5 rounded-full font-bold bg-slate-700 text-slate-300';
+                geminiStatusBadge.textContent = '未設定';
+                geminiToggleLabel.textContent = 'AI補正: OFF';
+                geminiToggleLabel.className = 'ml-2 text-xs font-semibold text-slate-400';
+            }
+        }
+
+        function setupGeminiAiControls() {
+            if (!geminiApiKeyInput) return;
+
+            // 初期値復元
+            if (geminiApiKey) {
+                geminiApiKeyInput.value = geminiApiKey;
+            }
+            if (geminiAiToggle) {
+                geminiAiToggle.checked = isGeminiAiEnabled;
+            }
+            updateGeminiUIState();
+
+            // トグル切り替え
+            if (geminiAiToggle) {
+                geminiAiToggle.onchange = function() {
+                    if (this.checked && !geminiApiKey) {
+                        alert('先にGemini APIキーを入力して「保存」してください。');
+                        this.checked = false;
+                        return;
+                    }
+                    isGeminiAiEnabled = this.checked;
+                    localStorage.setItem('lds_gemini_ai_enabled', isGeminiAiEnabled ? 'true' : 'false');
+                    updateGeminiUIState();
+                };
+            }
+
+            // キー表示・非表示切り替え
+            if (toggleApiKeyVisibilityBtn) {
+                toggleApiKeyVisibilityBtn.onclick = function() {
+                    const isPassword = geminiApiKeyInput.type === 'password';
+                    geminiApiKeyInput.type = isPassword ? 'text' : 'password';
+                    if (apiKeyEyeIcon) {
+                        apiKeyEyeIcon.className = isPassword ? 'fa-solid fa-eye-slash' : 'fa-solid fa-eye';
+                    }
+                };
+            }
+
+            // キー保存ボタン
+            if (saveApiKeyBtn) {
+                saveApiKeyBtn.onclick = function() {
+                    const newKey = geminiApiKeyInput.value.trim();
+                    geminiApiKey = newKey;
+                    localStorage.setItem('lds_gemini_api_key', geminiApiKey);
+                    if (geminiApiKey) {
+                        isGeminiAiEnabled = true;
+                        if (geminiAiToggle) geminiAiToggle.checked = true;
+                        localStorage.setItem('lds_gemini_ai_enabled', 'true');
+                    } else {
+                        isGeminiAiEnabled = false;
+                        if (geminiAiToggle) geminiAiToggle.checked = false;
+                        localStorage.setItem('lds_gemini_ai_enabled', 'false');
+                    }
+                    updateGeminiUIState();
+                    alert(geminiApiKey ? '✅ Gemini APIキーを保存し、AI文脈補正を有効にしました。' : 'APIキーを削除しました。');
+                };
+            }
+
+            // 接続テストボタン
+            if (testGeminiBtn) {
+                testGeminiBtn.onclick = async function() {
+                    const key = geminiApiKeyInput.value.trim() || geminiApiKey;
+                    if (!key) {
+                        alert('APIキーを入力してください。');
+                        geminiApiKeyInput.focus();
+                        return;
+                    }
+
+                    testGeminiBtn.disabled = true;
+                    testGeminiBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i> テスト中...';
+                    if (geminiTestResultBox) geminiTestResultBox.classList.remove('hidden');
+                    if (geminiTestOutput) geminiTestOutput.innerHTML = '<span class="text-indigo-300">「来週はステーキ大会です」をAIに送信中...</span>';
+                    if (geminiLatencyText) geminiLatencyText.textContent = '';
+
+                    const startTime = performance.now();
+                    const testPrompt = '来週はステーキ大会です';
+
+                    try {
+                        const tempKey = geminiApiKey;
+                        geminiApiKey = key;
+                        const prevEnabled = isGeminiAiEnabled;
+                        isGeminiAiEnabled = true;
+
+                        const result = await correctWithGemini(testPrompt);
+                        const elapsed = Math.round(performance.now() - startTime);
+
+                        geminiApiKey = tempKey;
+                        isGeminiAiEnabled = prevEnabled;
+
+                        if (geminiLatencyText) geminiLatencyText.textContent = `${elapsed}ms`;
+                        if (geminiTestOutput) {
+                            geminiTestOutput.innerHTML = `
+                                <div class="text-indigo-200">原文: <span class="text-slate-300 line-through">${testPrompt}</span></div>
+                                <div class="text-emerald-300 font-bold">➔ AI補正: ${escapeHtml(result)}</div>
+                            `;
+                        }
+                    } catch (e) {
+                        if (geminiTestOutput) geminiTestOutput.innerHTML = `<span class="text-red-400">❌ エラー: ${escapeHtml(e.message)}</span>`;
+                    } finally {
+                        testGeminiBtn.disabled = false;
+                        testGeminiBtn.innerHTML = '<i class="fa-solid fa-bolt mr-1 text-amber-400"></i> 接続テスト';
+                    }
+                };
+            }
+        }
+
         // ==================== 文節スマート分割エンジン ====================
         const PROTECTED_TERMS = [
             "末日聖徒イエス・キリスト教会",
@@ -2624,24 +2882,29 @@
             recognition.lang = 'ja-JP';
 
             // 配信モードに応じたチャンク処理（自動配信時は直接dispatch、手動モード時はエディターまたは待機キューへ格納）
-            function handleRecognizedChunk(chunk) {
-                if (!chunk) return;
+            async function handleRecognizedChunk(rawChunk) {
+                if (!rawChunk) return;
+
+                // AI文脈自動補正（または従来の辞書フォールバック）を適用
+                const processedChunk = await correctWithGemini(rawChunk);
+                const isEdited = processedChunk !== rawChunk;
+
                 if (isManualMode) {
                     if (manualCaptionInput) {
                         const currentVal = manualCaptionInput.value.trim();
                         if (!currentVal) {
-                            // エディターが空なら直接セットし、認識原文を記録
-                            manualCaptionInput.value = chunk;
-                            currentManualOriginalRaw = chunk;
+                            // エディターが空ならAI補正済みテキストをセットし、認識原文を記録
+                            manualCaptionInput.value = processedChunk;
+                            currentManualOriginalRaw = rawChunk;
                             manualCaptionInput.scrollTop = manualCaptionInput.scrollHeight;
                         } else {
                             // 編集中ならエディターを乱さず待機キューにプッシュ
-                            manualPendingQueue.push({ text: chunk, original: chunk });
+                            manualPendingQueue.push({ text: processedChunk, original: rawChunk });
                             updateManualQueueUI();
                         }
                     }
                 } else {
-                    dispatchCaption(chunk);
+                    dispatchCaption(processedChunk, { original: rawChunk, isEdited: isEdited });
                 }
             }
 
