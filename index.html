@@ -2913,7 +2913,7 @@
                 }
             }
 
-            // 現在の未確定音声ストリームにおける送信済み累積プレフィックス
+            // 現在の未確定音声ストリームにおける追跡
             let lastCommittedInterim = '';
             let silenceCommitTimer = null;
             let currentUnhandledText = '';
@@ -2930,7 +2930,7 @@
                     chunks.forEach(chunk => {
                         handleRecognizedChunk(chunk);
                     });
-                    lastCommittedInterim += textToFlush;
+                    lastCommittedInterim = '';
                     interimText.textContent = '（次の音声入力を待機中...）';
                 }
             }
@@ -3005,7 +3005,7 @@
                     }
                 }
 
-                // 1. 確定テキスト（isFinal）の処理
+                // 1. 確定テキスト（isFinal）の処理: 1文が完成した時に完全文としてAI補正＆配信
                 if (finalTranscript) {
                     if (silenceCommitTimer) {
                         clearTimeout(silenceCommitTimer);
@@ -3015,81 +3015,27 @@
 
                     const trimmedFinal = finalTranscript.trim();
                     if (trimmedFinal) {
-                        const correctedFinal = fixScriptureReferences(replaceChurchTerms(trimmedFinal));
-                        // 先行して送信済みのプレフィックスを正確に除去
-                        let uncommittedFinal = correctedFinal;
-                        if (lastCommittedInterim) {
-                            const normCommitted = normalizeCaption(lastCommittedInterim);
-                            const normFinal = normalizeCaption(correctedFinal);
-                            if (normFinal.startsWith(normCommitted)) {
-                                let count = 0;
-                                let rawIdx = 0;
-                                while (rawIdx < correctedFinal.length && count < normCommitted.length) {
-                                    if (!/[\s\u3000、。！？]/.test(correctedFinal[rawIdx])) {
-                                        count++;
-                                    }
-                                    rawIdx++;
-                                }
-                                uncommittedFinal = correctedFinal.substring(rawIdx).trim();
-                            }
-                        }
-
-                        if (uncommittedFinal) {
-                            const chunks = splitIntoSmartChunks(uncommittedFinal);
-                            chunks.forEach(chunk => {
-                                handleRecognizedChunk(chunk);
-                            });
-                        }
+                        const chunks = splitIntoSmartChunks(trimmedFinal);
+                        chunks.forEach(chunk => {
+                            handleRecognizedChunk(chunk);
+                        });
                     }
-                    // この文が完全に確定したので、未確定追跡プレフィックスをリセット
                     lastCommittedInterim = '';
                     interimText.textContent = '（次の音声入力を待機中...）';
                 }
 
-                // 2. 未確定テキスト（interim）のリアルタイム文節認識 & 先行分割配信
+                // 2. 未確定テキスト（interim）のリアルタイムプレビュー & 自然なポーズでのコミット
                 if (interimTranscript) {
-                    const correctedInterim = fixScriptureReferences(replaceChurchTerms(interimTranscript.trim()));
-                    if (correctedInterim) {
-                        // すでに送信したプレフィックスを除去して未送信差分を抽出
-                        let unhandled = correctedInterim;
-                        if (lastCommittedInterim) {
-                            const normCommitted = normalizeCaption(lastCommittedInterim);
-                            const normInterim = normalizeCaption(correctedInterim);
-                            if (normInterim.startsWith(normCommitted)) {
-                                let count = 0;
-                                let rawIdx = 0;
-                                while (rawIdx < correctedInterim.length && count < normCommitted.length) {
-                                    if (!/[\s\u3000、。！？]/.test(correctedInterim[rawIdx])) {
-                                        count++;
-                                    }
-                                    rawIdx++;
-                                }
-                                unhandled = correctedInterim.substring(rawIdx).trim();
-                            }
-                        }
+                    const correctedPreview = fixScriptureReferences(replaceChurchTerms(interimTranscript.trim()));
+                    interimText.textContent = correctedPreview;
+                    currentUnhandledText = interimTranscript.trim();
 
-                        // 未送信テキストが一定の長さになり、自然な文節区切りが見つかったらリアルタイム先行分割
-                        let splitIdx = typeof findSmartSplitIndex === 'function' ? findSmartSplitIndex(unhandled) : -1;
-                        while (splitIdx > 0 && splitIdx < unhandled.length) {
-                            const chunk = unhandled.substring(0, splitIdx).trim();
-                            if (chunk) {
-                                handleRecognizedChunk(chunk);
-                                lastCommittedInterim += chunk;
-                            }
-                            unhandled = unhandled.substring(splitIdx).trim();
-                            splitIdx = typeof findSmartSplitIndex === 'function' ? findSmartSplitIndex(unhandled) : -1;
-                        }
-
-                        currentUnhandledText = unhandled;
-                        interimText.textContent = unhandled || correctedInterim;
-
-                        // 息継ぎ（ポーズ）で途中切断されないよう、文末述語が完成するか十分な沈黙（3.0秒）後に自動フラッシュ
-                        if (silenceCommitTimer) clearTimeout(silenceCommitTimer);
-                        if (currentUnhandledText && currentUnhandledText.trim()) {
-                            silenceCommitTimer = setTimeout(() => {
-                                flushUnhandledInterim();
-                            }, 3000);
-                        }
+                    // 話者が息継ぎ・ポーズ（1.8秒）したら、未確定バッファを完成文として自動フラッシュ
+                    if (silenceCommitTimer) clearTimeout(silenceCommitTimer);
+                    if (currentUnhandledText) {
+                        silenceCommitTimer = setTimeout(() => {
+                            flushUnhandledInterim();
+                        }, 1800);
                     }
                 }
             };
