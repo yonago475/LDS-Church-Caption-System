@@ -190,6 +190,20 @@
                                 </span>
                             </div>
                             <textarea id="manualCaptionInput" rows="2" class="w-full p-2.5 bg-white border border-indigo-300 rounded-xl text-sm font-medium text-slate-900 placeholder-slate-400 focus:ring-2 focus:ring-indigo-500 focus:outline-none shadow-sm resize-y" placeholder="音声認識されたテキストがここに入ります。キーボードで直接編集して「配信」ボタンを押してください..."></textarea>
+                            
+                            <!-- 次の待機文プレビューボックス (待機キューに文がある時のみ自動表示) -->
+                            <div id="manualNextPreviewBox" class="hidden p-2.5 bg-indigo-100/75 border border-indigo-200/90 rounded-xl text-xs text-indigo-950 flex items-center justify-between gap-2 shadow-xs transition-all animate-fadeIn">
+                                <div class="flex items-center space-x-2 min-w-0 flex-1">
+                                    <span class="px-1.5 py-0.5 bg-indigo-600 text-white rounded-md font-bold text-[10px] shrink-0 tracking-wide flex items-center">
+                                        <i class="fa-solid fa-angles-down mr-1"></i>次の一文
+                                    </span>
+                                    <span id="manualNextPreviewText" class="font-medium text-slate-800 text-xs truncate select-none"></span>
+                                </div>
+                                <button id="quickJoinNextBtn" type="button" class="text-[11px] text-indigo-700 hover:text-indigo-900 font-bold hover:underline shrink-0 flex items-center px-1.5 py-0.5 rounded bg-white border border-indigo-200 shadow-2xs" title="この文を現在のエディター末尾に連結します">
+                                    <i class="fa-solid fa-plus mr-1 text-indigo-600"></i>連結
+                                </button>
+                            </div>
+
                             <div class="flex items-center justify-between gap-2 flex-wrap sm:flex-nowrap">
                                 <div class="text-[11px] text-slate-500 flex items-center">
                                     <i class="fa-solid fa-circle-info mr-1 text-slate-400"></i>送信すると全聴講者のスマホへ即座に届きます
@@ -1379,6 +1393,9 @@
         const modeManualBtn = document.getElementById('modeManualBtn');
         const manualBroadcastArea = document.getElementById('manualBroadcastArea');
         const manualCaptionInput = document.getElementById('manualCaptionInput');
+        const manualNextPreviewBox = document.getElementById('manualNextPreviewBox');
+        const manualNextPreviewText = document.getElementById('manualNextPreviewText');
+        const quickJoinNextBtn = document.getElementById('quickJoinNextBtn');
         const loadNextManualBtn = document.getElementById('loadNextManualBtn');
         const sendManualBtn = document.getElementById('sendManualBtn');
         const discardManualBtn = document.getElementById('discardManualBtn');
@@ -1727,13 +1744,35 @@
 
         // ==================== 手動配信モード (確認・編集後に送信) コントロール ====================
         function updateManualQueueUI() {
+            const count = manualPendingQueue.length;
+
             if (manualQueueCountBadge) {
-                const count = manualPendingQueue.length;
                 if (count > 0) {
                     manualQueueCountBadge.textContent = `待機中: ${count}件`;
                     manualQueueCountBadge.classList.remove('hidden');
                 } else {
                     manualQueueCountBadge.classList.add('hidden');
+                }
+            }
+
+            // 次の一文のプレビュー表示更新
+            if (manualNextPreviewBox && manualNextPreviewText) {
+                if (count > 0) {
+                    const nextItem = manualPendingQueue[0];
+                    const nextText = (typeof nextItem === 'object' && nextItem !== null) ? nextItem.text : nextItem;
+                    manualNextPreviewText.textContent = nextText || '';
+                    manualNextPreviewBox.classList.remove('hidden');
+                    if (loadNextManualBtn) {
+                        loadNextManualBtn.disabled = false;
+                        loadNextManualBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+                    }
+                } else {
+                    manualNextPreviewText.textContent = '';
+                    manualNextPreviewBox.classList.add('hidden');
+                    if (loadNextManualBtn) {
+                        loadNextManualBtn.disabled = true;
+                        loadNextManualBtn.classList.add('opacity-50', 'cursor-not-allowed');
+                    }
                 }
             }
         }
@@ -1801,6 +1840,10 @@
 
             if (loadNextManualBtn) {
                 loadNextManualBtn.onclick = loadNextManualSentence;
+            }
+
+            if (quickJoinNextBtn) {
+                quickJoinNextBtn.onclick = loadNextManualSentence;
             }
 
             if (sendManualBtn) {
