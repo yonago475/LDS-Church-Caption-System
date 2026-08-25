@@ -3183,6 +3183,10 @@
                     });
                     lastCommittedInterim = '';
                     interimText.textContent = '（次の音声入力を待機中...）';
+                    // 1文フラッシュ後、Chromeの音声認識バッファを安全にリセットして次の発話へ即時移行
+                    try {
+                        recognition.stop();
+                    } catch(e) {}
                 }
             }
 
@@ -3195,7 +3199,7 @@
                         if (recognitionRestartTimer) clearTimeout(recognitionRestartTimer);
                         recognitionRestartTimer = setTimeout(() => {
                             if (isRecognizing) safeStartRecognition();
-                        }, 300);
+                        }, 200);
                     }
                 }
             }
@@ -3209,13 +3213,12 @@
             };
 
             recognition.onend = function() {
-                flushUnhandledInterim();
                 lastCommittedInterim = '';
                 if (isRecognizing) {
                     if (recognitionRestartTimer) clearTimeout(recognitionRestartTimer);
                     recognitionRestartTimer = setTimeout(() => {
                         safeStartRecognition();
-                    }, 200);
+                    }, 150);
                 } else {
                     updateSpeechUI(false);
                 }
@@ -3236,7 +3239,6 @@
                 } else if (event.error === 'network') {
                     interimText.innerHTML = '<span class="text-amber-600 font-bold">⚠️ 音声認識サーバーとの通信エラーが発生しました。インターネット接続を確認してください。</span>';
                 } else if (event.error === 'no-speech') {
-                    flushUnhandledInterim();
                     if (isRecognizing) {
                         interimText.textContent = '🎤 音声を認識しています... マイクに向かって話してください';
                     }
@@ -3275,31 +3277,17 @@
                     interimText.textContent = '（次の音声入力を待機中...）';
                 }
 
-                // 2. 未確定テキスト（interim）のリアルタイムプレビュー & 中間文末の自動コミット
+                // 2. 未確定テキスト（interim）のリアルタイムプレビュー & 自然な息継ぎ（1.2秒）での確定
                 if (interimTranscript) {
                     currentUnhandledText = interimTranscript.trim();
+                    interimText.textContent = fixScriptureReferences(replaceChurchTerms(currentUnhandledText));
 
-                    // 話者が途切れなく話している場合でも、すでに完成した文末述語が存在すれば即座に1文ずつコミット（溜め込み防止）
-                    let splitIdx = typeof findSmartSplitIndex === 'function' ? findSmartSplitIndex(currentUnhandledText) : -1;
-                    while (splitIdx > 0 && splitIdx < currentUnhandledText.length) {
-                        const completedChunk = currentUnhandledText.substring(0, splitIdx).trim();
-                        if (completedChunk) {
-                            handleRecognizedChunk(completedChunk);
-                        }
-                        currentUnhandledText = currentUnhandledText.substring(splitIdx).trim();
-                        splitIdx = typeof findSmartSplitIndex === 'function' ? findSmartSplitIndex(currentUnhandledText) : -1;
-                    }
-
-                    interimText.textContent = currentUnhandledText 
-                        ? fixScriptureReferences(replaceChurchTerms(currentUnhandledText)) 
-                        : '🎤 音声を認識しています...';
-
-                    // 話者が息継ぎ・ポーズ（1.0秒）したら、未確定バッファを完成文として自動フラッシュ
+                    // 話者が息継ぎ・ポーズ（1.2秒）したら、未確定バッファを1文として確定し次へ切り替え（溜め込み防止）
                     if (silenceCommitTimer) clearTimeout(silenceCommitTimer);
                     if (currentUnhandledText) {
                         silenceCommitTimer = setTimeout(() => {
                             flushUnhandledInterim();
-                        }, 1000);
+                        }, 1200);
                     }
                 }
             };
