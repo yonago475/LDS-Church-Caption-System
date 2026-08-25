@@ -2709,7 +2709,7 @@
         let recentContextHistory = [];
 
         async function correctWithGemini(rawText) {
-            if (!rawText || !rawText.trim()) return { text: '', isAi: false };
+            if (!rawText || !rawText.trim()) return '';
 
             // 【第1段】教会用語辞書および聖典参照フォーマットで基礎補正（0ms）
             const preCorrected = fixScriptureReferences(replaceChurchTerms(rawText.trim()));
@@ -2717,11 +2717,11 @@
             if (!isGeminiAiEnabled || !geminiApiKey) {
                 recentContextHistory.push(preCorrected);
                 if (recentContextHistory.length > 3) recentContextHistory.shift();
-                return { text: preCorrected, isAi: false };
+                return preCorrected;
             }
 
             const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 4500); // 4.5秒タイムアウト（モバイル回線対応）
+            const timeoutId = setTimeout(() => controller.abort(), 2500); // 2.5秒タイムアウトで高速フォールバック
 
             try {
                 // 直前の会話文脈をプロンプトに付与（前後の流れから同音異義語を精密補正）
@@ -2770,7 +2770,7 @@
                     const finalized = fixScriptureReferences(aiOutput);
                     recentContextHistory.push(finalized);
                     if (recentContextHistory.length > 3) recentContextHistory.shift();
-                    return { text: finalized, isAi: true };
+                    return finalized;
                 }
             } catch (err) {
                 console.error('Gemini AI補正エラー（辞書フォールバック）:', err);
@@ -2781,7 +2781,7 @@
             // フォールバック: 基礎補正済みテキスト
             recentContextHistory.push(preCorrected);
             if (recentContextHistory.length > 3) recentContextHistory.shift();
-            return { text: preCorrected, isAi: false };
+            return preCorrected;
         }
 
         function updateGeminiUIState() {
@@ -3252,8 +3252,9 @@
 
                 aiProcessingQueue = aiProcessingQueue.then(async () => {
                     // AI文脈自動補正（辞書プレパス＋Gemini文脈補正）を直列に適用
-                    const { text: processedChunk, isAi } = await correctWithGemini(rawChunk);
+                    const processedChunk = await correctWithGemini(rawChunk);
                     const isEdited = processedChunk !== rawChunk;
+                    const isAi = isGeminiAiEnabled && !!geminiApiKey && isEdited;
 
                     if (isManualMode) {
                         if (manualCaptionInput) {
