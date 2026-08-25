@@ -739,29 +739,53 @@
             // --- 聖典・書籍 ---
             "もるもんしょ": "モルモン書",
             "モルモン初": "モルモン書",
+            "モルモン賞": "モルモン書",
+            "モルモン 賞": "モルモン書",
+            "モルモン証": "モルモン書",
+            "モルモン 証": "モルモン書",
             "きょうぎとせいやく": "教義と聖約",
             "競技と誓約": "教義と聖約",
             "協議と誓約": "教義と聖約",
             "協議と聖約": "教義と聖約",
+            "教義と制約": "教義と聖約",
             "きょうぎとせいやくには": "教義と聖約には",
             "こうかなしんじゅ": "高価な真珠",
-            "高価な真珠": "高価な真珠",
             "効果な真珠": "高価な真珠",
             "せいてん": "聖典",
             "せいてんで": "聖典で",
-            "成分で": "聖典で",
-            "成分": "聖典",
-            "晴天": "聖典",
-            "青天": "聖典",
             "きゅうやくせいしょ": "旧約聖書",
             "しんやくせいしょ": "新約聖書",
             "だいいちにーふぁい": "第1ニーファイ",
             "だいににーふぁい": "第2ニーファイ",
             "だいさんにーふぁい": "第3ニーファイ",
+            "第325章": "第3ニーファイ",
+            "第32パイ": "第3ニーファイ",
             "だいよんにーふぁい": "第4ニーファイ",
+            "もろない": "モロナイ",
+            "盛らない": "モロナイ",
             "さんびか": "賛美歌",
 
+            // --- 役職・組織・指導者 ---
+            "だいかんちょう": "大管長",
+            "大官庁": "大管長",
+            "大官庁が": "大管長が",
+            "ポランド 学長": "ホランド学長",
+            "ホランド 学長": "ホランド学長",
+            "ポランド総長": "ホランド総長",
+            "ブリガムヤング大学": "ブリガム・ヤング大学",
+            "ジョセフスミス": "ジョセフ・スミス",
+
             // --- 儀式・教理・概念 ---
+            "しんせいなきげん": "神聖な起源",
+            "申請な期限": "神聖な起源",
+            "申請な 期限": "神聖な起源",
+            "神聖な 期限": "神聖な起源",
+            "神の技": "神の業",
+            "制約の鍵": "聖約の要石",
+            "誓約の鍵": "聖約の要石",
+            "制約の要石": "聖約の要石",
+            "お話しできる 飯": "お話しできる召し",
+            "お話しできる飯": "お話しできる召し",
             "せいさん": "聖餐",
             "精算": "聖餐",
             "清算": "聖餐",
@@ -2436,11 +2460,15 @@
 3. 余計な解説、挨拶、前置き、引用符（「」等）は一切出力せず、補正後の文章のみをプレーンテキストで1行で出力してください。`;
 
         async function correctWithGemini(rawText) {
-            if (!isGeminiAiEnabled || !geminiApiKey || !rawText || !rawText.trim()) {
-                return fixScriptureReferences(replaceChurchTerms(rawText));
+            if (!rawText || !rawText.trim()) return '';
+
+            // 【第1段】教会用語辞書および聖典参照フォーマットで基礎補正（0ms）
+            const preCorrected = fixScriptureReferences(replaceChurchTerms(rawText.trim()));
+
+            if (!isGeminiAiEnabled || !geminiApiKey) {
+                return preCorrected;
             }
 
-            const cleanInput = rawText.trim();
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), 2000); // 2秒タイムアウトで高速フォールバック
 
@@ -2457,7 +2485,7 @@
                         },
                         contents: [
                             {
-                                parts: [{ text: `以下の発話を文脈に沿って校正してください:\n${cleanInput}` }]
+                                parts: [{ text: `以下の発話を文脈に沿って校正してください:\n${preCorrected}` }]
                             }
                         ],
                         generationConfig: {
@@ -2485,8 +2513,8 @@
                 clearTimeout(timeoutId);
             }
 
-            // フォールバック: 従来の正規表現辞書置換
-            return fixScriptureReferences(replaceChurchTerms(rawText));
+            // フォールバック: 基礎補正済みテキスト
+            return preCorrected;
         }
 
         function updateGeminiUIState() {
@@ -2886,31 +2914,38 @@
             recognition.interimResults = true;
             recognition.lang = 'ja-JP';
 
+            // AI文脈補正・配信の順序保証キュー（レースコンディションによる文の順序逆転を完全防止）
+            let aiProcessingQueue = Promise.resolve();
+
             // 配信モードに応じたチャンク処理（自動配信時は直接dispatch、手動モード時はエディターまたは待機キューへ格納）
-            async function handleRecognizedChunk(rawChunk) {
-                if (!rawChunk) return;
+            function handleRecognizedChunk(rawChunk) {
+                if (!rawChunk || !rawChunk.trim()) return;
 
-                // AI文脈自動補正（または従来の辞書フォールバック）を適用
-                const processedChunk = await correctWithGemini(rawChunk);
-                const isEdited = processedChunk !== rawChunk;
+                aiProcessingQueue = aiProcessingQueue.then(async () => {
+                    // AI文脈自動補正（辞書プレパス＋Gemini文脈補正）を直列に適用
+                    const processedChunk = await correctWithGemini(rawChunk);
+                    const isEdited = processedChunk !== rawChunk;
 
-                if (isManualMode) {
-                    if (manualCaptionInput) {
-                        const currentVal = manualCaptionInput.value.trim();
-                        if (!currentVal) {
-                            // エディターが空ならAI補正済みテキストをセットし、認識原文を記録
-                            manualCaptionInput.value = processedChunk;
-                            currentManualOriginalRaw = rawChunk;
-                            manualCaptionInput.scrollTop = manualCaptionInput.scrollHeight;
-                        } else {
-                            // 編集中ならエディターを乱さず待機キューにプッシュ
-                            manualPendingQueue.push({ text: processedChunk, original: rawChunk });
-                            updateManualQueueUI();
+                    if (isManualMode) {
+                        if (manualCaptionInput) {
+                            const currentVal = manualCaptionInput.value.trim();
+                            if (!currentVal) {
+                                // エディターが空ならAI補正済みテキストをセットし、認識原文を記録
+                                manualCaptionInput.value = processedChunk;
+                                currentManualOriginalRaw = rawChunk;
+                                manualCaptionInput.scrollTop = manualCaptionInput.scrollHeight;
+                            } else {
+                                // 編集中ならエディターを乱さず待機キューにプッシュ
+                                manualPendingQueue.push({ text: processedChunk, original: rawChunk });
+                                updateManualQueueUI();
+                            }
                         }
+                    } else {
+                        dispatchCaption(processedChunk, { original: rawChunk, isEdited: isEdited });
                     }
-                } else {
-                    dispatchCaption(processedChunk, { original: rawChunk, isEdited: isEdited });
-                }
+                }).catch(err => {
+                    console.error('AI処理キューエラー:', err);
+                });
             }
 
             // 現在の未確定音声ストリームにおける追跡
