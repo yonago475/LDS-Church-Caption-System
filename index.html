@@ -165,8 +165,27 @@
                                 </div>
                             </div>
 
-                            <!-- API Key Input & Actions Row -->
-                            <div class="flex flex-col sm:flex-row gap-2 pt-1">
+                            <!-- API Key Masked Display (キー設定済み時に自動表示・漏洩防止) -->
+                            <div id="apiKeyMaskedDisplay" class="hidden flex-col sm:flex-row items-center justify-between gap-2 p-2.5 bg-indigo-950/70 rounded-xl border border-purple-500/30 text-xs">
+                                <div class="flex items-center space-x-2 min-w-0">
+                                    <i class="fa-solid fa-lock text-purple-400 text-sm pl-1 shrink-0"></i>
+                                    <div class="truncate">
+                                        <span class="font-bold text-white text-xs">APIキー保存済み (暗号化保護中)</span>
+                                        <span id="maskedKeyText" class="font-mono text-[11px] text-purple-200 ml-2">AIzaSy••••••••••••••••</span>
+                                    </div>
+                                </div>
+                                <div class="flex gap-1.5 shrink-0">
+                                    <button id="toggleEditKeyBtn" type="button" class="px-2.5 py-1 bg-indigo-800/80 hover:bg-indigo-700 text-indigo-200 text-xs rounded-lg transition-colors border border-indigo-600/50 flex items-center">
+                                        <i class="fa-solid fa-pen-to-square mr-1"></i> キーを変更 / 削除
+                                    </button>
+                                    <button id="testGeminiBtn" type="button" class="px-3 py-1 bg-purple-600 hover:bg-purple-500 text-white font-semibold text-xs rounded-lg transition-colors shadow-sm flex items-center">
+                                        <i class="fa-solid fa-bolt mr-1 text-amber-300"></i> 接続テスト
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- API Key Input & Actions Row (未設定時または変更時に表示) -->
+                            <div id="apiKeyInputRow" class="flex flex-col sm:flex-row gap-2 pt-1">
                                 <div class="relative flex-1">
                                     <input type="password" id="geminiApiKeyInput" placeholder="Google AI Studio の APIキーを入力 (AIzaSy...)" class="w-full px-3 py-1.5 text-xs bg-indigo-950/70 border border-indigo-500/50 rounded-lg text-white placeholder-indigo-300/50 focus:ring-2 focus:ring-purple-400 focus:outline-none font-mono">
                                     <button id="toggleApiKeyVisibilityBtn" type="button" class="absolute right-2.5 top-1/2 -translate-y-1/2 text-indigo-300 hover:text-white text-xs" title="キーの表示/非表示">
@@ -177,7 +196,10 @@
                                     <button id="saveApiKeyBtn" type="button" class="px-3 py-1.5 bg-purple-600 hover:bg-purple-500 text-white font-semibold text-xs rounded-lg transition-colors shadow-sm flex items-center">
                                         <i class="fa-solid fa-floppy-disk mr-1"></i> 保存
                                     </button>
-                                    <button id="testGeminiBtn" type="button" class="px-3 py-1.5 bg-indigo-800 hover:bg-indigo-700 text-indigo-100 font-semibold text-xs rounded-lg transition-colors border border-indigo-600/60 flex items-center">
+                                    <button id="cancelEditKeyBtn" type="button" class="hidden px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs rounded-lg transition-colors border border-slate-600">
+                                        キャンセル
+                                    </button>
+                                    <button id="testGeminiBtn2" type="button" class="px-3 py-1.5 bg-indigo-800 hover:bg-indigo-700 text-indigo-100 font-semibold text-xs rounded-lg transition-colors border border-indigo-600/60 flex items-center">
                                         <i class="fa-solid fa-bolt mr-1 text-amber-400"></i> 接続テスト
                                     </button>
                                 </div>
@@ -765,15 +787,99 @@
             "盛らない": "モロナイ",
             "さんびか": "賛美歌",
 
-            // --- 役職・組織・指導者 ---
+            // --- 聖典の登場人物 ---
+            "りーはい": "リーハイ",
+            "利杯": "リーハイ",
+            "さらいあ": "サライア",
+            "にーふぁい": "ニーファイ",
+            "れーまん": "レーマン",
+            "れむえる": "レムエル",
+            "えのす": "エノス",
+            "じゃろむ": "ジャロム",
+            "おむない": "オムナイ",
+            "もーさや": "モーサヤ",
+            "べんじゃみんおう": "ベンジャミン王",
+            "あびなだい": "アビナダイ",
+            "あるま": "アルマ",
+            "あみゅれっく": "アミュレク",
+            "ぜーずろむ": "ゼーズロム",
+            "ゼズロム": "ゼーズロム",
+            "絶無論": "ゼーズロム",
+            "あんもん": "アンモン",
+            "ひらまん": "ヒラマン",
+            "もーろないは": "モーロナイハ",
+            "えてる": "エテル",
+            "こりあんたまー": "コリアンタマー",
+
+            // --- 聖典の地名・事物 ---
+            "てつのぼう": "鉄の棒",
+            "鉄の杖": "鉄の棒",
+            "鉄の机": "鉄の棒",
+            "鉄の津江": "鉄の棒",
+            "いのちのき": "命の木",
+            "りあほな": "リアホナ",
+            "リア穂な": "リアホナ",
+            "利阿保な": "リアホナ",
+            "うりむととんみむ": "ウリムとトンミム",
+            "しんちゅうのはん": "真鍮の版",
+            "身長の版": "真鍮の版",
+            "深中の版": "真鍮の版",
+            "きんのはん": "金の版",
+            "ざらへむら": "ザラヘムラ",
+            "皿編むら": "ザラヘムラ",
+            "皿減村": "ザラヘムラ",
+            "ばうんてぃふる": "バウンティフル",
+            "くもら": "クモラ",
+            "クモラの丘": "クモラの丘",
+            "れーまんじん": "レーマン人",
+            "ラーメン人": "レーマン人",
+            "冷媒人": "レーマン人",
+            "にーふぁいじん": "ニーファイ人",
+
+            // --- 教会歴史・指導者・十二使徒 ---
+            "ジョセフスミス": "ジョセフ・スミス",
+            "おりばーかうどり": "オリバー・カウドリ",
+            "オリバーカウドリ": "オリバー・カウドリ",
+            "まーてぃんはりす": "マーティン・ハリス",
+            "マーティンハリス": "マーティン・ハリス",
+            "マーチンハリス": "マーティン・ハリス",
+            "はいらむすみす": "ハイラム・スミス",
+            "ハイラムスミス": "ハイラム・スミス",
+            "平無スミス": "ハイラム・スミス",
+            "えますみす": "エマ・スミス",
+            "エマスミス": "エマ・スミス",
+            "ぱるまいら": "パルマイラ",
+            "春舞羅": "パルマイラ",
+            "かーとらんど": "カートランド",
+            "のーぶー": "ノーブー",
+            "なう部": "ノーブー",
+            "そるとれーく": "ソルトレーク",
             "だいかんちょう": "大管長",
             "大官庁": "大管長",
             "大官庁が": "大管長が",
+            "ねるそんだいかんちょう": "ネルソン大管長",
+            "おーくすかんちょう": "オークス管長",
+            "あいりんぐかんちょう": "アイリング管長",
+            "ほらんどちょうろう": "ホランド長老",
             "ポランド 学長": "ホランド学長",
             "ホランド 学長": "ホランド学長",
             "ポランド総長": "ホランド総長",
+            "うーくとどるふちょうろう": "ウークトドルフ長老",
+            "ウフドルフ長老": "ウークトドルフ長老",
+            "ウフトドルフ長老": "ウークトドルフ長老",
+            "べどなーちょうろう": "ベドナー長老",
+            "ベッドナー長老": "ベドナー長老",
+            "ベッドなぁ長老": "ベドナー長老",
+            "ベッドナー": "ベドナー",
+            "くりすとふぁーそんちょうろう": "クリストファーソン長老",
+            "あんだーせんちょうろう": "アンダーセン長老",
+            "らずばんどちょうろう": "ラズバンド長老",
+            "すてぃーぶんそんちょうろう": "スティーブンソン長老",
+            "れなるどちょうろう": "レナルド長老",
+            "ごんぐちょうろう": "ゴング長老",
+            "そあれすちょうろう": "ソアレス長老",
+            "かーにーちょうろう": "カーニー長老",
             "ブリガムヤング大学": "ブリガム・ヤング大学",
-            "ジョセフスミス": "ジョセフ・スミス",
 
             // --- 儀式・教理・概念 ---
             "しんせいなきげん": "神聖な起源",
@@ -1463,11 +1569,17 @@
         const geminiAiToggle = document.getElementById('geminiAiToggle');
         const geminiToggleLabel = document.getElementById('geminiToggleLabel');
         const geminiStatusBadge = document.getElementById('geminiStatusBadge');
+        const apiKeyMaskedDisplay = document.getElementById('apiKeyMaskedDisplay');
+        const maskedKeyText = document.getElementById('maskedKeyText');
+        const toggleEditKeyBtn = document.getElementById('toggleEditKeyBtn');
+        const apiKeyInputRow = document.getElementById('apiKeyInputRow');
         const geminiApiKeyInput = document.getElementById('geminiApiKeyInput');
         const toggleApiKeyVisibilityBtn = document.getElementById('toggleApiKeyVisibilityBtn');
         const apiKeyEyeIcon = document.getElementById('apiKeyEyeIcon');
         const saveApiKeyBtn = document.getElementById('saveApiKeyBtn');
+        const cancelEditKeyBtn = document.getElementById('cancelEditKeyBtn');
         const testGeminiBtn = document.getElementById('testGeminiBtn');
+        const testGeminiBtn2 = document.getElementById('testGeminiBtn2');
         const geminiTestResultBox = document.getElementById('geminiTestResultBox');
         const geminiTestOutput = document.getElementById('geminiTestOutput');
         const geminiLatencyText = document.getElementById('geminiLatencyText');
@@ -2451,8 +2563,10 @@
 
 【教会用語・固有名詞の変換知識ベース】
 ・聖典・書名: モルモン書（モルモン賞/証→モルモン書）、第1/第2/第3/第4ニーファイ（第32パイ/第325章/32敗/3ニーファイ→第3ニーファイ）、ヤコブ書、エノス書、ジャロム書、オムナイ書、モーサヤ書、アルマ書、ヒラマン書、エテル書、モロナイ書（盛らない/守らない→モロナイ）、教義と聖約（協議と制約/教義と制約→教義と聖約）、高価な真珠、聖書、旧約聖書、新約聖書
+・聖典の人物: リーハイ、サライア、ニーファイ、サム、レーマン、レムエル、ヤコブ、エノス、ジャロム、オムナイ、モーサヤ、ベンジャミン王、アビナダイ、アルマ、アミュレク、ゼーズロム（ゼズロム/絶無論→ゼーズロム）、アンモン、アロン、ヒラマン、モロナイ、モーロナイハ、エテル、コリアンタマー
+・聖典の地名・事物: 鉄の棒（鉄の杖/鉄の机→鉄の棒）、命の木、リアホナ（リア穂な/利阿保な→リアホナ）、ウリムとトンミム、真鍮の版（身長の版/深中の版→真鍮の版）、金の版、ザラヘムラ（皿編むら/皿減村→ザラヘムラ）、バウンティフル、クモラ（クモラの丘）、レーマン人（ラーメン人→レーマン人）、ニーファイ人（二杯人→ニーファイ人）
 ・教義・概念: 神聖な起源（申請な期限→神聖な起源）、召し（飯/めし→召し）、啓示（掲示→啓示）、神の業（神の技→神の業）、聖約/契約（制約/誓約→聖約/契約）、要石（鍵/金石→要石）、贖罪（食材→贖罪）、バプテスマ（麦茶/バプテスト→バプテスマ）、救いの計画、証（明かし→証）、神権（清算→聖餐、神権）、安息日、御霊、聖霊、天の御父（音質/音痴/お父様→天の御父）、主の御名（皆→御名）、永遠の命、日の栄え、月の栄え、星の栄え、アブラハムの契約
-・指導者・組織・人名: ジョセフ・スミス、ブリガム・ヤング、エズラ・タフト・ベンソン大管長（大官庁→大管長）、ゴードン・B・ヒンクレー、トーマス・S・モンソン、ラッセル・M・ネルソン、ダリン・H・オークス、ジェフリー・R・ホランド（ポランド/オランド→ホランド）、十二使徒定員会、七十人定員会、ステーク会長（ステーキ→ステーク）、監督、初等協会、扶助協会、若い男性、若い女性、セミナリー、インスティテュート、ブリガムヤング大学(BYU)
+・指導者・組織・人名: ジョセフ・スミス、オリバー・カウドリ、マーティン・ハリス、ハイラム・スミス、エマ・スミス、ブリガム・ヤング、エズラ・タフト・ベンソン大管長（大官庁→大管長）、ゴードン・B・ヒンクレー、トーマス・S・モンソン、ラッセル・M・ネルソン大管長、ダリン・H・オークス管長、ヘンリー・B・アイリング管長、ジェフリー・R・ホランド長老（ポランド/オランド→ホランド）、ディーター・F・ウークトドルフ長老（ウフドルフ/ウフトドルフ→ウークトドルフ）、デビッド・A・ベドナー長老（ベッドナー/ベッドなぁ→ベドナー）、クエンティン・L・クック長老、D・トッド・クリストファーソン長老、ニール・L・アンダーセン長老、ロナルド・A・ラズバンド長老、ゲーリー・E・スティーブンソン長老、デール・G・レナルド長老、ゲリット・W・ゴング長老、ウリセス・ソアレス長老、パトリック・カーニー長老、十二使徒定員会、七十人定員会、ステーク会長（ステーキ→ステーク）、監督、初等協会、扶助協会、若い男性、若い女性、セミナリー、インスティテュート、ブリガムヤング大学(BYU)
 
 【厳格な整形・校正ルール】
 1. 音声認識の息継ぎで途切れた断片であっても、文脈に合わせて自然に補正し、読みやすいよう適切な読点「、」や句点「。」を付与してください。
@@ -2519,6 +2633,27 @@
 
         function updateGeminiUIState() {
             if (!geminiStatusBadge || !geminiToggleLabel) return;
+
+            // APIキーのマスク表示と入力欄の出し分け（漏洩防止）
+            if (apiKeyMaskedDisplay && apiKeyInputRow) {
+                if (geminiApiKey) {
+                    apiKeyMaskedDisplay.classList.remove('hidden');
+                    apiKeyMaskedDisplay.classList.add('flex');
+                    apiKeyInputRow.classList.add('hidden');
+                    if (cancelEditKeyBtn) cancelEditKeyBtn.classList.remove('hidden');
+                    if (maskedKeyText) {
+                        maskedKeyText.textContent = geminiApiKey.length > 10 
+                            ? (geminiApiKey.substring(0, 6) + '••••••••••••••••' + geminiApiKey.substring(geminiApiKey.length - 4)) 
+                            : '••••••••••••••••';
+                    }
+                } else {
+                    apiKeyMaskedDisplay.classList.add('hidden');
+                    apiKeyMaskedDisplay.classList.remove('flex');
+                    apiKeyInputRow.classList.remove('hidden');
+                    if (cancelEditKeyBtn) cancelEditKeyBtn.classList.add('hidden');
+                }
+            }
+
             if (isGeminiAiEnabled && geminiApiKey) {
                 geminiStatusBadge.className = 'text-[10px] px-2 py-0.5 rounded-full font-bold bg-purple-500/40 text-purple-200 border border-purple-400/50';
                 geminiStatusBadge.textContent = '有効 (Gemini 2.0 Flash)';
@@ -2563,6 +2698,34 @@
                 };
             }
 
+            // キー変更 / 編集ボタン
+            if (toggleEditKeyBtn) {
+                toggleEditKeyBtn.onclick = function() {
+                    if (apiKeyMaskedDisplay) {
+                        apiKeyMaskedDisplay.classList.add('hidden');
+                        apiKeyMaskedDisplay.classList.remove('flex');
+                    }
+                    if (apiKeyInputRow) {
+                        apiKeyInputRow.classList.remove('hidden');
+                    }
+                    if (geminiApiKeyInput) {
+                        geminiApiKeyInput.value = geminiApiKey;
+                        geminiApiKeyInput.type = 'password';
+                        if (apiKeyEyeIcon) apiKeyEyeIcon.className = 'fa-solid fa-eye';
+                        geminiApiKeyInput.focus();
+                    }
+                };
+            }
+
+            // キャンセルボタン
+            if (cancelEditKeyBtn) {
+                cancelEditKeyBtn.onclick = function() {
+                    if (geminiApiKey) {
+                        updateGeminiUIState();
+                    }
+                };
+            }
+
             // キー表示・非表示切り替え
             if (toggleApiKeyVisibilityBtn) {
                 toggleApiKeyVisibilityBtn.onclick = function() {
@@ -2589,56 +2752,69 @@
                         if (geminiAiToggle) geminiAiToggle.checked = false;
                         localStorage.setItem('lds_gemini_ai_enabled', 'false');
                     }
+                    // 保存後はパスワード非表示に戻す
+                    geminiApiKeyInput.type = 'password';
+                    if (apiKeyEyeIcon) apiKeyEyeIcon.className = 'fa-solid fa-eye';
                     updateGeminiUIState();
-                    alert(geminiApiKey ? '✅ Gemini APIキーを保存し、AI文脈補正を有効にしました。' : 'APIキーを削除しました。');
+                    alert(geminiApiKey ? '✅ Gemini APIキーを安全に保存し、AI文脈補正を有効にしました。' : 'APIキーを削除しました。');
                 };
             }
 
-            // 接続テストボタン
+            // 接続テスト実行共通関数
+            async function runGeminiTest(btnElement) {
+                const key = geminiApiKey || (geminiApiKeyInput ? geminiApiKeyInput.value.trim() : '');
+                if (!key) {
+                    alert('APIキーを入力してください。');
+                    if (geminiApiKeyInput) geminiApiKeyInput.focus();
+                    return;
+                }
+
+                if (btnElement) {
+                    btnElement.disabled = true;
+                    btnElement.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i> テスト中...';
+                }
+                if (geminiTestResultBox) geminiTestResultBox.classList.remove('hidden');
+                if (geminiTestOutput) geminiTestOutput.innerHTML = '<span class="text-indigo-300">「来週はステーキ大会です」をAIに送信中...</span>';
+                if (geminiLatencyText) geminiLatencyText.textContent = '';
+
+                const startTime = performance.now();
+                const testPrompt = '来週はステーキ大会です';
+
+                try {
+                    const tempKey = geminiApiKey;
+                    geminiApiKey = key;
+                    const prevEnabled = isGeminiAiEnabled;
+                    isGeminiAiEnabled = true;
+
+                    const result = await correctWithGemini(testPrompt);
+                    const elapsed = Math.round(performance.now() - startTime);
+
+                    geminiApiKey = tempKey;
+                    isGeminiAiEnabled = prevEnabled;
+
+                    if (geminiLatencyText) geminiLatencyText.textContent = `${elapsed}ms`;
+                    if (geminiTestOutput) {
+                        geminiTestOutput.innerHTML = `
+                            <div class="text-indigo-200">原文: <span class="text-slate-300 line-through">${testPrompt}</span></div>
+                            <div class="text-emerald-300 font-bold">➔ AI補正: ${escapeHtml(result)}</div>
+                        `;
+                    }
+                } catch (e) {
+                    if (geminiTestOutput) geminiTestOutput.innerHTML = `<span class="text-red-400">❌ エラー: ${escapeHtml(e.message)}</span>`;
+                } finally {
+                    if (btnElement) {
+                        btnElement.disabled = false;
+                        btnElement.innerHTML = '<i class="fa-solid fa-bolt mr-1 text-amber-300"></i> 接続テスト';
+                    }
+                }
+            }
+
+            // 接続テストボタン（マスク時 & 編集時）
             if (testGeminiBtn) {
-                testGeminiBtn.onclick = async function() {
-                    const key = geminiApiKeyInput.value.trim() || geminiApiKey;
-                    if (!key) {
-                        alert('APIキーを入力してください。');
-                        geminiApiKeyInput.focus();
-                        return;
-                    }
-
-                    testGeminiBtn.disabled = true;
-                    testGeminiBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i> テスト中...';
-                    if (geminiTestResultBox) geminiTestResultBox.classList.remove('hidden');
-                    if (geminiTestOutput) geminiTestOutput.innerHTML = '<span class="text-indigo-300">「来週はステーキ大会です」をAIに送信中...</span>';
-                    if (geminiLatencyText) geminiLatencyText.textContent = '';
-
-                    const startTime = performance.now();
-                    const testPrompt = '来週はステーキ大会です';
-
-                    try {
-                        const tempKey = geminiApiKey;
-                        geminiApiKey = key;
-                        const prevEnabled = isGeminiAiEnabled;
-                        isGeminiAiEnabled = true;
-
-                        const result = await correctWithGemini(testPrompt);
-                        const elapsed = Math.round(performance.now() - startTime);
-
-                        geminiApiKey = tempKey;
-                        isGeminiAiEnabled = prevEnabled;
-
-                        if (geminiLatencyText) geminiLatencyText.textContent = `${elapsed}ms`;
-                        if (geminiTestOutput) {
-                            geminiTestOutput.innerHTML = `
-                                <div class="text-indigo-200">原文: <span class="text-slate-300 line-through">${testPrompt}</span></div>
-                                <div class="text-emerald-300 font-bold">➔ AI補正: ${escapeHtml(result)}</div>
-                            `;
-                        }
-                    } catch (e) {
-                        if (geminiTestOutput) geminiTestOutput.innerHTML = `<span class="text-red-400">❌ エラー: ${escapeHtml(e.message)}</span>`;
-                    } finally {
-                        testGeminiBtn.disabled = false;
-                        testGeminiBtn.innerHTML = '<i class="fa-solid fa-bolt mr-1 text-amber-400"></i> 接続テスト';
-                    }
-                };
+                testGeminiBtn.onclick = function() { runGeminiTest(this); };
+            }
+            if (testGeminiBtn2) {
+                testGeminiBtn2.onclick = function() { runGeminiTest(this); };
             }
         }
 
@@ -3271,9 +3447,16 @@
                 }
             });
 
-            hostConnection.on('data', async function(data) {
+            // 聴講者側の多言語翻訳・画面描画の順序保証キュー（翻訳速度差による文の順序逆転を完全防止）
+            let viewerCaptionQueue = Promise.resolve();
+
+            hostConnection.on('data', function(data) {
                 if (data.type === 'caption') {
-                    await handleIncomingCaption(data.text, data.timestamp);
+                    viewerCaptionQueue = viewerCaptionQueue.then(async () => {
+                        await handleIncomingCaption(data.text, data.timestamp);
+                    }).catch(err => {
+                        console.error('Viewer caption processing error:', err);
+                    });
                 }
             });
 
