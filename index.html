@@ -2029,30 +2029,20 @@
 
             const now = Date.now();
 
-            // 1. 直前の送信テキストとの完全一致・先頭重複を完全遮断
+            // 1. 直前の送信テキストとの完全一致（2重送信）を完全破棄
             if (recentSentHistory.length > 0) {
                 const lastItem = recentSentHistory[recentSentHistory.length - 1];
-                // 直前と同じ文（2重送信）を完全破棄
                 if (lastItem.norm === normClean) {
                     return;
                 }
-                // 直前の文が今回の文の先頭プレフィックスとして完全に含まれている場合、重複部分を切り落とす
-                if (normClean.startsWith(lastItem.norm) && lastItem.norm.length >= 4) {
-                    const trimmed = cleanText.substring(lastItem.text.length).trim();
-                    if (!trimmed) return;
-                    return dispatchCaption(trimmed, meta);
-                }
             }
 
-            // 2. 直近5秒以内のエコー・ミリ秒単位の重複排除
+            // 2. 直近3秒以内の完全エコー重複のみ排除
             for (let i = recentSentHistory.length - 1; i >= 0; i--) {
                 const item = recentSentHistory[i];
-                if (now - item.timestamp > 5000) break;
+                if (now - item.timestamp > 3000) break;
 
                 if (item.norm === normClean) {
-                    return;
-                }
-                if (item.norm.includes(normClean) && Math.abs(normClean.length - item.norm.length) < 4) {
                     return;
                 }
             }
@@ -3251,21 +3241,28 @@
                 if (!rawChunk || !rawChunk.trim()) return;
 
                 aiProcessingQueue = aiProcessingQueue.then(async () => {
-                    // AI文脈自動補正（辞書プレパス＋Gemini文脈補正）を直列に適用
-                    const processedChunk = await correctWithGemini(rawChunk);
+                    let processedChunk = rawChunk;
+                    let isAi = false;
+
+                    try {
+                        processedChunk = await correctWithGemini(rawChunk);
+                        isAi = isGeminiAiEnabled && !!geminiApiKey && (processedChunk !== rawChunk);
+                    } catch (e) {
+                        console.warn('AI補正スキップ:', e);
+                        processedChunk = fixScriptureReferences(replaceChurchTerms(rawChunk.trim()));
+                    }
+
+                    if (!processedChunk) processedChunk = rawChunk;
                     const isEdited = processedChunk !== rawChunk;
-                    const isAi = isGeminiAiEnabled && !!geminiApiKey && isEdited;
 
                     if (isManualMode) {
                         if (manualCaptionInput) {
                             const currentVal = manualCaptionInput.value.trim();
                             if (!currentVal) {
-                                // エディターが空ならAI補正済みテキストをセットし、認識原文を記録
                                 manualCaptionInput.value = processedChunk;
                                 currentManualOriginalRaw = rawChunk;
                                 manualCaptionInput.scrollTop = manualCaptionInput.scrollHeight;
                             } else {
-                                // 編集中ならエディターを乱さず待機キューにプッシュ
                                 manualPendingQueue.push({ text: processedChunk, original: rawChunk, isAi: isAi });
                                 updateManualQueueUI();
                             }
@@ -3274,7 +3271,8 @@
                         dispatchCaption(processedChunk, { original: rawChunk, isEdited: isEdited, isAi: isAi });
                     }
                 }).catch(err => {
-                    console.error('AI処理キューエラー:', err);
+                    console.error('AI処理キュー回復:', err);
+                    dispatchCaption(rawChunk, { original: rawChunk, isEdited: false, isAi: false });
                 });
             }
 
