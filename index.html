@@ -3462,6 +3462,7 @@
             }
 
             const timeStr = new Date().toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+            const wasPaused = isBroadcastPaused;
             const isAi = !!(meta && meta.isAi);
             const isEdited = !!(meta && meta.isEdited && meta.original && meta.original.trim() !== text.trim());
             const rawOriginal = isEdited ? meta.original.trim() : null;
