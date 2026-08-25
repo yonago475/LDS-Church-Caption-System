@@ -983,6 +983,18 @@
             "知恵の言葉": "知恵の言葉",
             "淡々と": "だんだんと",
             "アクアリ": "憧れ",
+            "よみがえられた": "蘇られた",
+            "読み替えられた": "蘇られた",
+            "読み返された": "蘇られた",
+            "よみがえり": "蘇り",
+            "ゴミ捨てになった": "お見捨てになった",
+            "お見捨てになった": "お見捨てになった",
+            "着物 答え": "疑問の答え",
+            "着物答え": "疑問の答え",
+            "愛と健診": "愛と献身",
+            "愛と献身": "愛と献身",
+            "救い主の死のいる理由": "救い主の死の理由",
+            "創造しようと": "想像しようと",
             "教師 会": "司会",
             "しんけん": "神権",
             "真剣": "神権",
@@ -2223,7 +2235,8 @@
                 transcriptHistory.forEach(entry => {
                     const statusMark = entry.paused ? ' [⏸️ 未配信]' : '';
                     if (entry.isEdited && entry.original) {
-                        body += `[${entry.time}]${statusMark} [手動修正]\n  認識原文: ${entry.original}\n  修正配信: ${entry.text}\n\n`;
+                        const editTag = entry.isAi ? '[✨AI文脈補正]' : '[✍️手動修正]';
+                        body += `[${entry.time}]${statusMark} ${editTag}\n  認識原文: ${entry.original}\n  補正配信: ${entry.text}\n\n`;
                     } else {
                         body += `[${entry.time}]${statusMark} ${entry.text}\n`;
                     }
@@ -2696,7 +2709,7 @@
         let recentContextHistory = [];
 
         async function correctWithGemini(rawText) {
-            if (!rawText || !rawText.trim()) return '';
+            if (!rawText || !rawText.trim()) return { text: '', isAi: false };
 
             // 【第1段】教会用語辞書および聖典参照フォーマットで基礎補正（0ms）
             const preCorrected = fixScriptureReferences(replaceChurchTerms(rawText.trim()));
@@ -2704,11 +2717,11 @@
             if (!isGeminiAiEnabled || !geminiApiKey) {
                 recentContextHistory.push(preCorrected);
                 if (recentContextHistory.length > 3) recentContextHistory.shift();
-                return preCorrected;
+                return { text: preCorrected, isAi: false };
             }
 
             const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 2000); // 2秒タイムアウトで高速フォールバック
+            const timeoutId = setTimeout(() => controller.abort(), 4500); // 4.5秒タイムアウト（モバイル回線対応）
 
             try {
                 // 直前の会話文脈をプロンプトに付与（前後の流れから同音異義語を精密補正）
@@ -2732,12 +2745,13 @@
                         },
                         contents: [
                             {
+                                role: 'user',
                                 parts: [{ text: userPrompt }]
                             }
                         ],
                         generationConfig: {
                             temperature: 0.1,
-                            maxOutputTokens: 250
+                            maxOutputTokens: 350
                         }
                     })
                 });
@@ -2745,7 +2759,8 @@
                 clearTimeout(timeoutId);
 
                 if (!response.ok) {
-                    throw new Error(`HTTP ${response.status}`);
+                    const errText = await response.text();
+                    throw new Error(`HTTP ${response.status}: ${errText}`);
                 }
 
                 const data = await response.json();
@@ -2755,10 +2770,10 @@
                     const finalized = fixScriptureReferences(aiOutput);
                     recentContextHistory.push(finalized);
                     if (recentContextHistory.length > 3) recentContextHistory.shift();
-                    return finalized;
+                    return { text: finalized, isAi: true };
                 }
             } catch (err) {
-                console.warn('Gemini AI補正エラー（辞書フォールバック）:', err.message);
+                console.error('Gemini AI補正エラー（辞書フォールバック）:', err);
             } finally {
                 clearTimeout(timeoutId);
             }
@@ -2766,7 +2781,7 @@
             // フォールバック: 基礎補正済みテキスト
             recentContextHistory.push(preCorrected);
             if (recentContextHistory.length > 3) recentContextHistory.shift();
-            return preCorrected;
+            return { text: preCorrected, isAi: false };
         }
 
         function updateGeminiUIState() {
@@ -3237,7 +3252,7 @@
 
                 aiProcessingQueue = aiProcessingQueue.then(async () => {
                     // AI文脈自動補正（辞書プレパス＋Gemini文脈補正）を直列に適用
-                    const processedChunk = await correctWithGemini(rawChunk);
+                    const { text: processedChunk, isAi } = await correctWithGemini(rawChunk);
                     const isEdited = processedChunk !== rawChunk;
 
                     if (isManualMode) {
@@ -3250,12 +3265,12 @@
                                 manualCaptionInput.scrollTop = manualCaptionInput.scrollHeight;
                             } else {
                                 // 編集中ならエディターを乱さず待機キューにプッシュ
-                                manualPendingQueue.push({ text: processedChunk, original: rawChunk });
+                                manualPendingQueue.push({ text: processedChunk, original: rawChunk, isAi: isAi });
                                 updateManualQueueUI();
                             }
                         }
                     } else {
-                        dispatchCaption(processedChunk, { original: rawChunk, isEdited: isEdited });
+                        dispatchCaption(processedChunk, { original: rawChunk, isEdited: isEdited, isAi: isAi });
                     }
                 }).catch(err => {
                     console.error('AI処理キューエラー:', err);
@@ -3435,7 +3450,7 @@
             }
 
             const timeStr = new Date().toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-            const wasPaused = isBroadcastPaused;
+            const isAi = !!(meta && meta.isAi);
             const isEdited = !!(meta && meta.isEdited && meta.original && meta.original.trim() !== text.trim());
             const rawOriginal = isEdited ? meta.original.trim() : null;
 
@@ -3444,6 +3459,7 @@
                 text: text,
                 original: rawOriginal,
                 isEdited: isEdited,
+                isAi: isAi,
                 paused: wasPaused
             });
 
@@ -3471,7 +3487,7 @@
                     <div class="flex justify-between items-center mb-1">
                         <div class="flex items-center space-x-1.5">
                             <span class="text-[10px] text-slate-400 font-mono">${timeStr}</span>
-                            ${isEdited ? `<span class="text-[10px] px-1.5 py-0.2 bg-amber-100 text-amber-800 font-bold rounded border border-amber-300">✍️ 手動修正</span>` : ''}
+                            ${isEdited ? (isAi ? `<span class="text-[10px] px-1.5 py-0.2 bg-purple-100 text-purple-800 font-bold rounded border border-purple-300">✨ AI文脈補正</span>` : `<span class="text-[10px] px-1.5 py-0.2 bg-amber-100 text-amber-800 font-bold rounded border border-amber-300">✍️ 手動修正</span>`) : ''}
                         </div>
                         <button type="button" class="text-[10px] text-indigo-600 hover:text-indigo-800 font-semibold log-add-dict-btn" data-text="${safeText}" title="この単語を辞書登録">
                             <i class="fa-solid fa-plus-circle"></i> 辞書登録
@@ -3479,10 +3495,10 @@
                     </div>
                     <div class="text-sm text-slate-800 font-medium">${safeText}</div>
                     ${isEdited ? `
-                    <div class="mt-1.5 p-2 bg-amber-50/80 rounded border border-amber-200 text-xs text-slate-700 flex items-start space-x-1.5">
-                        <span class="text-amber-800 font-bold shrink-0">認識原文:</span>
+                    <div class="mt-1.5 p-2 bg-slate-50 rounded border border-slate-200 text-xs text-slate-700 flex items-start space-x-1.5">
+                        <span class="text-slate-500 font-bold shrink-0">認識原文:</span>
                         <span class="line-through text-slate-400">${safeOriginal}</span>
-                        <span class="text-indigo-600 font-bold shrink-0">➔ 修正:</span>
+                        <span class="text-indigo-600 font-bold shrink-0">➔ 補正:</span>
                         <span class="text-emerald-700 font-bold">${safeText}</span>
                     </div>` : ''}
                 `;
