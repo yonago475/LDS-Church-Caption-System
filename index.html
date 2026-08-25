@@ -952,6 +952,9 @@
             "回収しました": "改宗しました",
             "回収された": "改宗された",
             "回収するまでに": "改宗するまでに",
+            "回収し と": "改宗したいと",
+            "回収しよう": "改宗しよう",
+            "回収するには": "改宗するには",
             "神殿が封建": "神殿が奉献",
             "封建された": "奉献された",
             "ほうけんされた": "奉献された",
@@ -968,7 +971,18 @@
             "電動": "伝道",
             "電動 宣教師": "伝道宣教師",
             "電動宣教師": "伝道宣教師",
+            "電動に出る": "伝道に出る",
             "言動の責任": "伝道の責任",
+            "命の機能": "命の木の",
+            "いのちのき": "命の木",
+            "発祥の": "8章の",
+            "調達が": "長老たちが",
+            "せいてんをよむ": "聖典を読む",
+            "晴天を読む": "聖典を読む",
+            "ちえのことば": "知恵の言葉",
+            "知恵の言葉": "知恵の言葉",
+            "淡々と": "だんだんと",
+            "アクアリ": "憧れ",
             "教師 会": "司会",
             "しんけん": "神権",
             "真剣": "神権",
@@ -3258,20 +3272,13 @@
                     clearTimeout(silenceCommitTimer);
                     silenceCommitTimer = null;
                 }
-                const textToFlush = currentUnhandledText ? currentUnhandledText.trim() : '';
-                currentUnhandledText = '';
-                if (textToFlush) {
-                    const chunks = splitIntoSmartChunks(textToFlush);
-                    chunks.forEach(chunk => {
-                        handleRecognizedChunk(chunk);
-                    });
-                    lastCommittedInterim = '';
-                    interimText.textContent = '（次の音声入力を待機中...）';
-                    // 1文フラッシュ後、Chromeの音声認識バッファを安全にリセットして次の発話へ即時移行
+                // 話者の息継ぎポーズ（1.2秒）を検知した場合、Chromeの音声認識を安全にstop()して確定イベント（isFinal）を自律発火させる（二重送信の完全防止）
+                if (isRecognizing && currentUnhandledText) {
                     try {
                         recognition.stop();
-                    } catch(e) {}
+                    } catch (e) {}
                 }
+                currentUnhandledText = '';
             }
 
             function safeStartRecognition() {
