@@ -22,16 +22,17 @@
             scroll-behavior: smooth;
         }
         /* スマホViewerモード時：画面全体をスマホ画面（100dvh）に完全に固定し、枠の縦伸びを防止 */
+        /* 注意: 古いブラウザ向けフォールバック(vh)を先に、dvh対応ブラウザ向け(dvh)を後に記述 */
         body.viewer-mode-active {
-            height: 100dvh !important;
             height: 100vh !important;
+            height: 100dvh !important;
             overflow: hidden !important;
         }
         body.viewer-mode-active main {
-            height: calc(100dvh - 3.8rem) !important;
             height: calc(100vh - 3.8rem) !important;
-            max-height: calc(100dvh - 3.8rem) !important;
+            height: calc(100dvh - 3.8rem) !important;
             max-height: calc(100vh - 3.8rem) !important;
+            max-height: calc(100dvh - 3.8rem) !important;
             min-height: 0 !important;
             padding: 0.5rem !important;
             overflow: hidden !important;
@@ -1291,7 +1292,7 @@
             },
             "ko": {
                 appTitle: "다국어 자막 스트리밍",
-                modeBadge: "청취자 모드 (실시간 자막 수信 중)",
+                modeBadge: "청취자 모드 (실시간 자막 수신 중)",
                 langLabel: "표시 언어",
                 waitingStream: "호스트의 음성 방송을 대기 중입니다...",
                 waitingSub: "자막이 실시간으로 여기에 표시됩니다",
@@ -1620,6 +1621,13 @@
                 document.addEventListener('visibilitychange', () => {
                     if (document.visibilityState === 'visible' && isWakeLockEnabled) {
                         requestWakeLock();
+                    }
+                    // スマホ画面復帰時: WebRTC接続のゾンビ化を検知して自動再接続
+                    if (document.visibilityState === 'visible' && !isHost && currentRoomId) {
+                        if (!hostConnection || !hostConnection.open) {
+                            console.warn('画面復帰時にゾンビ接続を検知。再接続を開始します。');
+                            scheduleViewerReconnect(true);
+                        }
                     }
                 });
 
@@ -2587,9 +2595,16 @@
         function broadcastToViewers(data) {
             if (isBroadcastPaused) return;
 
+            // 無効な接続を除去してからブロードキャスト（メモリリーク防止）
+            peerConnections = peerConnections.filter(conn => conn.open);
+
             peerConnections.forEach(conn => {
-                if (conn.open) {
+                try {
                     conn.send(data);
+                } catch (e) {
+                    // 1台のエラーが他の聴講者への配信を止めないよう個別に保護
+                    console.warn('送信エラー（接続を除去）:', e.message);
+                    try { conn.close(); } catch(_){}
                 }
             });
         }
@@ -2978,7 +2993,17 @@
                 return;
             }
 
+            // 接続タイムアウト: ホストオフライン時に「接続中...」で永久フリーズするのを防止
+            const connectionTimeout = setTimeout(() => {
+                if (hostConnection && !hostConnection.open) {
+                    console.warn('接続タイムアウト（10秒）。再接続を開始します。');
+                    try { hostConnection.close(); } catch(e){}
+                    scheduleViewerReconnect(true);
+                }
+            }, 10000);
+
             hostConnection.on('open', function() {
+                clearTimeout(connectionTimeout);
                 reconnectAttemptCount = 0;
                 if (viewerReconnectTimer) clearTimeout(viewerReconnectTimer);
 
@@ -3145,7 +3170,7 @@
             item.innerHTML = `
                 <div class="flex justify-between items-center text-[10px] text-slate-400 mb-1.5 border-b border-slate-700/40 pb-1">
                     <span><i class="fa-solid fa-globe mr-1 text-indigo-400"></i> ${escapeHtml(targetLangSelect.options[targetLangSelect.selectedIndex].text)}</span>
-                    <span class="font-mono">${timestamp || ''}</span>
+                    <span class="font-mono">${escapeHtml(timestamp || '')}</span>
                 </div>
                 <div class="${currentSizeClass} font-semibold text-white leading-relaxed break-words">
                     ${escapeHtml(translatedText)}
