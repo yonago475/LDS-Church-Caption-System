@@ -187,7 +187,7 @@
                             <!-- API Key Input & Actions Row (未設定時または変更時に表示) -->
                             <div id="apiKeyInputRow" class="flex flex-col sm:flex-row gap-2 pt-1">
                                 <div class="relative flex-1">
-                                    <input type="password" id="geminiApiKeyInput" placeholder="Google AI Studio の APIキーを入力 (AIzaSy...)" class="w-full px-3 py-1.5 text-xs bg-indigo-950/70 border border-indigo-500/50 rounded-lg text-white placeholder-indigo-300/50 focus:ring-2 focus:ring-purple-400 focus:outline-none font-mono">
+                                    <input type="password" id="geminiApiKeyInput" placeholder="Google AI Studio の APIキーを入力 (AQ... または AIzaSy...)" class="w-full px-3 py-1.5 text-xs bg-indigo-950/70 border border-indigo-500/50 rounded-lg text-white placeholder-indigo-300/50 focus:ring-2 focus:ring-purple-400 focus:outline-none font-mono">
                                     <button id="toggleApiKeyVisibilityBtn" type="button" class="absolute right-2.5 top-1/2 -translate-y-1/2 text-indigo-300 hover:text-white text-xs" title="キーの表示/非表示">
                                         <i class="fa-solid fa-eye" id="apiKeyEyeIcon"></i>
                                     </button>
@@ -2898,82 +2898,87 @@
             }
         }
 
-        async function correctWithGemini(rawText) {
-            if (!rawText || !rawText.trim()) return { ja: '', en: null };
+        async function correctWithGemini(rawText, options = {}) {
+            if (!rawText || !rawText.trim()) return { ja: '', en: null, isAiSuccess: false };
+
+            const isTest = !!options.isTest;
 
             // 【第1段】教会用語辞書および聖典参照フォーマットで基礎補正（0ms）
             const preCorrected = fixScriptureReferences(replaceChurchTerms(rawText.trim()));
 
-            // セッション開始時刻の記録
-            if (!aiStats.sessionStartTime) aiStats.sessionStartTime = Date.now();
-            aiStats.totalCaptions++;
+            // 本番時のみ統計カウント
+            if (!isTest) {
+                if (!aiStats.sessionStartTime) aiStats.sessionStartTime = Date.now();
+                aiStats.totalCaptions++;
+            }
 
             if (!isGeminiAiEnabled || !geminiApiKey) {
-                recentContextHistory.push(preCorrected);
-                if (recentContextHistory.length > 3) recentContextHistory.shift();
-                aiStats.dictFallbacks++;
-                detectSection(preCorrected);
-                updateAiStatsDisplay();
-                return { ja: preCorrected, en: null };
+                if (!isTest) {
+                    recentContextHistory.push(preCorrected);
+                    if (recentContextHistory.length > 3) recentContextHistory.shift();
+                    aiStats.dictFallbacks++;
+                    detectSection(preCorrected);
+                    updateAiStatsDisplay();
+                }
+                return { ja: preCorrected, en: null, isAiSuccess: false };
             }
 
-            // 【保護1: 極短文・相槌のスキップ】「あの」「そして」「これは」等の5文字未満はAIリクエストを節約
-            const plainLen = preCorrected.replace(/[\s\u3000、。！？]+/g, '').length;
-            if (plainLen < 5) {
-                recentContextHistory.push(preCorrected);
-                if (recentContextHistory.length > 3) recentContextHistory.shift();
-                aiStats.dictFallbacks++;
-                detectSection(preCorrected);
-                updateAiStatsDisplay();
-                return { ja: preCorrected, en: null };
-            }
+            // 【保護1: 極短文・相槌のスキップ】テスト時以外は5文字未満のAIリクエストを節約
+            if (!isTest) {
+                const plainLen = preCorrected.replace(/[\s\u3000、。！？]+/g, '').length;
+                if (plainLen < 5) {
+                    recentContextHistory.push(preCorrected);
+                    if (recentContextHistory.length > 3) recentContextHistory.shift();
+                    aiStats.dictFallbacks++;
+                    detectSection(preCorrected);
+                    updateAiStatsDisplay();
+                    return { ja: preCorrected, en: null, isAiSuccess: false };
+                }
 
-            // 【保護2: 15 RPM レートリミット保護ガード（スライディングウィンドウ）】
-            const now = Date.now();
-            // 直近60秒以内のタイムスタンプのみ保持
-            while (geminiCallTimestampsWindow.length > 0 && (now - geminiCallTimestampsWindow[0]) > 60000) {
-                geminiCallTimestampsWindow.shift();
-            }
+                // 【保護2: 15 RPM レートリミット保護ガード（スライディングウィンドウ）】
+                const now = Date.now();
+                while (geminiCallTimestampsWindow.length > 0 && (now - geminiCallTimestampsWindow[0]) > 60000) {
+                    geminiCallTimestampsWindow.shift();
+                }
 
-            // 直近60秒で12回以上、または前回リクエストから2.5秒未満の場合はローカル辞書で安全に退行
-            const isRateLimitRisk = geminiCallTimestampsWindow.length >= 12 || (now - lastGeminiCallTimestamp < 2500);
-            if (isRateLimitRisk) {
-                aiStats.dictFallbacks++;
-                aiStats.rateLimitedCount = (aiStats.rateLimitedCount || 0) + 1;
-                recentContextHistory.push(preCorrected);
-                if (recentContextHistory.length > 3) recentContextHistory.shift();
-                detectSection(preCorrected);
-                updateAiStatsDisplay();
-                return { ja: preCorrected, en: null };
-            }
+                const isRateLimitRisk = geminiCallTimestampsWindow.length >= 12 || (now - lastGeminiCallTimestamp < 2500);
+                if (isRateLimitRisk) {
+                    aiStats.dictFallbacks++;
+                    aiStats.rateLimitedCount = (aiStats.rateLimitedCount || 0) + 1;
+                    recentContextHistory.push(preCorrected);
+                    if (recentContextHistory.length > 3) recentContextHistory.shift();
+                    detectSection(preCorrected);
+                    updateAiStatsDisplay();
+                    return { ja: preCorrected, en: null, isAiSuccess: false };
+                }
 
-            // リクエスト時刻を記録
-            lastGeminiCallTimestamp = now;
-            geminiCallTimestampsWindow.push(now);
+                lastGeminiCallTimestamp = now;
+                geminiCallTimestampsWindow.push(now);
+            }
 
             // APIキーの空白トリム保護
             const cleanKey = geminiApiKey.trim();
 
             const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 4000);
+            const timeoutId = setTimeout(() => controller.abort(), 4500);
             const startTime = performance.now();
 
-            // 試行するモデル候補リスト（2.0 Flash ➔ 1.5 Flash の自動フォールバック）
-            const candidateModels = ['gemini-2.0-flash', 'gemini-1.5-flash'];
+            // 試行するモデル候補リスト（2.0 Flash ➔ 1.5 Flash ➔ 2.0 Flash Exp）
+            const candidateModels = ['gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-2.0-flash-exp'];
 
             try {
                 // 直前の会話文脈 + 場面ヒントをプロンプトに付与
                 const sectionHint = SECTION_HINTS[currentSectionType] || SECTION_HINTS.general;
                 let userPrompt = sectionHint + '\n\n';
-                const validContext = recentContextHistory.filter(c => c && c.trim());
+                const validContext = isTest ? [] : recentContextHistory.filter(c => c && c.trim());
                 if (validContext.length > 0) {
                     userPrompt += `【直前の発話文脈】\n${validContext.slice(-2).join('\n')}\n\n`;
                 }
                 userPrompt += `【今回の発話（校正対象）】\n${preCorrected}`;
 
-                let lastHttpErrorText = '';
                 let successData = null;
                 let successfulModel = '';
+                let lastDetailError = '';
 
                 // モデルフォールバックループ
                 for (const modelName of candidateModels) {
@@ -2981,7 +2986,10 @@
                         const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${encodeURIComponent(cleanKey)}`;
                         const response = await fetch(url, {
                             method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'x-goog-api-key': cleanKey
+                            },
                             signal: controller.signal,
                             body: JSON.stringify({
                                 systemInstruction: {
@@ -3006,7 +3014,6 @@
                             break;
                         } else {
                             const errRaw = await response.text();
-                            lastHttpErrorText = errRaw;
                             let detailMsg = `HTTP ${response.status}`;
                             try {
                                 const parsedErr = JSON.parse(errRaw);
@@ -3014,16 +3021,16 @@
                                     detailMsg = `HTTP ${response.status}: ${parsedErr.error.message}`;
                                 }
                             } catch (pe) {}
-                            
-                            // 404 の場合は次のモデルへ即座にフォールバック試行
+                            lastDetailError = detailMsg;
+
                             if (response.status === 404) {
                                 console.warn(`モデル ${modelName} が404のため、次候補へフォールバックします...`);
                                 continue;
                             } else if (response.status === 429) {
-                                aiStats.lastErrorMessage = 'HTTP 429 (レート制限超過)';
+                                if (!isTest) aiStats.lastErrorMessage = 'HTTP 429 (レート制限超過)';
                                 throw new Error(detailMsg);
                             } else {
-                                aiStats.lastErrorMessage = detailMsg;
+                                if (!isTest) aiStats.lastErrorMessage = detailMsg;
                                 throw new Error(detailMsg);
                             }
                         }
@@ -3037,12 +3044,14 @@
 
                 clearTimeout(timeoutId);
                 const elapsed = performance.now() - startTime;
-                aiStats.totalLatencyMs += elapsed;
-                aiStats.latencyHistory.push(elapsed);
-                if (aiStats.latencyHistory.length > 20) aiStats.latencyHistory.shift();
+                if (!isTest) {
+                    aiStats.totalLatencyMs += elapsed;
+                    aiStats.latencyHistory.push(elapsed);
+                    if (aiStats.latencyHistory.length > 20) aiStats.latencyHistory.shift();
+                }
 
                 if (!successData) {
-                    throw new Error(aiStats.lastErrorMessage || '全候補モデルでの応答取得に失敗');
+                    throw new Error(lastDetailError || '全候補モデルでの応答取得に失敗');
                 }
 
                 const aiOutput = successData.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
@@ -3057,44 +3066,50 @@
                         jaText = parsed.ja ? fixScriptureReferences(parsed.ja.trim()) : null;
                         enText = parsed.en ? parsed.en.trim() : null;
                     } else {
-                        // JSON 以外の文字列で返ってきた場合のフォールバック
                         jaText = fixScriptureReferences(aiOutput.replace(/^["'\s]+|["'\s]+$/g, ''));
                         enText = null;
                     }
 
                     if (jaText) {
-                        aiStats.aiCorrected++;
-                        aiStats.lastErrorMessage = null;
-                        aiStats.activeModelName = successfulModel;
-                        recentContextHistory.push(jaText);
-                        if (recentContextHistory.length > 3) recentContextHistory.shift();
-                        detectSection(jaText);
-                        updateAiStatsDisplay();
-                        return { ja: jaText, en: enText };
+                        if (!isTest) {
+                            aiStats.aiCorrected++;
+                            aiStats.lastErrorMessage = null;
+                            aiStats.activeModelName = successfulModel;
+                            recentContextHistory.push(jaText);
+                            if (recentContextHistory.length > 3) recentContextHistory.shift();
+                            detectSection(jaText);
+                            updateAiStatsDisplay();
+                        }
+                        return { ja: jaText, en: enText, isAiSuccess: true, model: successfulModel, latency: Math.round(elapsed) };
                     }
                 }
             } catch (err) {
                 clearTimeout(timeoutId);
-                if (err.name === 'AbortError') {
-                    aiStats.aiTimeouts++;
-                    aiStats.lastErrorMessage = 'タイムアウト (4.0秒超過)';
-                    console.warn('Gemini AI補正タイムアウト（辞書フォールバック）');
-                } else {
-                    aiStats.aiErrors++;
-                    if (!aiStats.lastErrorMessage) aiStats.lastErrorMessage = err.message;
-                    console.error('Gemini AI補正エラー（辞書フォールバック）:', err);
+                if (!isTest) {
+                    if (err.name === 'AbortError') {
+                        aiStats.aiTimeouts++;
+                        aiStats.lastErrorMessage = 'タイムアウト (4.5秒超過)';
+                    } else {
+                        aiStats.aiErrors++;
+                        if (!aiStats.lastErrorMessage) aiStats.lastErrorMessage = err.message;
+                    }
+                }
+                console.error('Gemini AI補正エラー（辞書フォールバック）:', err);
+                if (isTest) {
+                    return { ja: preCorrected, en: null, isAiSuccess: false, error: err.message };
                 }
             } finally {
                 clearTimeout(timeoutId);
             }
 
-            // フォールバック: 基礎補正済みテキスト（英語翻訳なし）
-            aiStats.dictFallbacks++;
-            recentContextHistory.push(preCorrected);
-            if (recentContextHistory.length > 3) recentContextHistory.shift();
-            detectSection(preCorrected);
-            updateAiStatsDisplay();
-            return { ja: preCorrected, en: null };
+            if (!isTest) {
+                aiStats.dictFallbacks++;
+                recentContextHistory.push(preCorrected);
+                if (recentContextHistory.length > 3) recentContextHistory.shift();
+                detectSection(preCorrected);
+                updateAiStatsDisplay();
+            }
+            return { ja: preCorrected, en: null, isAiSuccess: false };
         }
 
 
@@ -3253,7 +3268,7 @@
                     const prevEnabled = isGeminiAiEnabled;
                     isGeminiAiEnabled = true;
 
-                    const result = await correctWithGemini(testPrompt);
+                    const result = await correctWithGemini(testPrompt, { isTest: true });
                     const elapsed = Math.round(performance.now() - startTime);
 
                     geminiApiKey = tempKey;
@@ -3261,15 +3276,30 @@
 
                     if (geminiLatencyText) geminiLatencyText.textContent = `${elapsed}ms`;
                     if (geminiTestOutput) {
-                        const jaResult = typeof result === 'object' ? result.ja : result;
-                        const enResult = typeof result === 'object' ? result.en : null;
-                        const usedModel = aiStats.activeModelName || 'Gemini Flash';
-                        geminiTestOutput.innerHTML = `
-                            <div class="text-indigo-200">原文: <span class="text-slate-300 line-through">${testPrompt}</span></div>
-                            <div class="text-emerald-300 font-bold">➔ AI補正: ${escapeHtml(jaResult || '')}</div>
-                            ${enResult ? `<div class="text-sky-300 font-medium mt-0.5">🌐 英訳: ${escapeHtml(enResult)}</div>` : ''}
-                            <div class="text-[10px] text-purple-300/70 mt-1 font-mono">📡 接続モデル: ${escapeHtml(usedModel)}</div>
-                        `;
+                        const jaResult = result.ja || '';
+                        const enResult = result.en || null;
+                        const isSuccess = result.isAiSuccess;
+                        const usedModel = result.model || 'Gemini Flash';
+
+                        if (isSuccess) {
+                            geminiTestOutput.innerHTML = `
+                                <div class="text-indigo-200">原文: <span class="text-slate-300 line-through">${testPrompt}</span></div>
+                                <div class="text-emerald-300 font-bold">➔ AI補正: ${escapeHtml(jaResult)}</div>
+                                ${enResult ? `<div class="text-sky-300 font-medium mt-0.5">🌐 英訳: ${escapeHtml(enResult)}</div>` : ''}
+                                <div class="text-[10px] text-emerald-400 mt-1 font-mono">✅ 接続成功 (使用モデル: ${escapeHtml(usedModel)})</div>
+                            `;
+                        } else {
+                            const errDetail = result.error || 'モデルからの応答取得に失敗';
+                            geminiTestOutput.innerHTML = `
+                                <div class="text-amber-300 font-bold mb-1"><i class="fa-solid fa-triangle-exclamation mr-1"></i> API接続エラー</div>
+                                <div class="text-[11px] text-red-300 font-mono mb-1.5 p-1.5 bg-red-950/60 rounded border border-red-800/50">${escapeHtml(errDetail)}</div>
+                                <div class="text-[11px] text-slate-300">
+                                    💡 <strong>確認ポイント:</strong><br>
+                                    Google AI Studio の APIキー (<code>AQ.Ab...</code> または <code>AIzaSy...</code>) が正しく入力されているかご確認ください。<br>
+                                    <a href="https://aistudio.google.com/app/apikey" target="_blank" class="text-purple-300 underline font-semibold">aistudio.google.com</a> から取得したキーを貼り付けて「保存」してください。
+                                </div>
+                            `;
+                        }
                     }
                 } catch (e) {
                     if (geminiTestOutput) geminiTestOutput.innerHTML = `<span class="text-red-400">❌ エラー: ${escapeHtml(e.message)}</span>`;
@@ -3419,13 +3449,17 @@ ${existingKeys.slice(0, 100).join(', ')}
 【出力形式】以下のJSON配列のみを出力してください。解説は不要です。
 [{"from": "誤認識パターン", "to": "正しい用語", "reason": "理由（10文字以内）"}]`;
 
-                    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${encodeURIComponent(geminiApiKey)}`;
+                    const cleanDictKey = geminiApiKey.trim();
+                    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${encodeURIComponent(cleanDictKey)}`;
                     const response = await fetch(url, {
                         method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'x-goog-api-key': cleanDictKey
+                        },
                         body: JSON.stringify({
                             contents: [{ role: 'user', parts: [{ text: prompt }] }],
-                            generationConfig: { temperature: 0.1, maxOutputTokens: 1000, responseMimeType: 'application/json' }
+                            generationConfig: { temperature: 0.1, maxOutputTokens: 1000 }
                         })
                     });
 
