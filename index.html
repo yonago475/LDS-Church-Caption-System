@@ -215,6 +215,38 @@
                             </div>
                         </div>
 
+                        <!-- AI品質モニタリング ダッシュボード -->
+                        <div id="aiStatsPanel" class="hidden bg-gradient-to-br from-slate-800/95 to-slate-900/95 text-white p-3 rounded-2xl shadow-sm border border-slate-700/60 mb-4">
+                            <div class="flex items-center justify-between mb-2">
+                                <h4 class="text-xs font-bold flex items-center gap-1.5">
+                                    <i class="fa-solid fa-chart-line text-emerald-400"></i>
+                                    AI補正統計（リアルタイム）
+                                    <span id="aiStatsSessionTime" class="text-[10px] text-slate-400 font-mono"></span>
+                                </h4>
+                                <span id="aiStatsSectionBadge" class="text-[10px] px-2 py-0.5 rounded-full font-bold bg-slate-600 text-slate-200">
+                                    🎤 一般
+                                </span>
+                            </div>
+                            <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
+                                <div class="bg-slate-700/50 rounded-lg p-2">
+                                    <div class="text-lg font-bold text-white" id="statTotalCaptions">0</div>
+                                    <div class="text-[10px] text-slate-400">処理文数</div>
+                                </div>
+                                <div class="bg-slate-700/50 rounded-lg p-2">
+                                    <div class="text-lg font-bold text-purple-300" id="statAiRate">0%</div>
+                                    <div class="text-[10px] text-slate-400">AI補正率</div>
+                                </div>
+                                <div class="bg-slate-700/50 rounded-lg p-2">
+                                    <div class="text-lg font-bold text-emerald-300" id="statAvgLatency">—</div>
+                                    <div class="text-[10px] text-slate-400">平均応答</div>
+                                </div>
+                                <div class="bg-slate-700/50 rounded-lg p-2">
+                                    <div class="text-lg font-bold text-amber-300" id="statErrorRate">0%</div>
+                                    <div class="text-[10px] text-slate-400">エラー率</div>
+                                </div>
+                            </div>
+                        </div>
+
                         <!-- Main Action Buttons -->
                         <div class="flex flex-wrap gap-3 my-4">
                             <button id="toggleRecognitionBtn" class="flex-1 sm:flex-initial inline-flex items-center justify-center px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-xl shadow-sm transition-all text-sm">
@@ -416,7 +448,30 @@
                             <button id="downloadTranscriptBtn" class="inline-flex items-center px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-semibold text-xs rounded-lg transition-colors border border-emerald-200" title="文字起こしログを保存">
                                 <i class="fa-solid fa-download mr-1"></i> ログ保存
                             </button>
+                            <button id="analyzeDictBtn" class="inline-flex items-center px-2.5 py-1 bg-purple-50 hover:bg-purple-100 text-purple-700 font-semibold text-xs rounded-lg transition-colors border border-purple-200" title="手動修正ログからAIが辞書候補を提案">
+                                <i class="fa-solid fa-wand-magic-sparkles mr-1"></i> 辞書候補AI分析
+                            </button>
                             <span class="text-xs text-slate-400">配信中のログ</span>
+                        </div>
+                    </div>
+
+                    <!-- 辞書候補AI分析 結果パネル -->
+                    <div id="dictAnalysisPanel" class="hidden mb-3 p-3 bg-purple-50 border border-purple-200 rounded-xl space-y-2 max-h-60 overflow-y-auto">
+                        <div class="flex items-center justify-between">
+                            <h4 class="text-xs font-bold text-purple-900 flex items-center gap-1.5">
+                                <i class="fa-solid fa-wand-magic-sparkles text-purple-600"></i>
+                                AI辞書候補分析結果
+                            </h4>
+                            <div class="flex gap-1.5">
+                                <button id="dictAnalysisAddAllBtn" class="px-2 py-0.5 bg-purple-600 hover:bg-purple-500 text-white font-semibold text-[10px] rounded-md transition-colors">
+                                    <i class="fa-solid fa-check-double mr-0.5"></i> 全て辞書に追加
+                                </button>
+                                <button id="dictAnalysisCloseBtn" class="px-2 py-0.5 bg-slate-200 hover:bg-slate-300 text-slate-600 font-semibold text-[10px] rounded-md transition-colors">
+                                    閉じる
+                                </button>
+                            </div>
+                        </div>
+                        <div id="dictAnalysisResults" class="space-y-1.5">
                         </div>
                     </div>
 
@@ -1735,6 +1790,18 @@
         let geminiApiKey = localStorage.getItem('lds_gemini_api_key') || '';
         let isGeminiAiEnabled = localStorage.getItem('lds_gemini_ai_enabled') === 'true';
 
+        // ==================== AI品質モニタリング統計 ====================
+        const aiStats = {
+            totalCaptions: 0,
+            aiCorrected: 0,
+            aiErrors: 0,
+            aiTimeouts: 0,
+            dictFallbacks: 0,
+            totalLatencyMs: 0,
+            latencyHistory: [],
+            sessionStartTime: null
+        };
+
         // ==================== DOM要素参照 ====================
         const hostSection = document.getElementById('hostSection');
         const viewerSection = document.getElementById('viewerSection');
@@ -1901,6 +1968,7 @@
                 setupPauseBroadcastButton();
                 setupManualBroadcastControls();
                 setupGeminiAiControls();
+                setupDictAnalysis();
                 setupDownloadButton();
                 initPeerHost();
                 initAudioDeviceSelector();
@@ -2117,11 +2185,13 @@
 
             // 即時配信 & ホストログ追加（手動修正メタ情報付き）
             appendHostTranscript(cleanText, meta);
+            const englishText = (meta && meta.englishText) ? meta.englishText : null;
             broadcastToViewers({
                 type: 'caption',
                 id: captionSequenceId,
                 text: cleanText,
-                timestamp: timeStr
+                timestamp: timeStr,
+                englishText: englishText
             });
         }
 
@@ -2751,37 +2821,89 @@
 
 【厳格な出力ルール】
 1. 直前の文脈（直前発話履歴）をふまえ、説教・祈り・証の流れに調和するよう自然な日本語に整形してください。
-2. 余計な解説、挨拶、前置き、引用符（「」等）は一切出力せず、補正後の文章のみをプレーンテキストで1行で出力してください。`;
+2. 出力は必ず以下のJSON形式のみで返してください。余計な解説・挨拶・前置き・マークダウン記法は一切不要です。
+3. "ja" には補正後の日本語を、"en" には教会の公式英語用語を用いた高品質な英語訳を入れてください。
+4. 英語の教会用語: 聖餐=Sacrament, 贖罪=Atonement, 証=testimony, バプテスマ=baptism, 天の御父=Heavenly Father, 御名=name, 聖典=scriptures, 安息日=Sabbath day, 神殿=temple, 伝道=missionary work, 改宗=conversion, 聖約=covenant, 教義=doctrine, 総大会=general conference, 大管長=President, 監督=bishop, 定員会=quorum, ステーク=stake, ワード=ward, 扶助協会=Relief Society, 初等協会=Primary, セミナリー=seminary, 柔和=meekness, 贖い=redemption, 昇栄=exaltation, 御霊=the Spirit, 聖霊=the Holy Ghost, モルモン書=the Book of Mormon, 教義と聖約=the Doctrine and Covenants, 高価な真珠=the Pearl of Great Price, 知恵の言葉=the Word of Wisdom, 救いの計画=the plan of salvation, 鉄の棒=the iron rod, 命の木=the tree of life, リアホナ=the Liahona, ゲツセマネ=Gethsemane, 主=the Lord, キリスト=Christ, 宣教師=missionary/missionaries, 信仰箇条=the Articles of Faith
+
+出力JSON形式:
+{"ja": "補正後の日本語テキスト", "en": "High-quality English translation using official LDS terminology"}`;
 
         // 直近の確定発話履歴（最大3件）を保持するコンテキストウィンドウ
         let recentContextHistory = [];
 
+        // ==================== 場面自動検出エンジン（提案2） ====================
+        let currentSectionType = 'general';
+        let sectionChangeTimer = null;
+
+        // 発話テキストから場面（祈り・聖餐の祈り・証・説教・一般）を自動検出
+        function detectSection(text) {
+            if (!text) return currentSectionType;
+            // 聖餐の祈り（最優先判定: 非常に定型的なフレーズ）
+            if (/おおかみよ|パンを祝福|御子の体の記念|水を祝福|いつも御子を覚え|御子の御霊を受けられる/.test(text)) {
+                currentSectionType = 'sacrament_prayer';
+                return currentSectionType;
+            }
+            // 祈りの終了検出（アーメン → 少し後にgeneralへ復帰）
+            if (/アーメン/.test(text) && (currentSectionType === 'prayer' || currentSectionType === 'sacrament_prayer')) {
+                if (sectionChangeTimer) clearTimeout(sectionChangeTimer);
+                sectionChangeTimer = setTimeout(() => { currentSectionType = 'general'; }, 5000);
+                return currentSectionType;
+            }
+            // 祈りの開始
+            if (/天の御父(様|よ)|父なる神(様|よ)|永遠の父なる/.test(text)) {
+                currentSectionType = 'prayer';
+                return currentSectionType;
+            }
+            // 証
+            if (/証(を述べ|します|いたし|させて)|わたし(は|の)知って|真実であると(証|知)/.test(text)) {
+                currentSectionType = 'testimony';
+                return currentSectionType;
+            }
+            return currentSectionType;
+        }
+
+        // 場面ごとのAI補正ヒント（プロンプトに付与）
+        const SECTION_HINTS = {
+            general: '【現在の場面】一般（説教・話・報告。文脈に基づいて自然に判断してください）',
+            prayer: '【現在の場面】祈り（定型フレーズが中心。「皆→御名」「音痴/音質→天の御父」「手話→主は」の変換を積極的に適用。結びは「イエス・キリストの聖なる御名により、アーメン」）',
+            sacrament_prayer: '【現在の場面】聖餐の祈り（非常に定型的。「御子の体/血の記念に」「いつも御子を覚え」「御子の御霊を受けられるように」等の正確な再現を最優先）',
+            testimony: '【現在の場面】証（個人の信仰告白。「〜であると証します」「〜を知っています」「〜に感謝します」のパターンが頻出。証＝testimony）'
+        };
+
         async function correctWithGemini(rawText) {
-            if (!rawText || !rawText.trim()) return '';
+            if (!rawText || !rawText.trim()) return { ja: '', en: null };
 
             // 【第1段】教会用語辞書および聖典参照フォーマットで基礎補正（0ms）
             const preCorrected = fixScriptureReferences(replaceChurchTerms(rawText.trim()));
 
+            // セッション開始時刻の記録
+            if (!aiStats.sessionStartTime) aiStats.sessionStartTime = Date.now();
+            aiStats.totalCaptions++;
+
             if (!isGeminiAiEnabled || !geminiApiKey) {
                 recentContextHistory.push(preCorrected);
                 if (recentContextHistory.length > 3) recentContextHistory.shift();
-                return preCorrected;
+                aiStats.dictFallbacks++;
+                detectSection(preCorrected);
+                updateAiStatsDisplay();
+                return { ja: preCorrected, en: null };
             }
 
             const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 2500); // 2.5秒タイムアウトで高速フォールバック
+            const timeoutId = setTimeout(() => controller.abort(), 3500);
+            const startTime = performance.now();
 
             try {
-                // 直前の会話文脈をプロンプトに付与（前後の流れから同音異義語を精密補正）
-                let userPrompt = '';
+                // 直前の会話文脈 + 場面ヒントをプロンプトに付与
+                const sectionHint = SECTION_HINTS[currentSectionType] || SECTION_HINTS.general;
+                let userPrompt = sectionHint + '\n\n';
                 const validContext = recentContextHistory.filter(c => c && c.trim());
                 if (validContext.length > 0) {
-                    userPrompt = `【直前の発話文脈】\n${validContext.slice(-2).join('\n')}\n\n【今回の発話（校正対象）】\n${preCorrected}`;
-                } else {
-                    userPrompt = `【今回の発話（校正対象）】\n${preCorrected}`;
+                    userPrompt += `【直前の発話文脈】\n${validContext.slice(-2).join('\n')}\n\n`;
                 }
+                userPrompt += `【今回の発話（校正対象）】\n${preCorrected}`;
 
-                // Gemini 2.0 Flash (高速・低遅延) を呼び出し
+                // Gemini 2.0 Flash (高速・低遅延) — 日本語補正＋英語翻訳を1リクエストで同時生成
                 const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${encodeURIComponent(geminiApiKey)}`;
                 const response = await fetch(url, {
                     method: 'POST',
@@ -2799,12 +2921,17 @@
                         ],
                         generationConfig: {
                             temperature: 0.1,
-                            maxOutputTokens: 350
+                            maxOutputTokens: 500,
+                            responseMimeType: 'application/json'
                         }
                     })
                 });
 
                 clearTimeout(timeoutId);
+                const elapsed = performance.now() - startTime;
+                aiStats.totalLatencyMs += elapsed;
+                aiStats.latencyHistory.push(elapsed);
+                if (aiStats.latencyHistory.length > 20) aiStats.latencyHistory.shift();
 
                 if (!response.ok) {
                     const errText = await response.text();
@@ -2815,21 +2942,48 @@
                 const aiOutput = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
 
                 if (aiOutput && aiOutput.length > 0) {
-                    const finalized = fixScriptureReferences(aiOutput);
-                    recentContextHistory.push(finalized);
-                    if (recentContextHistory.length > 3) recentContextHistory.shift();
-                    return finalized;
+                    // JSON解析を試みる（フォールバック: プレーンテキストとして扱う）
+                    let jaText = null;
+                    let enText = null;
+                    try {
+                        const parsed = JSON.parse(aiOutput);
+                        jaText = parsed.ja ? fixScriptureReferences(parsed.ja.trim()) : null;
+                        enText = parsed.en ? parsed.en.trim() : null;
+                    } catch (parseErr) {
+                        // JSONパース失敗時: 出力全体を日本語テキストとして利用
+                        jaText = fixScriptureReferences(aiOutput);
+                        enText = null;
+                    }
+
+                    if (jaText) {
+                        aiStats.aiCorrected++;
+                        recentContextHistory.push(jaText);
+                        if (recentContextHistory.length > 3) recentContextHistory.shift();
+                        detectSection(jaText);
+                        updateAiStatsDisplay();
+                        return { ja: jaText, en: enText };
+                    }
                 }
             } catch (err) {
-                console.error('Gemini AI補正エラー（辞書フォールバック）:', err);
+                clearTimeout(timeoutId);
+                if (err.name === 'AbortError') {
+                    aiStats.aiTimeouts++;
+                    console.warn('Gemini AI補正タイムアウト（辞書フォールバック）');
+                } else {
+                    aiStats.aiErrors++;
+                    console.error('Gemini AI補正エラー（辞書フォールバック）:', err);
+                }
             } finally {
                 clearTimeout(timeoutId);
             }
 
-            // フォールバック: 基礎補正済みテキスト
+            // フォールバック: 基礎補正済みテキスト（英語翻訳なし）
+            aiStats.dictFallbacks++;
             recentContextHistory.push(preCorrected);
             if (recentContextHistory.length > 3) recentContextHistory.shift();
-            return preCorrected;
+            detectSection(preCorrected);
+            updateAiStatsDisplay();
+            return { ja: preCorrected, en: null };
         }
 
         function updateGeminiUIState() {
@@ -2995,9 +3149,12 @@
 
                     if (geminiLatencyText) geminiLatencyText.textContent = `${elapsed}ms`;
                     if (geminiTestOutput) {
+                        const jaResult = typeof result === 'object' ? result.ja : result;
+                        const enResult = typeof result === 'object' ? result.en : null;
                         geminiTestOutput.innerHTML = `
                             <div class="text-indigo-200">原文: <span class="text-slate-300 line-through">${testPrompt}</span></div>
-                            <div class="text-emerald-300 font-bold">➔ AI補正: ${escapeHtml(result)}</div>
+                            <div class="text-emerald-300 font-bold">➔ AI補正: ${escapeHtml(jaResult || '')}</div>
+                            ${enResult ? `<div class="text-sky-300 font-medium mt-0.5">🌐 英訳: ${escapeHtml(enResult)}</div>` : ''}
                         `;
                     }
                 } catch (e) {
@@ -3016,6 +3173,218 @@
             }
             if (testGeminiBtn2) {
                 testGeminiBtn2.onclick = function() { runGeminiTest(this); };
+            }
+        }
+
+        // ==================== AI品質モニタリング表示更新 ====================
+        function updateAiStatsDisplay() {
+            const panel = document.getElementById('aiStatsPanel');
+            if (!panel) return;
+
+            // AI有効時のみパネルを表示
+            if (aiStats.totalCaptions > 0) {
+                panel.classList.remove('hidden');
+            }
+
+            const statTotal = document.getElementById('statTotalCaptions');
+            const statRate = document.getElementById('statAiRate');
+            const statLatency = document.getElementById('statAvgLatency');
+            const statError = document.getElementById('statErrorRate');
+            const sessionTimeEl = document.getElementById('aiStatsSessionTime');
+            const sectionBadge = document.getElementById('aiStatsSectionBadge');
+
+            if (statTotal) statTotal.textContent = aiStats.totalCaptions;
+
+            if (statRate && aiStats.totalCaptions > 0) {
+                const rate = Math.round((aiStats.aiCorrected / aiStats.totalCaptions) * 100);
+                statRate.textContent = rate + '%';
+            }
+
+            if (statLatency && aiStats.latencyHistory.length > 0) {
+                const avg = Math.round(aiStats.totalLatencyMs / aiStats.latencyHistory.length);
+                statLatency.textContent = avg + 'ms';
+            }
+
+            if (statError && aiStats.totalCaptions > 0) {
+                const errorTotal = aiStats.aiErrors + aiStats.aiTimeouts;
+                const errorRate = Math.round((errorTotal / aiStats.totalCaptions) * 100);
+                statError.textContent = errorRate + '%';
+                // エラー率が高い場合は警告色に変更
+                if (errorRate > 20) {
+                    statError.className = 'text-lg font-bold text-red-400';
+                } else {
+                    statError.className = 'text-lg font-bold text-amber-300';
+                }
+            }
+
+            if (sessionTimeEl && aiStats.sessionStartTime) {
+                const elapsed = Math.round((Date.now() - aiStats.sessionStartTime) / 60000);
+                sessionTimeEl.textContent = `(${elapsed}分経過)`;
+            }
+
+            // 場面バッジの更新
+            if (sectionBadge) {
+                const sectionLabels = {
+                    general: { text: '🎤 一般', bg: 'bg-slate-600 text-slate-200' },
+                    prayer: { text: '🙏 祈り', bg: 'bg-blue-600 text-blue-100' },
+                    sacrament_prayer: { text: '🍞 聖餐の祈り', bg: 'bg-amber-600 text-amber-100' },
+                    testimony: { text: '✨ 証', bg: 'bg-purple-600 text-purple-100' }
+                };
+                const label = sectionLabels[currentSectionType] || sectionLabels.general;
+                sectionBadge.textContent = label.text;
+                sectionBadge.className = `text-[10px] px-2 py-0.5 rounded-full font-bold ${label.bg}`;
+            }
+        }
+
+        // ==================== 辞書候補自動分析（提案3） ====================
+        function setupDictAnalysis() {
+            const analyzeDictBtn = document.getElementById('analyzeDictBtn');
+            const dictAnalysisPanel = document.getElementById('dictAnalysisPanel');
+            const dictAnalysisResults = document.getElementById('dictAnalysisResults');
+            const dictAnalysisAddAllBtn = document.getElementById('dictAnalysisAddAllBtn');
+            const dictAnalysisCloseBtn = document.getElementById('dictAnalysisCloseBtn');
+
+            if (!analyzeDictBtn) return;
+
+            analyzeDictBtn.onclick = async function() {
+                // 手動修正・AI修正のBefore/Afterペアを収集
+                const corrections = transcriptHistory
+                    .filter(entry => entry.isEdited && entry.original && entry.original.trim() !== entry.text.trim())
+                    .map(e => ({ before: e.original, after: e.text }));
+
+                if (corrections.length === 0) {
+                    alert('修正ログがありません。\n音声認識を実行し、手動修正やAI補正が行われた後に実行してください。');
+                    return;
+                }
+
+                if (!geminiApiKey) {
+                    alert('Gemini APIキーが設定されていません。\nAI文脈補正カードからAPIキーを保存してください。');
+                    return;
+                }
+
+                // 既存辞書キーの一覧（重複防止用）
+                const existingKeys = Object.keys(churchDictionary).map(k => k.toLowerCase());
+
+                analyzeDictBtn.disabled = true;
+                analyzeDictBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i> 分析中...';
+
+                try {
+                    const prompt = `以下は末日聖徒イエス・キリスト教会の集会における音声認識の誤変換を修正した記録です。
+これらのパターンから、辞書に追加すべき「誤認識パターン → 正しい教会用語」のペアを分析してください。
+
+【修正記録】
+${corrections.map(c => `誤: ${c.before} → 正: ${c.after}`).join('\n')}
+
+【既に辞書に登録済みのキー（これらは除外してください）】
+${existingKeys.slice(0, 100).join(', ')}
+
+【出力形式】以下のJSON配列のみを出力してください。解説は不要です。
+[{"from": "誤認識パターン", "to": "正しい用語", "reason": "理由（10文字以内）"}]`;
+
+                    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${encodeURIComponent(geminiApiKey)}`;
+                    const response = await fetch(url, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            contents: [{ role: 'user', parts: [{ text: prompt }] }],
+                            generationConfig: { temperature: 0.1, maxOutputTokens: 1000, responseMimeType: 'application/json' }
+                        })
+                    });
+
+                    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                    const data = await response.json();
+                    const aiOutput = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+
+                    let candidates = [];
+                    try {
+                        candidates = JSON.parse(aiOutput);
+                        if (!Array.isArray(candidates)) candidates = [];
+                    } catch (e) {
+                        alert('AI応答の解析に失敗しました。再度お試しください。');
+                        return;
+                    }
+
+                    // 既存辞書と重複するものを除外
+                    candidates = candidates.filter(c => c.from && c.to && !existingKeys.includes(c.from.toLowerCase()));
+
+                    if (candidates.length === 0) {
+                        alert('新しい辞書候補は見つかりませんでした。\n全ての修正パターンは既に辞書に登録済みです。');
+                        return;
+                    }
+
+                    // 結果パネルを表示
+                    if (dictAnalysisPanel) dictAnalysisPanel.classList.remove('hidden');
+                    if (dictAnalysisResults) {
+                        dictAnalysisResults.innerHTML = candidates.map((c, i) => `
+                            <div class="flex items-center justify-between p-2 bg-white rounded-lg border border-purple-100 text-xs" data-idx="${i}">
+                                <div class="flex-1 min-w-0">
+                                    <span class="text-red-500 line-through">${escapeHtml(c.from)}</span>
+                                    <span class="text-slate-400 mx-1">→</span>
+                                    <span class="text-emerald-700 font-bold">${escapeHtml(c.to)}</span>
+                                    ${c.reason ? `<span class="text-slate-400 ml-1.5">(${escapeHtml(c.reason)})</span>` : ''}
+                                </div>
+                                <button class="dict-add-single-btn shrink-0 ml-2 px-2 py-0.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-semibold text-[10px] rounded border border-emerald-200 transition-colors" data-from="${escapeHtml(c.from)}" data-to="${escapeHtml(c.to)}">
+                                    ✅ 追加
+                                </button>
+                            </div>
+                        `).join('');
+
+                        // 個別追加ボタンのイベント委譲
+                        dictAnalysisResults.onclick = function(e) {
+                            const btn = e.target.closest('.dict-add-single-btn');
+                            if (!btn) return;
+                            const from = btn.dataset.from;
+                            const to = btn.dataset.to;
+                            if (from && to) {
+                                churchDictionary[from] = to;
+                                saveDictionary();
+                                rebuildDictionaryRegexCache();
+                                renderDictionaryList();
+                                btn.textContent = '✅ 追加済み';
+                                btn.disabled = true;
+                                btn.className = 'shrink-0 ml-2 px-2 py-0.5 bg-slate-100 text-slate-400 font-semibold text-[10px] rounded border border-slate-200';
+                            }
+                        };
+                    }
+
+                    // 一括追加ボタン
+                    if (dictAnalysisAddAllBtn) {
+                        dictAnalysisAddAllBtn.onclick = function() {
+                            let addedCount = 0;
+                            candidates.forEach(c => {
+                                if (c.from && c.to && !churchDictionary[c.from]) {
+                                    churchDictionary[c.from] = c.to;
+                                    addedCount++;
+                                }
+                            });
+                            if (addedCount > 0) {
+                                saveDictionary();
+                                rebuildDictionaryRegexCache();
+                                renderDictionaryList();
+                                alert(`${addedCount}件の辞書エントリを一括追加しました。`);
+                            }
+                            // ボタン状態を更新
+                            dictAnalysisResults.querySelectorAll('.dict-add-single-btn').forEach(btn => {
+                                btn.textContent = '✅ 追加済み';
+                                btn.disabled = true;
+                                btn.className = 'shrink-0 ml-2 px-2 py-0.5 bg-slate-100 text-slate-400 font-semibold text-[10px] rounded border border-slate-200';
+                            });
+                        };
+                    }
+                } catch (err) {
+                    console.error('辞書候補分析エラー:', err);
+                    alert('辞書候補の分析に失敗しました: ' + err.message);
+                } finally {
+                    analyzeDictBtn.disabled = false;
+                    analyzeDictBtn.innerHTML = '<i class="fa-solid fa-wand-magic-sparkles mr-1"></i> 辞書候補AI分析';
+                }
+            };
+
+            // 閉じるボタン
+            if (dictAnalysisCloseBtn) {
+                dictAnalysisCloseBtn.onclick = function() {
+                    if (dictAnalysisPanel) dictAnalysisPanel.classList.add('hidden');
+                };
             }
         }
 
@@ -3300,10 +3669,13 @@
 
                 aiProcessingQueue = aiProcessingQueue.then(async () => {
                     let processedChunk = rawChunk;
+                    let englishText = null;
                     let isAi = false;
 
                     try {
-                        processedChunk = await correctWithGemini(rawChunk);
+                        const result = await correctWithGemini(rawChunk);
+                        processedChunk = result.ja || rawChunk;
+                        englishText = result.en || null;
                         isAi = isGeminiAiEnabled && !!geminiApiKey && (processedChunk !== rawChunk);
                     } catch (e) {
                         console.warn('AI補正スキップ:', e);
@@ -3326,7 +3698,7 @@
                             }
                         }
                     } else {
-                        dispatchCaption(processedChunk, { original: rawChunk, isEdited: isEdited, isAi: isAi });
+                        dispatchCaption(processedChunk, { original: rawChunk, isEdited: isEdited, isAi: isAi, englishText: englishText });
                     }
                 }).catch(err => {
                     console.error('AI処理キュー回復:', err);
@@ -3672,7 +4044,13 @@
             hostConnection.on('data', function(data) {
                 if (data.type === 'caption') {
                     viewerCaptionQueue = viewerCaptionQueue.then(async () => {
-                        await handleIncomingCaption(data.text, data.timestamp);
+                        // 英語選択時かつGemini翻訳済みの場合は直接表示（API呼び出しスキップ）
+                        const targetLang = targetLangSelect ? targetLangSelect.value : 'en';
+                        if (targetLang === 'en' && data.englishText) {
+                            appendViewerCaption(data.englishText, data.text, data.timestamp);
+                        } else {
+                            await handleIncomingCaption(data.text, data.timestamp);
+                        }
                     }).catch(err => {
                         console.error('Viewer caption processing error:', err);
                     });
