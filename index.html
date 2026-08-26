@@ -2951,9 +2951,15 @@
             lastGeminiCallTimestamp = now;
             geminiCallTimestampsWindow.push(now);
 
+            // APIキーの空白トリム保護
+            const cleanKey = geminiApiKey.trim();
+
             const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 3500);
+            const timeoutId = setTimeout(() => controller.abort(), 4000);
             const startTime = performance.now();
+
+            // 試行するモデル候補リスト（2.0 Flash ➔ 1.5 Flash の自動フォールバック）
+            const candidateModels = ['gemini-2.0-flash', 'gemini-1.5-flash'];
 
             try {
                 // 直前の会話文脈 + 場面ヒントをプロンプトに付与
@@ -2965,28 +2971,69 @@
                 }
                 userPrompt += `【今回の発話（校正対象）】\n${preCorrected}`;
 
-                // Gemini 2.0 Flash (高速・低遅延) — 日本語補正＋英語翻訳を1リクエストで同時生成
-                const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${encodeURIComponent(geminiApiKey)}`;
-                const response = await fetch(url, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    signal: controller.signal,
-                    body: JSON.stringify({
-                        systemInstruction: {
-                            parts: [{ text: GEMINI_SYSTEM_PROMPT }]
-                        },
-                        contents: [
-                            {
-                                role: 'user',
-                                parts: [{ text: userPrompt }]
+                let lastHttpErrorText = '';
+                let successData = null;
+                let successfulModel = '';
+
+                // モデルフォールバックループ
+                for (const modelName of candidateModels) {
+                    try {
+                        const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${encodeURIComponent(cleanKey)}`;
+                        const response = await fetch(url, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            signal: controller.signal,
+                            body: JSON.stringify({
+                                systemInstruction: {
+                                    parts: [{ text: GEMINI_SYSTEM_PROMPT }]
+                                },
+                                contents: [
+                                    {
+                                        role: 'user',
+                                        parts: [{ text: userPrompt }]
+                                    }
+                                ],
+                                generationConfig: {
+                                    temperature: 0.1,
+                                    maxOutputTokens: 500
+                                }
+                            })
+                        });
+
+                        if (response.ok) {
+                            successData = await response.json();
+                            successfulModel = modelName;
+                            break;
+                        } else {
+                            const errRaw = await response.text();
+                            lastHttpErrorText = errRaw;
+                            let detailMsg = `HTTP ${response.status}`;
+                            try {
+                                const parsedErr = JSON.parse(errRaw);
+                                if (parsedErr.error && parsedErr.error.message) {
+                                    detailMsg = `HTTP ${response.status}: ${parsedErr.error.message}`;
+                                }
+                            } catch (pe) {}
+                            
+                            // 404 の場合は次のモデルへ即座にフォールバック試行
+                            if (response.status === 404) {
+                                console.warn(`モデル ${modelName} が404のため、次候補へフォールバックします...`);
+                                continue;
+                            } else if (response.status === 429) {
+                                aiStats.lastErrorMessage = 'HTTP 429 (レート制限超過)';
+                                throw new Error(detailMsg);
+                            } else {
+                                aiStats.lastErrorMessage = detailMsg;
+                                throw new Error(detailMsg);
                             }
-                        ],
-                        generationConfig: {
-                            temperature: 0.1,
-                            maxOutputTokens: 500
                         }
-                    })
-                });
+                    } catch (fetchErr) {
+                        if (fetchErr.name === 'AbortError') throw fetchErr;
+                        if (modelName === candidateModels[candidateModels.length - 1]) {
+                            throw fetchErr;
+                        }
+                    }
+                }
 
                 clearTimeout(timeoutId);
                 const elapsed = performance.now() - startTime;
@@ -2994,18 +3041,11 @@
                 aiStats.latencyHistory.push(elapsed);
                 if (aiStats.latencyHistory.length > 20) aiStats.latencyHistory.shift();
 
-                if (!response.ok) {
-                    const errText = await response.text();
-                    let errMsg = `HTTP ${response.status}`;
-                    if (response.status === 429) {
-                        errMsg = 'HTTP 429 (レート制限超過)';
-                    }
-                    aiStats.lastErrorMessage = errMsg;
-                    throw new Error(`${errMsg}: ${errText}`);
+                if (!successData) {
+                    throw new Error(aiStats.lastErrorMessage || '全候補モデルでの応答取得に失敗');
                 }
 
-                const data = await response.json();
-                const aiOutput = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+                const aiOutput = successData.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
 
                 if (aiOutput && aiOutput.length > 0) {
                     let jaText = null;
@@ -3025,6 +3065,7 @@
                     if (jaText) {
                         aiStats.aiCorrected++;
                         aiStats.lastErrorMessage = null;
+                        aiStats.activeModelName = successfulModel;
                         recentContextHistory.push(jaText);
                         if (recentContextHistory.length > 3) recentContextHistory.shift();
                         detectSection(jaText);
@@ -3036,7 +3077,7 @@
                 clearTimeout(timeoutId);
                 if (err.name === 'AbortError') {
                     aiStats.aiTimeouts++;
-                    aiStats.lastErrorMessage = 'タイムアウト (3.5秒超過)';
+                    aiStats.lastErrorMessage = 'タイムアウト (4.0秒超過)';
                     console.warn('Gemini AI補正タイムアウト（辞書フォールバック）');
                 } else {
                     aiStats.aiErrors++;
@@ -3222,10 +3263,12 @@
                     if (geminiTestOutput) {
                         const jaResult = typeof result === 'object' ? result.ja : result;
                         const enResult = typeof result === 'object' ? result.en : null;
+                        const usedModel = aiStats.activeModelName || 'Gemini Flash';
                         geminiTestOutput.innerHTML = `
                             <div class="text-indigo-200">原文: <span class="text-slate-300 line-through">${testPrompt}</span></div>
                             <div class="text-emerald-300 font-bold">➔ AI補正: ${escapeHtml(jaResult || '')}</div>
                             ${enResult ? `<div class="text-sky-300 font-medium mt-0.5">🌐 英訳: ${escapeHtml(enResult)}</div>` : ''}
+                            <div class="text-[10px] text-purple-300/70 mt-1 font-mono">📡 接続モデル: ${escapeHtml(usedModel)}</div>
                         `;
                     }
                 } catch (e) {
