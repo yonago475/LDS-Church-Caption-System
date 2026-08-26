@@ -245,6 +245,11 @@
                                     <div class="text-[10px] text-slate-400">エラー率</div>
                                 </div>
                             </div>
+                            <!-- AIステータス / エラー通知フッター -->
+                            <div id="aiStatsStatusFooter" class="hidden text-[10px] pt-1.5 border-t border-slate-700/50 flex items-center justify-between text-slate-300">
+                                <span id="aiStatsStatusText" class="truncate"></span>
+                                <span id="aiStatsRateLimitBadge" class="hidden px-1.5 py-0.2 bg-amber-500/20 text-amber-300 rounded font-bold shrink-0">保護ガード作動中</span>
+                            </div>
                         </div>
 
                         <!-- Main Action Buttons -->
@@ -2870,6 +2875,29 @@
             testimony: '【現在の場面】証（個人の信仰告白。「〜であると証します」「〜を知っています」「〜に感謝します」のパターンが頻出。証＝testimony）'
         };
 
+        // ==================== スマート・レートリミッター（15 RPM 制限完全防護） ====================
+        let lastGeminiCallTimestamp = 0;
+        const geminiCallTimestampsWindow = [];
+
+        // マークダウンの ```json などを安全に剥離して JSON パースする堅牢パーサー
+        function extractJsonFromAiResponse(raw) {
+            if (!raw) return null;
+            let cleaned = raw.trim();
+            // ```json ... ``` または ``` ... ``` コードブロックを除去
+            cleaned = cleaned.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
+            // 先頭と末尾の波括弧を探す
+            const firstBrace = cleaned.indexOf('{');
+            const lastBrace = cleaned.lastIndexOf('}');
+            if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+                cleaned = cleaned.substring(firstBrace, lastBrace + 1);
+            }
+            try {
+                return JSON.parse(cleaned);
+            } catch (e) {
+                return null;
+            }
+        }
+
         async function correctWithGemini(rawText) {
             if (!rawText || !rawText.trim()) return { ja: '', en: null };
 
@@ -2888,6 +2916,40 @@
                 updateAiStatsDisplay();
                 return { ja: preCorrected, en: null };
             }
+
+            // 【保護1: 極短文・相槌のスキップ】「あの」「そして」「これは」等の5文字未満はAIリクエストを節約
+            const plainLen = preCorrected.replace(/[\s\u3000、。！？]+/g, '').length;
+            if (plainLen < 5) {
+                recentContextHistory.push(preCorrected);
+                if (recentContextHistory.length > 3) recentContextHistory.shift();
+                aiStats.dictFallbacks++;
+                detectSection(preCorrected);
+                updateAiStatsDisplay();
+                return { ja: preCorrected, en: null };
+            }
+
+            // 【保護2: 15 RPM レートリミット保護ガード（スライディングウィンドウ）】
+            const now = Date.now();
+            // 直近60秒以内のタイムスタンプのみ保持
+            while (geminiCallTimestampsWindow.length > 0 && (now - geminiCallTimestampsWindow[0]) > 60000) {
+                geminiCallTimestampsWindow.shift();
+            }
+
+            // 直近60秒で12回以上、または前回リクエストから2.5秒未満の場合はローカル辞書で安全に退行
+            const isRateLimitRisk = geminiCallTimestampsWindow.length >= 12 || (now - lastGeminiCallTimestamp < 2500);
+            if (isRateLimitRisk) {
+                aiStats.dictFallbacks++;
+                aiStats.rateLimitedCount = (aiStats.rateLimitedCount || 0) + 1;
+                recentContextHistory.push(preCorrected);
+                if (recentContextHistory.length > 3) recentContextHistory.shift();
+                detectSection(preCorrected);
+                updateAiStatsDisplay();
+                return { ja: preCorrected, en: null };
+            }
+
+            // リクエスト時刻を記録
+            lastGeminiCallTimestamp = now;
+            geminiCallTimestampsWindow.push(now);
 
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), 3500);
@@ -2921,8 +2983,7 @@
                         ],
                         generationConfig: {
                             temperature: 0.1,
-                            maxOutputTokens: 500,
-                            responseMimeType: 'application/json'
+                            maxOutputTokens: 500
                         }
                     })
                 });
@@ -2935,28 +2996,35 @@
 
                 if (!response.ok) {
                     const errText = await response.text();
-                    throw new Error(`HTTP ${response.status}: ${errText}`);
+                    let errMsg = `HTTP ${response.status}`;
+                    if (response.status === 429) {
+                        errMsg = 'HTTP 429 (レート制限超過)';
+                    }
+                    aiStats.lastErrorMessage = errMsg;
+                    throw new Error(`${errMsg}: ${errText}`);
                 }
 
                 const data = await response.json();
                 const aiOutput = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
 
                 if (aiOutput && aiOutput.length > 0) {
-                    // JSON解析を試みる（フォールバック: プレーンテキストとして扱う）
                     let jaText = null;
                     let enText = null;
-                    try {
-                        const parsed = JSON.parse(aiOutput);
+
+                    // 堅牢な JSON パーサーで抽出
+                    const parsed = extractJsonFromAiResponse(aiOutput);
+                    if (parsed && typeof parsed === 'object') {
                         jaText = parsed.ja ? fixScriptureReferences(parsed.ja.trim()) : null;
                         enText = parsed.en ? parsed.en.trim() : null;
-                    } catch (parseErr) {
-                        // JSONパース失敗時: 出力全体を日本語テキストとして利用
-                        jaText = fixScriptureReferences(aiOutput);
+                    } else {
+                        // JSON 以外の文字列で返ってきた場合のフォールバック
+                        jaText = fixScriptureReferences(aiOutput.replace(/^["'\s]+|["'\s]+$/g, ''));
                         enText = null;
                     }
 
                     if (jaText) {
                         aiStats.aiCorrected++;
+                        aiStats.lastErrorMessage = null;
                         recentContextHistory.push(jaText);
                         if (recentContextHistory.length > 3) recentContextHistory.shift();
                         detectSection(jaText);
@@ -2968,9 +3036,11 @@
                 clearTimeout(timeoutId);
                 if (err.name === 'AbortError') {
                     aiStats.aiTimeouts++;
+                    aiStats.lastErrorMessage = 'タイムアウト (3.5秒超過)';
                     console.warn('Gemini AI補正タイムアウト（辞書フォールバック）');
                 } else {
                     aiStats.aiErrors++;
+                    if (!aiStats.lastErrorMessage) aiStats.lastErrorMessage = err.message;
                     console.error('Gemini AI補正エラー（辞書フォールバック）:', err);
                 }
             } finally {
@@ -2985,6 +3055,7 @@
             updateAiStatsDisplay();
             return { ja: preCorrected, en: null };
         }
+
 
         function updateGeminiUIState() {
             if (!geminiStatusBadge || !geminiToggleLabel) return;
@@ -3233,6 +3304,30 @@
                 const label = sectionLabels[currentSectionType] || sectionLabels.general;
                 sectionBadge.textContent = label.text;
                 sectionBadge.className = `text-[10px] px-2 py-0.5 rounded-full font-bold ${label.bg}`;
+            }
+
+            // ステータスフッターの更新
+            const footerEl = document.getElementById('aiStatsStatusFooter');
+            const statusTextEl = document.getElementById('aiStatsStatusText');
+            const rateLimitBadge = document.getElementById('aiStatsRateLimitBadge');
+            if (footerEl && statusTextEl) {
+                if (aiStats.lastErrorMessage) {
+                    footerEl.classList.remove('hidden');
+                    statusTextEl.innerHTML = `<i class="fa-solid fa-triangle-exclamation text-amber-400 mr-1"></i> 直近の状況: ${escapeHtml(aiStats.lastErrorMessage)} (辞書で安全継続中)`;
+                } else if (aiStats.rateLimitedCount > 0) {
+                    footerEl.classList.remove('hidden');
+                    statusTextEl.innerHTML = `<i class="fa-solid fa-shield-halved text-emerald-400 mr-1"></i> 無料枠レート制限(15RPM)を保護しながら自動調整中`;
+                } else {
+                    footerEl.classList.add('hidden');
+                }
+                if (rateLimitBadge) {
+                    if (aiStats.rateLimitedCount > 0) {
+                        rateLimitBadge.classList.remove('hidden');
+                        rateLimitBadge.textContent = `保護スキップ: ${aiStats.rateLimitedCount}件`;
+                    } else {
+                        rateLimitBadge.classList.add('hidden');
+                    }
+                }
             }
         }
 
