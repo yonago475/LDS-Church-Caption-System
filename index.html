@@ -2824,6 +2824,10 @@
   入力: 晴天を毎日読み モルモン賞の教えに従って人々に使える人になりたいです
   出力: 聖典を毎日読み、モルモン書の教えに従って人々に仕える者になりたいです。
 
+・例6（祈り・証の結び・御子・御名）:
+  入力: これらのお話を全て愛する男 イエスキリストの皆によってお話しさせていただきました アーメン
+  出力: これらのお話をすべて愛する御子イエス・キリストの御名によってお話しいたしました。アーメン。
+
 【厳格な出力ルール】
 1. 直前の文脈（直前発話履歴）をふまえ、説教・祈り・証の流れに調和するよう自然な日本語に整形してください。
 2. 出力は必ず以下のJSON形式のみで返してください。余計な解説・挨拶・前置き・マークダウン記法は一切不要です。
@@ -2880,6 +2884,7 @@
         let lastGeminiCallTimestamp = 0;
         const geminiCallTimestampsWindow = [];
         let cachedWorkingGeminiModel = '';
+        let last429CooldownUntil = 0;
 
         // マークダウンの ```json や中途切断されたレスポンスから ja と en を確実に救出する超堅牢パーサー
         function extractJsonFromAiResponse(raw) {
@@ -2966,10 +2971,10 @@
                 return { ja: preCorrected, en: null, isAiSuccess: false };
             }
 
-            // 【保護1: 極短文・相槌のスキップ】テスト時以外は5文字未満のAIリクエストを節約
+            // 【保護1: 極短文・相槌のスキップ】テスト時以外は8文字未満のAIリクエストを節約（辞書補正のみ）
             if (!isTest) {
                 const plainLen = preCorrected.replace(/[\s\u3000、。！？]+/g, '').length;
-                if (plainLen < 5) {
+                if (plainLen < 8) {
                     recentContextHistory.push(preCorrected);
                     if (recentContextHistory.length > 3) recentContextHistory.shift();
                     aiStats.dictFallbacks++;
@@ -2978,13 +2983,25 @@
                     return { ja: preCorrected, en: null, isAiSuccess: false };
                 }
 
-                // 【保護2: 15 RPM レートリミット保護ガード（スライディングウィンドウ）】
                 const now = Date.now();
+
+                // 【保護2: 429レート制限受信時の自動冷却クールダウン（10秒間辞書待機）】
+                if (now < last429CooldownUntil) {
+                    aiStats.dictFallbacks++;
+                    aiStats.rateLimitedCount = (aiStats.rateLimitedCount || 0) + 1;
+                    recentContextHistory.push(preCorrected);
+                    if (recentContextHistory.length > 3) recentContextHistory.shift();
+                    detectSection(preCorrected);
+                    updateAiStatsDisplay();
+                    return { ja: preCorrected, en: null, isAiSuccess: false };
+                }
+
+                // 【保護3: 15 RPM レートリミット保護ガード（最短4.0秒インターバル & 60秒10回上限）】
                 while (geminiCallTimestampsWindow.length > 0 && (now - geminiCallTimestampsWindow[0]) > 60000) {
                     geminiCallTimestampsWindow.shift();
                 }
 
-                const isRateLimitRisk = geminiCallTimestampsWindow.length >= 12 || (now - lastGeminiCallTimestamp < 2500);
+                const isRateLimitRisk = geminiCallTimestampsWindow.length >= 10 || (now - lastGeminiCallTimestamp < 4000);
                 if (isRateLimitRisk) {
                     aiStats.dictFallbacks++;
                     aiStats.rateLimitedCount = (aiStats.rateLimitedCount || 0) + 1;
@@ -3106,7 +3123,10 @@
                                 }
                                 continue;
                             } else if (response.status === 429) {
-                                if (!isTest) aiStats.lastErrorMessage = 'HTTP 429 (レート制限超過)';
+                                if (!isTest) {
+                                    aiStats.lastErrorMessage = 'HTTP 429 (レート制限超過・10秒冷却待機中)';
+                                    last429CooldownUntil = Date.now() + 10000;
+                                }
                                 throw new Error(detailMsg);
                             } else {
                                 if (!isTest) aiStats.lastErrorMessage = detailMsg;
