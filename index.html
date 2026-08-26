@@ -3023,17 +3023,15 @@
             const timeoutId = setTimeout(() => controller.abort(), 5500);
             const startTime = performance.now();
 
-            // 試行するモデル候補リスト（低遅延モデルを優先 + 広範なフォールバック）
+            // 試行するモデル候補リスト（動作確認済みの gemini-2.5-flash を最優先）
             let candidateModels = [
                 cachedWorkingGeminiModel,
-                'gemini-1.5-flash',
                 'gemini-2.5-flash',
                 'gemini-2.0-flash',
+                'gemini-1.5-flash',
                 'gemini-1.5-flash-latest',
                 'gemini-2.0-flash-001',
-                'gemini-1.5-flash-001',
-                'gemini-1.5-flash-002',
-                'gemini-1.5-pro'
+                'gemini-1.5-flash-001'
             ].filter(Boolean);
             // 重複排除
             candidateModels = Array.from(new Set(candidateModels));
@@ -3082,10 +3080,18 @@
                         });
 
                         if (response.ok) {
-                            successData = await response.json();
-                            successfulModel = modelName;
-                            cachedWorkingGeminiModel = modelName; // 成功したモデルをキャッシュ
-                            break;
+                            const resJson = await response.json();
+                            const rawOut = resJson.candidates?.[0]?.content?.parts?.[0]?.text || resJson.candidates?.[0]?.text;
+                            if (rawOut && rawOut.trim().length > 0) {
+                                successData = resJson;
+                                successfulModel = modelName;
+                                cachedWorkingGeminiModel = modelName;
+                                break;
+                            } else {
+                                const finishReason = resJson.candidates?.[0]?.finishReason || 'NO_TEXT';
+                                lastDetailError = `モデル応答が空でした (${finishReason})`;
+                                continue;
+                            }
                         } else {
                             const errRaw = await response.text();
                             let detailMsg = `HTTP ${response.status}`;
@@ -3098,29 +3104,6 @@
                             lastDetailError = detailMsg;
 
                             if (response.status === 404) {
-                                // 最後の候補でも404だった場合、ListModels API で利用可能なモデルを動的取得
-                                if (i === candidateModels.length - 1) {
-                                    try {
-                                        const listUrl = `https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(cleanKey)}`;
-                                        const listRes = await fetch(listUrl, {
-                                            headers: { 'x-goog-api-key': cleanKey },
-                                            signal: controller.signal
-                                        });
-                                        if (listRes.ok) {
-                                            const listData = await listRes.json();
-                                            if (listData.models && Array.isArray(listData.models)) {
-                                                const usable = listData.models
-                                                    .filter(m => m.supportedGenerationMethods && m.supportedGenerationMethods.includes('generateContent'))
-                                                    .map(m => m.name.replace(/^models\//, ''));
-                                                // 見つかったモデルを候補に追加して継続
-                                                const newModels = usable.filter(m => !candidateModels.includes(m));
-                                                if (newModels.length > 0) {
-                                                    candidateModels.push(...newModels);
-                                                }
-                                            }
-                                        }
-                                    } catch (listErr) {}
-                                }
                                 continue;
                             } else if (response.status === 429) {
                                 if (!isTest) {
@@ -3153,7 +3136,7 @@
                     throw new Error(lastDetailError || '全候補モデルでの応答取得に失敗');
                 }
 
-                const aiOutput = successData.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+                const aiOutput = successData.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || successData.candidates?.[0]?.text?.trim();
 
                 if (aiOutput && aiOutput.length > 0) {
                     let jaText = null;
