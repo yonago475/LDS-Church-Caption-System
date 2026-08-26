@@ -2828,7 +2828,8 @@
 1. 直前の文脈（直前発話履歴）をふまえ、説教・祈り・証の流れに調和するよう自然な日本語に整形してください。
 2. 出力は必ず以下のJSON形式のみで返してください。余計な解説・挨拶・前置き・マークダウン記法は一切不要です。
 3. "ja" には補正後の日本語を、"en" には教会の公式英語用語を用いた高品質な英語訳を入れてください。
-4. 英語の教会用語: 聖餐=Sacrament, 贖罪=Atonement, 証=testimony, バプテスマ=baptism, 天の御父=Heavenly Father, 御名=name, 聖典=scriptures, 安息日=Sabbath day, 神殿=temple, 伝道=missionary work, 改宗=conversion, 聖約=covenant, 教義=doctrine, 総大会=general conference, 大管長=President, 監督=bishop, 定員会=quorum, ステーク=stake, ワード=ward, 扶助協会=Relief Society, 初等協会=Primary, セミナリー=seminary, 柔和=meekness, 贖い=redemption, 昇栄=exaltation, 御霊=the Spirit, 聖霊=the Holy Ghost, モルモン書=the Book of Mormon, 教義と聖約=the Doctrine and Covenants, 高価な真珠=the Pearl of Great Price, 知恵の言葉=the Word of Wisdom, 救いの計画=the plan of salvation, 鉄の棒=the iron rod, 命の木=the tree of life, リアホナ=the Liahona, ゲツセマネ=Gethsemane, 主=the Lord, キリスト=Christ, 宣教師=missionary/missionaries, 信仰箇条=the Articles of Faith
+4. JSON構文崩れを防ぐため、英語訳内の引用符にはダブルクォート（"）を使わずシングルクォート（'）を使ってください。
+5. 英語の教会用語: 聖餐=Sacrament, 贖罪=Atonement, 証=testimony, バプテスマ=baptism, 天の御父=Heavenly Father, 御名=name, 聖典=scriptures, 安息日=Sabbath day, 神殿=temple, 伝道=missionary work, 改宗=conversion, 聖約=covenant, 教義=doctrine, 総大会=general conference, 大管長=President, 監督=bishop, 定員会=quorum, ステーク=stake, ワード=ward, 扶助協会=Relief Society, 初等協会=Primary, セミナリー=seminary, 柔和=meekness, 贖い=redemption, 昇栄=exaltation, 御霊=the Spirit, 聖霊=the Holy Ghost, モルモン書=the Book of Mormon, 教義と聖約=the Doctrine and Covenants, 高価な真珠=the Pearl of Great Price, 知恵の言葉=the Word of Wisdom, 救いの計画=the plan of salvation, 鉄の棒=the iron rod, 命の木=the tree of life, リアホナ=the Liahona, ゲツセマネ=Gethsemane, 主=the Lord, キリスト=Christ, 宣教師=missionary/missionaries, 信仰箇条=the Articles of Faith
 
 出力JSON形式:
 {"ja": "補正後の日本語テキスト", "en": "High-quality English translation using official LDS terminology"}`;
@@ -2880,23 +2881,64 @@
         const geminiCallTimestampsWindow = [];
         let cachedWorkingGeminiModel = '';
 
-        // マークダウンの ```json などを安全に剥離して JSON パースする堅牢パーサー
+        // マークダウンの ```json や中途切断されたレスポンスから ja と en を確実に救出する超堅牢パーサー
         function extractJsonFromAiResponse(raw) {
             if (!raw) return null;
             let cleaned = raw.trim();
-            // ```json ... ``` または ``` ... ``` コードブロックを除去
             cleaned = cleaned.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
-            // 先頭と末尾の波括弧を探す
-            const firstBrace = cleaned.indexOf('{');
-            const lastBrace = cleaned.lastIndexOf('}');
-            if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
-                cleaned = cleaned.substring(firstBrace, lastBrace + 1);
-            }
+
+            // 1. 通常の JSON.parse を試みる
             try {
-                return JSON.parse(cleaned);
-            } catch (e) {
-                return null;
+                const firstBrace = cleaned.indexOf('{');
+                const lastBrace = cleaned.lastIndexOf('}');
+                if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+                    const candidate = cleaned.substring(firstBrace, lastBrace + 1);
+                    const parsed = JSON.parse(candidate);
+                    if (parsed && typeof parsed === 'object' && parsed.ja) return parsed;
+                }
+            } catch (e) {}
+
+            // 2. トークン上限等で中途切断された場合の正規表現救出（最重要！）
+            let ja = null;
+            let en = null;
+
+            // "ja": "..." の完全マッチ
+            const jaMatch = cleaned.match(/"ja"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+            if (jaMatch) {
+                try {
+                    ja = JSON.parse(`"${jaMatch[1]}"`);
+                } catch (e) {
+                    ja = jaMatch[1];
+                }
+            } else {
+                // "ja": "..." が途中で切れている場合（末尾引用符なし）
+                const jaCutMatch = cleaned.match(/"ja"\s*:\s*"((?:[^"\\]|\\.)*)$/);
+                if (jaCutMatch) {
+                    ja = jaCutMatch[1].replace(/\\n/g, '\n').replace(/\\"/g, '"');
+                }
             }
+
+            // "en": "..." のマッチ
+            const enMatch = cleaned.match(/"en"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+            if (enMatch) {
+                try {
+                    en = JSON.parse(`"${enMatch[1]}"`);
+                } catch (e) {
+                    en = enMatch[1];
+                }
+            }
+
+            if (ja) {
+                return { ja: ja.trim(), en: en ? en.trim() : null };
+            }
+
+            // 3. 生のテキストから {"ja": などのJSONプレフィックス・ゴミ文字を綺麗に除去して救出
+            cleaned = cleaned.replace(/^\{?\s*"ja"\s*:\s*"?/i, '').replace(/"?\s*,?\s*"en"\s*:.*$/is, '').replace(/[}"']+$/g, '').trim();
+            if (cleaned) {
+                return { ja: cleaned, en: null };
+            }
+
+            return null;
         }
 
         async function correctWithGemini(rawText, options = {}) {
@@ -2961,20 +3003,19 @@
             const cleanKey = geminiApiKey.trim();
 
             const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 4500);
+            const timeoutId = setTimeout(() => controller.abort(), 5500);
             const startTime = performance.now();
 
-            // 試行するモデル候補リスト（広範なモデル候補 + 自動検出）
+            // 試行するモデル候補リスト（低遅延モデルを優先 + 広範なフォールバック）
             let candidateModels = [
                 cachedWorkingGeminiModel,
-                'gemini-2.0-flash',
-                'gemini-2.0-flash-001',
-                'gemini-2.5-flash',
                 'gemini-1.5-flash',
+                'gemini-2.5-flash',
+                'gemini-2.0-flash',
                 'gemini-1.5-flash-latest',
+                'gemini-2.0-flash-001',
                 'gemini-1.5-flash-001',
                 'gemini-1.5-flash-002',
-                'gemini-2.0-flash-exp',
                 'gemini-1.5-pro'
             ].filter(Boolean);
             // 重複排除
@@ -3018,7 +3059,7 @@
                                 ],
                                 generationConfig: {
                                     temperature: 0.1,
-                                    maxOutputTokens: 500
+                                    maxOutputTokens: 1000
                                 }
                             })
                         });
