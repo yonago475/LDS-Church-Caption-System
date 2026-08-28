@@ -3143,6 +3143,41 @@
             return null;
         }
 
+        // 利用可能モデルの全自動検出（APIキーに割り当てられた最新Flashモデルを動的に特定）
+        async function discoverAvailableGeminiModel(cleanKey) {
+            if (cachedWorkingGeminiModel) return cachedWorkingGeminiModel;
+            try {
+                const listUrl = `https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(cleanKey)}`;
+                const ctrl = new AbortController();
+                const tid = setTimeout(() => ctrl.abort(), 4000);
+                const res = await fetch(listUrl, { signal: ctrl.signal });
+                clearTimeout(tid);
+                if (res.ok) {
+                    const data = await res.json();
+                    const models = data.models || [];
+                    const validModels = models
+                        .filter(m => (m.supportedGenerationMethods || []).includes('generateContent'))
+                        .map(m => m.name.replace(/^models\//, ''));
+
+                    // flashモデルを優先順位をつけて自動選択
+                    const preferred = validModels.find(m => m.includes('3.5-flash')) ||
+                                      validModels.find(m => m.includes('2.5-flash')) ||
+                                      validModels.find(m => m.includes('2.0-flash')) ||
+                                      validModels.find(m => m.includes('1.5-flash')) ||
+                                      validModels.find(m => m.includes('flash')) ||
+                                      validModels[0];
+
+                    if (preferred) {
+                        cachedWorkingGeminiModel = preferred;
+                        return preferred;
+                    }
+                }
+            } catch (e) {
+                console.warn('モデル一覧の自動検出スキップ:', e);
+            }
+            return null;
+        }
+
         async function correctWithGemini(rawText, options = {}) {
             if (!rawText || !rawText.trim()) return { ja: '', en: null, isAiSuccess: false, status: 'EMPTY', model: '-', latency: 0, preCorrected: '', dictChanged: false };
 
@@ -3217,16 +3252,23 @@
             // APIキーの空白トリム保護
             const cleanKey = geminiApiKey.trim();
 
+            // 未検出時は利用可能モデルを自動特定
+            if (!cachedWorkingGeminiModel) {
+                await discoverAvailableGeminiModel(cleanKey);
+            }
+
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), 5500);
             const startTime = performance.now();
 
-            // 試行するモデル候補リスト（公式正規モデル名に限定）
+            // 試行するモデル候補リスト（自動検出モデル ＋ 最新モデル群フォールバック）
             let candidateModels = [
                 cachedWorkingGeminiModel,
+                'gemini-3.5-flash-lite',
+                'gemini-2.5-flash',
+                'gemini-2.5-flash-lite',
                 'gemini-2.0-flash',
-                'gemini-1.5-flash',
-                'gemini-2.0-flash-lite'
+                'gemini-1.5-flash'
             ].filter(Boolean);
             // 重複排除
             candidateModels = Array.from(new Set(candidateModels));
@@ -3543,6 +3585,7 @@
                 try {
                     const tempKey = geminiApiKey;
                     geminiApiKey = key;
+                    cachedWorkingGeminiModel = null; // テスト時に最新モデルを強制再探索
                     const prevEnabled = isGeminiAiEnabled;
                     isGeminiAiEnabled = true;
 
