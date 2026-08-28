@@ -1179,6 +1179,39 @@
             "証明させることです": "昇栄させることです",
             "しょうえい": "昇栄",
             "亡くなった後に": "亡くなられた後に",
+            "会心を深める": "改心を深める",
+            "会心を深め": "改心を深め",
+            "会心を": "改心を",
+            "障害に渡って": "生涯にわたって",
+            "障害にわたって": "生涯にわたって",
+            "製薬 儀式": "聖約の儀式",
+            "製薬": "聖約",
+            "重巡 耐える": "従順、耐え忍び",
+            "重巡": "従順",
+            "政令の賜物": "聖霊の賜物",
+            "政令がどれほど": "聖霊がどれほど",
+            "インスピュート": "インスティテュート",
+            "リボー ショナル": "ディボーショナル",
+            "リボーショナル": "ディボーショナル",
+            "主への検診": "主への献身",
+            "福井を学ぶ": "福音を学ぶ",
+            "福井を": "福音を",
+            "音痴の技": "御父の業",
+            "種の教会": "主の教会",
+            "人たちや 預言者たち": "使徒たちや預言者たち",
+            "人たちや預言者たち": "使徒たちや預言者たち",
+            "隅のかしら 石": "隅のかしら石",
+            "隅のかしら石": "隅のかしら石",
+            "大官庁会": "大管長会",
+            "オン チチ": "天の御父",
+            "温故": "御子",
+            "身元に戻ろう": "御許に戻ろう",
+            "音痴に栄光を": "御父に栄光を",
+            "完成車であられる": "完成者であられる",
+            "行ける神の御子": "生ける神の御子",
+            "行ける神": "生ける神",
+            "主の聖なる皆": "主の聖なる御名",
+            "アーメ": "アーメン",
             "教師 会": "司会",
             "しんけん": "神権",
             "真剣": "神権",
@@ -3188,15 +3221,12 @@
             const timeoutId = setTimeout(() => controller.abort(), 5500);
             const startTime = performance.now();
 
-            // 試行するモデル候補リスト（動作確認済みの gemini-2.5-flash を最優先）
+            // 試行するモデル候補リスト（公式正規モデル名に限定）
             let candidateModels = [
                 cachedWorkingGeminiModel,
-                'gemini-2.5-flash',
                 'gemini-2.0-flash',
                 'gemini-1.5-flash',
-                'gemini-1.5-flash-latest',
-                'gemini-2.0-flash-001',
-                'gemini-1.5-flash-001'
+                'gemini-2.0-flash-lite'
             ].filter(Boolean);
             // 重複排除
             candidateModels = Array.from(new Set(candidateModels));
@@ -3223,8 +3253,7 @@
                         const response = await fetch(url, {
                             method: 'POST',
                             headers: {
-                                'Content-Type': 'application/json',
-                                'x-goog-api-key': cleanKey
+                                'Content-Type': 'application/json'
                             },
                             signal: controller.signal,
                             body: JSON.stringify({
@@ -4099,7 +4128,7 @@ ${existingKeys.slice(0, 100).join(', ')}
                         telemetryResult = result;
                         processedChunk = result.ja || rawChunk;
                         englishText = result.en || null;
-                        isAi = isGeminiAiEnabled && !!geminiApiKey && (processedChunk !== rawChunk);
+                        isAi = isGeminiAiEnabled && !!geminiApiKey && !!result && result.isAiSuccess && (processedChunk !== rawChunk);
                     } catch (e) {
                         console.warn('AI補正スキップ:', e);
                         processedChunk = fixScriptureReferences(replaceChurchTerms(rawChunk.trim()));
