@@ -453,6 +453,9 @@
                             <button id="downloadTranscriptBtn" class="inline-flex items-center px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-semibold text-xs rounded-lg transition-colors border border-emerald-200" title="文字起こしログを保存">
                                 <i class="fa-solid fa-download mr-1"></i> ログ保存
                             </button>
+                            <button id="downloadDiagnosticBtn" class="inline-flex items-center px-2.5 py-1 bg-sky-50 hover:bg-sky-100 text-sky-700 font-semibold text-xs rounded-lg transition-colors border border-sky-200" title="API応答時間・エラー等の稼働テレメトリ診断ログを保存">
+                                <i class="fa-solid fa-chart-line mr-1"></i> 診断ログ
+                            </button>
                             <button id="analyzeDictBtn" class="inline-flex items-center px-2.5 py-1 bg-purple-50 hover:bg-purple-100 text-purple-700 font-semibold text-xs rounded-lg transition-colors border border-purple-200" title="手動修正ログからAIが辞書候補を提案">
                                 <i class="fa-solid fa-wand-magic-sparkles mr-1"></i> 辞書候補AI分析
                             </button>
@@ -1851,6 +1854,34 @@
         let geminiApiKey = localStorage.getItem('lds_gemini_api_key') || '';
         let isGeminiAiEnabled = localStorage.getItem('lds_gemini_ai_enabled') === 'true';
 
+        // ==================== システム稼働・診断テレメトリログ ====================
+        const diagnosticTelemetryLogs = [];
+        let telemetryCounter = 0;
+
+        function logDiagnosticTelemetry(data) {
+            telemetryCounter++;
+            const now = new Date();
+            const timeStr = now.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) + '.' + String(now.getMilliseconds()).padStart(3, '0');
+            diagnosticTelemetryLogs.push({
+                id: telemetryCounter,
+                time: timeStr,
+                timestamp: now.getTime(),
+                rawText: data.rawText || '',
+                dictText: data.dictText || '',
+                dictChanged: !!data.dictChanged,
+                geminiStatus: data.geminiStatus || 'SKIPPED',
+                geminiModel: data.geminiModel || '-',
+                latencyMs: data.latencyMs || 0,
+                rpmCount: (typeof geminiCallTimestampsWindow !== 'undefined') ? geminiCallTimestampsWindow.length : 0,
+                outputText: data.outputText || '',
+                isAiApplied: !!data.isAiApplied,
+                action: data.action || 'BROADCAST'
+            });
+            if (diagnosticTelemetryLogs.length > 500) {
+                diagnosticTelemetryLogs.shift();
+            }
+        }
+
         // ==================== AI品質モニタリング統計 ====================
         const aiStats = {
             totalCaptions: 0,
@@ -1858,6 +1889,7 @@
             aiErrors: 0,
             aiTimeouts: 0,
             dictFallbacks: 0,
+            rateLimitedCount: 0,
             totalLatencyMs: 0,
             latencyHistory: [],
             sessionStartTime: null
@@ -1896,6 +1928,7 @@
         const hostTranscriptLog = document.getElementById('hostTranscriptLog');
         const clearTranscriptsBtn = document.getElementById('clearTranscriptsBtn');
         const downloadTranscriptBtn = document.getElementById('downloadTranscriptBtn');
+        const downloadDiagnosticBtn = document.getElementById('downloadDiagnosticBtn');
 
         const togglePauseBtn = document.getElementById('togglePauseBtn');
         const pauseBtnText = document.getElementById('pauseBtnText');
@@ -2228,7 +2261,7 @@
                 return (now - item.timestamp < 30000) && (item.norm === normClean);
             });
             if (isDuplicate) {
-                return;
+                return { action: 'DUPLICATE_SUPPRESSED' };
             }
 
             captionSequenceId++;
@@ -2254,6 +2287,8 @@
                 timestamp: timeStr,
                 englishText: englishText
             });
+
+            return { action: 'BROADCAST', id: captionSequenceId };
         }
 
         // ==================== 手動配信モード (確認・編集後に送信) コントロール ====================
@@ -2396,38 +2431,107 @@
             }
         }
 
-        // ==================== 文字起こしログのダウンロード ====================
+        // ==================== 文字起こしログ・診断ログのダウンロード ====================
         function setupDownloadButton() {
-            downloadTranscriptBtn.onclick = function() {
-                if (transcriptHistory.length === 0) {
-                    alert('ダウンロードできるログがありません。音声認識を開始して発話を記録してください。');
-                    return;
-                }
-
-                const dateStr = new Date().toLocaleDateString('ja-JP', { year: 'numeric', month: '2-digit', day: '2-digit' }).replace(/\//g, '-');
-                const header = `末日聖徒イエス・キリスト教会 字幕ログ\nエクスポート日時: ${new Date().toLocaleString('ja-JP')}\n${'='.repeat(50)}\n\n`;
-
-                let body = '';
-                transcriptHistory.forEach(entry => {
-                    const statusMark = entry.paused ? ' [⏸️ 未配信]' : '';
-                    if (entry.isEdited && entry.original) {
-                        const editTag = entry.isAi ? '[✨AI文脈補正]' : '[✍️手動修正]';
-                        body += `[${entry.time}]${statusMark} ${editTag}\n  認識原文: ${entry.original}\n  補正配信: ${entry.text}\n\n`;
-                    } else {
-                        body += `[${entry.time}]${statusMark} ${entry.text}\n`;
+            if (downloadTranscriptBtn) {
+                downloadTranscriptBtn.onclick = function() {
+                    if (transcriptHistory.length === 0) {
+                        alert('ダウンロードできるログがありません。音声認識を開始して発話を記録してください。');
+                        return;
                     }
-                });
 
-                const blob = new Blob([header + body], { type: 'text/plain;charset=utf-8' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = `字幕ログ_${dateStr}.txt`;
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-                URL.revokeObjectURL(url);
-            };
+                    const now = new Date();
+                    const dateStr = now.toLocaleDateString('ja-JP', { year: 'numeric', month: '2-digit', day: '2-digit' }).replace(/\//g, '-');
+                    const header = `末日聖徒イエス・キリスト教会 字幕ログ\nエクスポート日時: ${now.toLocaleString('ja-JP')}\n${'='.repeat(50)}\n\n`;
+
+                    let body = '';
+                    transcriptHistory.forEach(entry => {
+                        const statusMark = entry.paused ? ' [⏸️ 未配信]' : '';
+                        if (entry.isEdited && entry.original) {
+                            const editTag = entry.isAi ? '[✨AI文脈補正]' : '[✍️手動修正]';
+                            body += `[${entry.time}]${statusMark} ${editTag}\n  認識原文: ${entry.original}\n  補正配信: ${entry.text}\n\n`;
+                        } else {
+                            body += `[${entry.time}]${statusMark} ${entry.text}\n`;
+                        }
+                    });
+
+                    // システム稼働サマリーの付加
+                    const elapsedMins = aiStats.sessionStartTime ? Math.max(1, Math.round((Date.now() - aiStats.sessionStartTime) / 60000)) : 1;
+                    const avgLatency = aiStats.latencyHistory.length > 0 ? Math.round(aiStats.totalLatencyMs / aiStats.latencyHistory.length) : 0;
+                    const summary = `\n${'='.repeat(50)}\n` +
+                        `【システム稼働サマリー】\n` +
+                        `・総処理文数: ${aiStats.totalCaptions} 件\n` +
+                        `・Gemini AI補正適用: ${aiStats.aiCorrected} 件\n` +
+                        `・ローカル辞書補正/フォールバック: ${aiStats.dictFallbacks} 件\n` +
+                        `・平均AI応答速度: ${avgLatency} ms\n` +
+                        `・API制限(429) / 保護ガード作動: ${aiStats.rateLimitedCount || 0} 回\n` +
+                        `・AIタイムアウト / エラー: ${aiStats.aiTimeouts + aiStats.aiErrors} 件\n` +
+                        `・セッション稼働時間: 約 ${elapsedMins} 分\n` +
+                        `${'='.repeat(50)}\n`;
+
+                    const blob = new Blob([header + body + summary], { type: 'text/plain;charset=utf-8' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `字幕ログ_${dateStr}.txt`;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                };
+            }
+
+            if (downloadDiagnosticBtn) {
+                downloadDiagnosticBtn.onclick = function() {
+                    if (diagnosticTelemetryLogs.length === 0) {
+                        alert('ダウンロードできる診断ログがありません。音声認識を開始して発話を記録してください。');
+                        return;
+                    }
+
+                    const now = new Date();
+                    const dateStr = now.toLocaleDateString('ja-JP', { year: 'numeric', month: '2-digit', day: '2-digit' }).replace(/\//g, '');
+                    const timePart = now.toTimeString().split(' ')[0].replace(/:/g, '');
+                    const elapsedMins = aiStats.sessionStartTime ? Math.max(1, Math.round((Date.now() - aiStats.sessionStartTime) / 60000)) : 1;
+                    const avgLatency = aiStats.latencyHistory.length > 0 ? Math.round(aiStats.totalLatencyMs / aiStats.latencyHistory.length) : 0;
+
+                    let diagText = `==================================================\n` +
+                        `末日聖徒イエス・キリスト教会 字幕システム 診断テレメトリログ\n` +
+                        `エクスポート日時: ${now.toLocaleString('ja-JP')}\n` +
+                        `==================================================\n` +
+                        `【システム稼働サマリー】\n` +
+                        `・総処理チャンク数: ${diagnosticTelemetryLogs.length} 件\n` +
+                        `・AI文脈補正成功: ${aiStats.aiCorrected} 件\n` +
+                        `・辞書フォールバック: ${aiStats.dictFallbacks} 件\n` +
+                        `・平均AI応答速度: ${avgLatency} ms\n` +
+                        `・APIレート制限(429)検知: ${aiStats.rateLimitedCount || 0} 回\n` +
+                        `・タイムアウト/エラー: ${aiStats.aiTimeouts} / ${aiStats.aiErrors} 件\n` +
+                        `・セッション稼働時間: 約 ${elapsedMins} 分\n` +
+                        `==================================================\n` +
+                        `【ミリ秒単位の詳細処理トレース】\n\n`;
+
+                    diagnosticTelemetryLogs.forEach(entry => {
+                        diagText += `[${entry.time}] #${entry.id} (RPM窓: ${entry.rpmCount}/15, 判定: ${entry.action})\n` +
+                            `  ├─ 認識RAW: "${entry.rawText}"\n` +
+                            `  ├─ [第1段 辞書]: "${entry.dictText}" ${entry.dictChanged ? '(辞書置換あり)' : '(置換なし)'}\n` +
+                            `  ├─ [第2段 Gemini]: ${entry.geminiStatus} (応答: ${entry.latencyMs}ms, モデル: ${entry.geminiModel})\n` +
+                            `  ├─ [補正確定]: "${entry.outputText}" ${entry.isAiApplied ? '[✨AI適用]' : ''}\n` +
+                            `  └─ [配信ステータス]: ${entry.action === 'DUPLICATE_SUPPRESSED' ? '⚠️ 重複排除により破棄' : (entry.action === 'MANUAL_QUEUED' ? '✍️ 手動キュー格納' : '✅ 配信完了')}\n\n`;
+                    });
+
+                    diagText += `==================================================\n` +
+                        `末尾 - 診断ログ記録終了 (${diagnosticTelemetryLogs.length}件)\n`;
+
+                    const blob = new Blob([diagText], { type: 'text/plain;charset=utf-8' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `診断ログ_${dateStr}_${timePart}.txt`;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                };
+            }
         }
 
         function setupAudioGuideToggle() {
@@ -3007,12 +3111,13 @@
         }
 
         async function correctWithGemini(rawText, options = {}) {
-            if (!rawText || !rawText.trim()) return { ja: '', en: null, isAiSuccess: false };
+            if (!rawText || !rawText.trim()) return { ja: '', en: null, isAiSuccess: false, status: 'EMPTY', model: '-', latency: 0, preCorrected: '', dictChanged: false };
 
             const isTest = !!options.isTest;
 
             // 【第1段】教会用語辞書および聖典参照フォーマットで基礎補正（0ms）
             const preCorrected = fixScriptureReferences(replaceChurchTerms(rawText.trim()));
+            const dictChanged = (preCorrected !== rawText.trim());
 
             // 本番時のみ統計カウント
             if (!isTest) {
@@ -3028,7 +3133,7 @@
                     detectSection(preCorrected);
                     updateAiStatsDisplay();
                 }
-                return { ja: preCorrected, en: null, isAiSuccess: false };
+                return { ja: preCorrected, en: null, isAiSuccess: false, status: 'AI無効（ローカル辞書適用）', model: '-', latency: 0, preCorrected: preCorrected, dictChanged: dictChanged };
             }
 
             // 【保護1: 極短文・相槌のスキップ】テスト時以外は8文字未満のAIリクエストを節約（辞書補正のみ）
@@ -3040,7 +3145,7 @@
                     aiStats.dictFallbacks++;
                     detectSection(preCorrected);
                     updateAiStatsDisplay();
-                    return { ja: preCorrected, en: null, isAiSuccess: false };
+                    return { ja: preCorrected, en: null, isAiSuccess: false, status: 'スキップ（短文<8文字）', model: '-', latency: 0, preCorrected: preCorrected, dictChanged: dictChanged };
                 }
 
                 const now = Date.now();
@@ -3053,7 +3158,7 @@
                     if (recentContextHistory.length > 3) recentContextHistory.shift();
                     detectSection(preCorrected);
                     updateAiStatsDisplay();
-                    return { ja: preCorrected, en: null, isAiSuccess: false };
+                    return { ja: preCorrected, en: null, isAiSuccess: false, status: 'スキップ（429制限10秒冷却中）', model: '-', latency: 0, preCorrected: preCorrected, dictChanged: dictChanged };
                 }
 
                 // 【保護3: 15 RPM レートリミット保護ガード（最短4.0秒インターバル & 60秒10回上限）】
@@ -3069,7 +3174,7 @@
                     if (recentContextHistory.length > 3) recentContextHistory.shift();
                     detectSection(preCorrected);
                     updateAiStatsDisplay();
-                    return { ja: preCorrected, en: null, isAiSuccess: false };
+                    return { ja: preCorrected, en: null, isAiSuccess: false, status: 'スキップ（15RPM保護ガード作動）', model: '-', latency: 0, preCorrected: preCorrected, dictChanged: dictChanged };
                 }
 
                 lastGeminiCallTimestamp = now;
@@ -3096,6 +3201,10 @@
             // 重複排除
             candidateModels = Array.from(new Set(candidateModels));
 
+            let successData = null;
+            let successfulModel = '';
+            let lastDetailError = '';
+
             try {
                 // 直前の会話文脈 + 場面ヒントをプロンプトに付与
                 const sectionHint = SECTION_HINTS[currentSectionType] || SECTION_HINTS.general;
@@ -3105,10 +3214,6 @@
                     userPrompt += `【直前の発話文脈】\n${validContext.slice(-2).join('\n')}\n\n`;
                 }
                 userPrompt += `【今回の発話（校正対象）】\n${preCorrected}`;
-
-                let successData = null;
-                let successfulModel = '';
-                let lastDetailError = '';
 
                 // モデルフォールバックループ
                 for (let i = 0; i < candidateModels.length; i++) {
@@ -3222,7 +3327,7 @@
                             detectSection(jaText);
                             updateAiStatsDisplay();
                         }
-                        return { ja: jaText, en: enText, isAiSuccess: true, model: successfulModel, latency: Math.round(elapsed) };
+                        return { ja: jaText, en: enText, isAiSuccess: true, model: successfulModel, latency: Math.round(elapsed), status: 'HTTP 200 OK', preCorrected: preCorrected, dictChanged: dictChanged };
                     }
                 }
             } catch (err) {
@@ -3237,8 +3342,9 @@
                     }
                 }
                 console.error('Gemini AI補正エラー（辞書フォールバック）:', err);
+                const statusMsg = (err && err.name === 'AbortError') ? 'タイムアウト (4.5秒超過)' : (lastDetailError || (err ? err.message : 'ERROR'));
                 if (isTest) {
-                    return { ja: preCorrected, en: null, isAiSuccess: false, error: err.message };
+                    return { ja: preCorrected, en: null, isAiSuccess: false, error: err.message, status: statusMsg, model: successfulModel || '-', latency: Math.round(performance.now() - startTime), preCorrected: preCorrected, dictChanged: dictChanged };
                 }
             } finally {
                 clearTimeout(timeoutId);
@@ -3251,7 +3357,8 @@
                 detectSection(preCorrected);
                 updateAiStatsDisplay();
             }
-            return { ja: preCorrected, en: null, isAiSuccess: false };
+            const fallbackStatus = lastDetailError || '辞書フォールバック';
+            return { ja: preCorrected, en: null, isAiSuccess: false, status: fallbackStatus, model: successfulModel || '-', latency: Math.round(performance.now() - startTime), preCorrected: preCorrected, dictChanged: dictChanged };
         }
 
 
@@ -3985,21 +4092,32 @@ ${existingKeys.slice(0, 100).join(', ')}
                     let processedChunk = rawChunk;
                     let englishText = null;
                     let isAi = false;
+                    let telemetryResult = null;
 
                     try {
                         const result = await correctWithGemini(rawChunk);
+                        telemetryResult = result;
                         processedChunk = result.ja || rawChunk;
                         englishText = result.en || null;
                         isAi = isGeminiAiEnabled && !!geminiApiKey && (processedChunk !== rawChunk);
                     } catch (e) {
                         console.warn('AI補正スキップ:', e);
                         processedChunk = fixScriptureReferences(replaceChurchTerms(rawChunk.trim()));
+                        telemetryResult = {
+                            preCorrected: processedChunk,
+                            dictChanged: (processedChunk !== rawChunk.trim()),
+                            status: `エラーフォールバック: ${e.message}`,
+                            model: '-',
+                            latency: 0
+                        };
                     }
 
                     if (!processedChunk) processedChunk = rawChunk;
                     const isEdited = processedChunk !== rawChunk;
+                    let finalAction = 'BROADCAST';
 
                     if (isManualMode) {
+                        finalAction = 'MANUAL_QUEUED';
                         if (manualCaptionInput) {
                             const currentVal = manualCaptionInput.value.trim();
                             if (!currentVal) {
@@ -4012,11 +4130,38 @@ ${existingKeys.slice(0, 100).join(', ')}
                             }
                         }
                     } else {
-                        dispatchCaption(processedChunk, { original: rawChunk, isEdited: isEdited, isAi: isAi, englishText: englishText });
+                        const dispatchRes = dispatchCaption(processedChunk, { original: rawChunk, isEdited: isEdited, isAi: isAi, englishText: englishText });
+                        if (dispatchRes && dispatchRes.action) {
+                            finalAction = dispatchRes.action;
+                        }
                     }
+
+                    // 診断テレメトリログへの記録
+                    logDiagnosticTelemetry({
+                        rawText: rawChunk,
+                        dictText: telemetryResult ? telemetryResult.preCorrected : processedChunk,
+                        dictChanged: telemetryResult ? telemetryResult.dictChanged : false,
+                        geminiStatus: telemetryResult ? telemetryResult.status : 'N/A',
+                        geminiModel: telemetryResult ? telemetryResult.model : '-',
+                        latencyMs: telemetryResult ? telemetryResult.latency : 0,
+                        outputText: processedChunk,
+                        isAiApplied: isAi,
+                        action: finalAction
+                    });
                 }).catch(err => {
                     console.error('AI処理キュー回復:', err);
-                    dispatchCaption(rawChunk, { original: rawChunk, isEdited: false, isAi: false });
+                    const dispatchRes = dispatchCaption(rawChunk, { original: rawChunk, isEdited: false, isAi: false });
+                    logDiagnosticTelemetry({
+                        rawText: rawChunk,
+                        dictText: rawChunk,
+                        dictChanged: false,
+                        geminiStatus: `キュー回復フォールバック: ${err.message}`,
+                        geminiModel: '-',
+                        latencyMs: 0,
+                        outputText: rawChunk,
+                        isAiApplied: false,
+                        action: (dispatchRes && dispatchRes.action) ? dispatchRes.action : 'BROADCAST'
+                    });
                 });
             }
 
