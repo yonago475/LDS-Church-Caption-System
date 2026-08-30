@@ -1930,6 +1930,7 @@
                 latencyMs: data.latencyMs || 0,
                 rpmCount: (typeof geminiCallTimestampsWindow !== 'undefined') ? geminiCallTimestampsWindow.length : 0,
                 outputText: data.outputText || '',
+                englishText: data.englishText || null,
                 isAiApplied: !!data.isAiApplied,
                 action: data.action || 'BROADCAST'
             });
@@ -2505,9 +2506,16 @@
                         const statusMark = entry.paused ? ' [⏸️ 未配信]' : '';
                         if (entry.isEdited && entry.original) {
                             const editTag = entry.isAi ? '[✨AI文脈補正]' : '[✍️手動修正]';
-                            body += `[${entry.time}]${statusMark} ${editTag}\n  認識原文: ${entry.original}\n  補正配信: ${entry.text}\n\n`;
+                            body += `[${entry.time}]${statusMark} ${editTag}\n  認識原文: ${entry.original}\n  補正配信: ${entry.text}\n`;
+                            if (entry.englishText) {
+                                body += `  英語翻訳: ${entry.englishText}\n`;
+                            }
+                            body += '\n';
                         } else {
                             body += `[${entry.time}]${statusMark} ${entry.text}\n`;
+                            if (entry.englishText) {
+                                body += `  英語翻訳: ${entry.englishText}\n`;
+                            }
                         }
                     });
 
@@ -2571,6 +2579,7 @@
                             `  ├─ [第1段 辞書]: "${entry.dictText}" ${entry.dictChanged ? '(辞書置換あり)' : '(置換なし)'}\n` +
                             `  ├─ [第2段 Gemini]: ${entry.geminiStatus} (応答: ${entry.latencyMs}ms, モデル: ${entry.geminiModel})\n` +
                             `  ├─ [補正確定]: "${entry.outputText}" ${entry.isAiApplied ? '[✨AI適用]' : ''}\n` +
+                            (entry.englishText ? `  ├─ [AI英語翻訳]: "${entry.englishText}"\n` : '') +
                             `  └─ [配信ステータス]: ${entry.action === 'DUPLICATE_SUPPRESSED' ? '⚠️ 重複排除により破棄' : (entry.action === 'MANUAL_QUEUED' ? '✍️ 手動キュー格納' : '✅ 配信完了')}\n\n`;
                     });
 
@@ -4240,6 +4249,7 @@ ${existingKeys.slice(0, 100).join(', ')}
                         geminiModel: telemetryResult ? telemetryResult.model : '-',
                         latencyMs: telemetryResult ? telemetryResult.latency : 0,
                         outputText: processedChunk,
+                        englishText: englishText,
                         isAiApplied: isAi,
                         action: finalAction
                     });
@@ -4450,6 +4460,7 @@ ${existingKeys.slice(0, 100).join(', ')}
             const isAi = !!(meta && meta.isAi);
             const isEdited = !!(meta && meta.isEdited && meta.original && meta.original.trim() !== text.trim());
             const rawOriginal = isEdited ? meta.original.trim() : null;
+            const englishText = (meta && meta.englishText) ? meta.englishText.trim() : null;
 
             transcriptHistory.push({
                 time: timeStr,
@@ -4457,12 +4468,14 @@ ${existingKeys.slice(0, 100).join(', ')}
                 original: rawOriginal,
                 isEdited: isEdited,
                 isAi: isAi,
-                paused: wasPaused
+                paused: wasPaused,
+                englishText: englishText
             });
 
             const item = document.createElement('div');
             const safeText = escapeHtml(text);
             const safeOriginal = rawOriginal ? escapeHtml(rawOriginal) : '';
+            const safeEnglish = englishText ? escapeHtml(englishText) : '';
 
             if (wasPaused) {
                 item.className = 'bg-slate-200/70 p-3 rounded-lg border border-slate-300 shadow-sm opacity-70';
@@ -4477,6 +4490,7 @@ ${existingKeys.slice(0, 100).join(', ')}
                         </div>
                     </div>
                     <div class="text-sm text-slate-500 font-medium">${safeText}</div>
+                    ${safeEnglish ? `<div class="mt-1 text-xs text-sky-700 font-medium pl-2 border-l-2 border-sky-400 bg-sky-50/70 py-0.5 rounded-r"><span class="text-sky-500 font-bold mr-1">🌐 英訳:</span>${safeEnglish}</div>` : ''}
                 `;
             } else {
                 item.className = 'bg-white p-3 rounded-lg border border-slate-200 shadow-sm';
@@ -4491,6 +4505,7 @@ ${existingKeys.slice(0, 100).join(', ')}
                         </button>
                     </div>
                     <div class="text-sm text-slate-800 font-medium">${safeText}</div>
+                    ${safeEnglish ? `<div class="mt-1 text-xs text-sky-700 font-medium pl-2 border-l-2 border-sky-400 bg-sky-50/70 py-0.5 rounded-r"><span class="text-sky-500 font-bold mr-1">🌐 英訳:</span>${safeEnglish}</div>` : ''}
                     ${isEdited ? `
                     <div class="mt-1.5 p-2 bg-slate-50 rounded border border-slate-200 text-xs text-slate-700 flex items-start space-x-1.5">
                         <span class="text-slate-500 font-bold shrink-0">認識原文:</span>
