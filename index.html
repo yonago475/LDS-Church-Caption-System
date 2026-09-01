@@ -3,7 +3,6 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.tailwindcss.com https://unpkg.com/ https://cdnjs.cloudflare.com/; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com/; connect-src 'self' https://api.mymemory.translated.net https://translate.googleapis.com https://generativelanguage.googleapis.com wss://0.peerjs.com ws://0.peerjs.com https://0.peerjs.com; img-src 'self' data:; font-src 'self' https://cdnjs.cloudflare.com/;">
     <title>多言語字幕配信 | The Church of Jesus Christ of Latter-day Saints</title>
     <!-- Tailwind CSS for UI Styling -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -1004,7 +1003,7 @@
         let viewerCardCount = 0;
 
         // ==================== 初期化 ====================
-        window.onload = function() {
+        function initApp() {
             if (window.location.protocol === 'file:') {
                 localFileWarning.classList.remove('hidden');
             }
@@ -1027,7 +1026,13 @@
             if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
                 navigator.mediaDevices.addEventListener('devicechange', initAudioDeviceSelector);
             }
-        };
+        }
+
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', initApp);
+        } else {
+            initApp();
+        }
 
         function checkMode() {
             const urlParams = new URLSearchParams(window.location.search);
