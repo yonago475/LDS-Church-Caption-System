@@ -2742,6 +2742,22 @@ function fixScriptureReferences(text) {
                 };
             }
 
+            function getNextUniqueManualItem() {
+                const now = Date.now();
+                while (manualPendingQueue.length > 0) {
+                    const nextItem = manualPendingQueue.shift();
+                    const nextText = (typeof nextItem === 'object' && nextItem !== null) ? nextItem.text : nextItem;
+                    const nextOrig = (typeof nextItem === 'object' && nextItem !== null) ? nextItem.original : nextItem;
+                    const norm = normalizeCaption(nextText);
+                    // 直近30秒以内の過去送信履歴との重複を自動スキップ
+                    const isDup = recentSentHistory.some(h => (now - h.timestamp < 30000) && (h.norm === norm));
+                    if (!isDup && nextText && nextText.trim()) {
+                        return { text: nextText, original: nextOrig };
+                    }
+                }
+                return null;
+            }
+
             function sendManualCaption() {
                 if (!manualCaptionInput) return;
                 const text = manualCaptionInput.value.trim();
@@ -2753,13 +2769,11 @@ function fixScriptureReferences(text) {
                         isEdited: isManuallyEdited
                     });
                 }
-                // 配信完了後、待機キューに次の文があれば「次の一文だけ」を取り出してエディターにセット
-                if (manualPendingQueue.length > 0) {
-                    const nextItem = manualPendingQueue.shift();
-                    const nextText = (typeof nextItem === 'object' && nextItem !== null) ? nextItem.text : nextItem;
-                    const nextOrig = (typeof nextItem === 'object' && nextItem !== null) ? nextItem.original : nextItem;
-                    manualCaptionInput.value = nextText;
-                    currentManualOriginalRaw = nextOrig;
+                // 配信完了後、待機キューに次の文があれば「重複のない次の一文だけ」を取り出してエディターにセット
+                const nextItem = getNextUniqueManualItem();
+                if (nextItem) {
+                    manualCaptionInput.value = nextItem.text;
+                    currentManualOriginalRaw = nextItem.original;
                 } else {
                     manualCaptionInput.value = '';
                     currentManualOriginalRaw = '';
@@ -2769,14 +2783,12 @@ function fixScriptureReferences(text) {
             }
 
             function loadNextManualSentence() {
-                if (manualPendingQueue.length === 0) return;
-                const nextItem = manualPendingQueue.shift();
-                const nextText = (typeof nextItem === 'object' && nextItem !== null) ? nextItem.text : nextItem;
-                const nextOrig = (typeof nextItem === 'object' && nextItem !== null) ? nextItem.original : nextItem;
+                const nextItem = getNextUniqueManualItem();
+                if (!nextItem) return;
                 if (!manualCaptionInput) return;
                 const currentVal = manualCaptionInput.value.trim();
-                manualCaptionInput.value = currentVal ? `${currentVal} ${nextText}` : nextText;
-                currentManualOriginalRaw = currentManualOriginalRaw ? `${currentManualOriginalRaw} ${nextOrig}` : nextOrig;
+                manualCaptionInput.value = currentVal ? `${currentVal} ${nextItem.text}` : nextItem.text;
+                currentManualOriginalRaw = currentManualOriginalRaw ? `${currentManualOriginalRaw} ${nextItem.original}` : nextItem.original;
                 updateManualQueueUI();
                 manualCaptionInput.focus();
                 manualCaptionInput.selectionStart = manualCaptionInput.selectionEnd = manualCaptionInput.value.length;
@@ -2797,13 +2809,11 @@ function fixScriptureReferences(text) {
             if (discardManualBtn) {
                 discardManualBtn.onclick = function() {
                     if (!manualCaptionInput) return;
-                    // 現在の文を破棄し、待機キューに次の文があれば「次の一文だけ」を取り出してエディターにセット
-                    if (manualPendingQueue.length > 0) {
-                        const nextItem = manualPendingQueue.shift();
-                        const nextText = (typeof nextItem === 'object' && nextItem !== null) ? nextItem.text : nextItem;
-                        const nextOrig = (typeof nextItem === 'object' && nextItem !== null) ? nextItem.original : nextItem;
-                        manualCaptionInput.value = nextText;
-                        currentManualOriginalRaw = nextOrig;
+                    // 現在の文を破棄し、待機キューに次の文があれば「重複のない次の一文だけ」を取り出してエディターにセット
+                    const nextItem = getNextUniqueManualItem();
+                    if (nextItem) {
+                        manualCaptionInput.value = nextItem.text;
+                        currentManualOriginalRaw = nextItem.original;
                     } else {
                         manualCaptionInput.value = '';
                         currentManualOriginalRaw = '';
@@ -4348,16 +4358,37 @@ ${existingKeys.slice(0, 100).join(', ')}
                     let finalAction = 'BROADCAST';
 
                     if (isManualMode) {
-                        finalAction = 'MANUAL_QUEUED';
-                        if (manualCaptionInput) {
-                            const currentVal = manualCaptionInput.value.trim();
-                            if (!currentVal) {
-                                manualCaptionInput.value = processedChunk;
-                                currentManualOriginalRaw = rawChunk;
-                                manualCaptionInput.scrollTop = manualCaptionInput.scrollHeight;
-                            } else {
-                                manualPendingQueue.push({ text: processedChunk, original: rawChunk, isAi: isAi });
-                                updateManualQueueUI();
+                        const normChunk = normalizeCaption(processedChunk);
+                        const now = Date.now();
+
+                        // 1. 直近30秒以内の過去送信履歴との重複チェック
+                        const isSentDuplicate = recentSentHistory.some(item => {
+                            return (now - item.timestamp < 30000) && (item.norm === normChunk);
+                        });
+
+                        // 2. 現在のエディタ入力内容との重複チェック
+                        const isCurrentInputDuplicate = manualCaptionInput && (normalizeCaption(manualCaptionInput.value.trim()) === normChunk);
+
+                        // 3. 待機キュー内の既存アイテムとの重複チェック
+                        const isQueueDuplicate = manualPendingQueue.some(item => {
+                            const itemText = (typeof item === 'object' && item !== null) ? item.text : item;
+                            return normalizeCaption(itemText) === normChunk;
+                        });
+
+                        if (isSentDuplicate || isCurrentInputDuplicate || isQueueDuplicate) {
+                            finalAction = 'DUPLICATE_SUPPRESSED';
+                        } else {
+                            finalAction = 'MANUAL_QUEUED';
+                            if (manualCaptionInput) {
+                                const currentVal = manualCaptionInput.value.trim();
+                                if (!currentVal) {
+                                    manualCaptionInput.value = processedChunk;
+                                    currentManualOriginalRaw = rawChunk;
+                                    manualCaptionInput.scrollTop = manualCaptionInput.scrollHeight;
+                                } else {
+                                    manualPendingQueue.push({ text: processedChunk, original: rawChunk, isAi: isAi });
+                                    updateManualQueueUI();
+                                }
                             }
                         }
                     } else {
@@ -4401,18 +4432,25 @@ ${existingKeys.slice(0, 100).join(', ')}
             let lastCommittedInterim = '';
             let silenceCommitTimer = null;
             let currentUnhandledText = '';
+            const committedChunkHistory = [];
 
             function flushUnhandledInterim() {
                 if (silenceCommitTimer) {
                     clearTimeout(silenceCommitTimer);
                     silenceCommitTimer = null;
                 }
-                const textToFlush = currentUnhandledText ? currentUnhandledText.trim() : '';
+                let textToFlush = currentUnhandledText ? currentUnhandledText.trim() : '';
                 currentUnhandledText = '';
                 if (textToFlush) {
+                    // すでに送信済みのチャンクが前方にあれば除去（累積重複の完全排除）
+                    textToFlush = stripCommittedChunks(textToFlush, committedChunkHistory);
+                    if (!textToFlush || !textToFlush.trim()) return;
+
                     lastCommittedInterim = textToFlush;
                     const chunks = splitIntoSmartChunks(textToFlush);
                     chunks.forEach(chunk => {
+                        committedChunkHistory.push(chunk);
+                        if (committedChunkHistory.length > 20) committedChunkHistory.shift();
                         handleRecognizedChunk(chunk);
                     });
                     interimText.textContent = '（次の音声入力を待機中...）';
@@ -4496,22 +4534,19 @@ ${existingKeys.slice(0, 100).join(', ')}
                     }
                     currentUnhandledText = '';
 
-                    const trimmedFinal = finalTranscript.trim();
+                    let trimmedFinal = finalTranscript.trim();
                     if (trimmedFinal) {
-                        // flushUnhandledInterim で直前にコミットされたテキストと完全一致する場合は重複防止のためスキップ
-                        const normFinal = normalizeCaption(trimmedFinal);
-                        const normLast = normalizeCaption(lastCommittedInterim);
-                        if (normFinal && normLast && normFinal === normLast) {
-                            lastCommittedInterim = '';
-                            interimText.textContent = '（次の音声入力を待機中...）';
-                            return;
+                        // すでにコミット済みのチャンクを除去
+                        trimmedFinal = stripCommittedChunks(trimmedFinal, committedChunkHistory);
+                        if (trimmedFinal && trimmedFinal.trim()) {
+                            lastCommittedInterim = trimmedFinal;
+                            const chunks = splitIntoSmartChunks(trimmedFinal);
+                            chunks.forEach(chunk => {
+                                committedChunkHistory.push(chunk);
+                                if (committedChunkHistory.length > 20) committedChunkHistory.shift();
+                                handleRecognizedChunk(chunk);
+                            });
                         }
-
-                        lastCommittedInterim = trimmedFinal;
-                        const chunks = splitIntoSmartChunks(trimmedFinal);
-                        chunks.forEach(chunk => {
-                            handleRecognizedChunk(chunk);
-                        });
                     }
                     interimText.textContent = '（次の音声入力を待機中...）';
                 }
