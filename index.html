@@ -3476,29 +3476,36 @@ function fixScriptureReferences(text) {
   入力: イエスキリストがケツセマノの園で私たちのために食材を成し遂げてくださったことに 赤潮を持っています
   出力: イエス・キリストがゲツセマネの園で私たちのために贖罪を成し遂げてくださったことに、証を持っています。
 
-・例5（聖典学習とモルモン書・仕えること）:
-  入力: 晴天を毎日読み モルモン賞の教えに従って人々に使える人になりたいです
-  出力: 聖典を毎日読み、モルモン書の教えに従って人々に仕える者になりたいです。
+・例5（バッチ複数入力の完全文統合 & 途切れ文節の解消）:
+  入力: 私もですね
+===
+タバコを買いに行こうと思ってでも未成年ですから
+===
+夜こっそり家を抜け出して自動販売機に行きました
+===
+お金を入れて
+  出力: {"sentences": [{"ja": "私もタバコを買いに行こうと思い、未成年ですから夜こっそり家を抜け出して自動販売機に行きました。", "en": "I also thought about buying cigarettes, and since I was a minor, I sneaked out of the house at night and went to a vending machine."}, {"ja": "そして自動販売機にお金を入れました。", "en": "And I put money into the vending machine."}]}
 
-・例6（祈り・証の結び・御子・御名）:
-  入力: これらのお話を全て愛する男 イエスキリストの皆によってお話しさせていただきました アーメン
-  出力: これらのお話をすべて愛する御子イエス・キリストの御名によってお話しいたしました。アーメン。
-
-・例7（慈愛・聖霊・神権・信仰箇条・徳）:
-  入力: 地合いはキリストの純粋な愛であり 精霊の力と親権の暗視により与えられます 進行過剰13条では事前と特高な行いが勧められています
-  出力: 慈愛はキリストの純粋な愛であり、聖霊の力と神権の按手により与えられます。信仰箇条第13条では慈善と徳高い行いが勧められています。
+・例6（途切れ文節「そして」「その時に」等の前文・後文への吸収統合）:
+  入力: そしてその頃ですね
+===
+新会員の方とかあるいは宣教師さんたちを頻繁に自分の家に招いて
+===
+お食事をしたりまたお話をしたりする機会があったんですね
+  出力: {"sentences": [{"ja": "そしてその頃、新会員の方々や宣教師たちを頻繁に自分の家に招いて、お食事をしたりお話をしたりする機会がありました。", "en": "Around that time, we frequently had opportunities to invite new members and missionaries to our home for meals and conversations."}]}
 
 【厳格な出力ルール】
-1. 直前の文脈（直前発話履歴）をふまえ、説教・祈り・証の流れに調和するよう自然な日本語に整形してください。
-2. 入力テキストは「===」区切りで複数の文章が渡される場合があります。その場合、それぞれを独立した文として補正・翻訳してください。
-3. 文節の区切りが不自然な場合（息継ぎで途切れた文、意味的に結合すべき断片）は適切に分割・結合し、自然な1文単位に整形してください。
-4. 出力は必ず以下のJSON形式のみで返してください。余計な解説・挨拶・前置き・マークダウン記法は一切不要です。
-5. "ja" には補正後の日本語を、"en" には教会の公式英語用語を用いた高品質な英語訳を入れてください。
-6. JSON構文崩れを防ぐため、英語訳内の引用符にはダブルクォート（"）を使わずシングルクォート（'）を使ってください。
-7. 英語の教会用語: 聖餐=Sacrament, 贖罪=Atonement, 証=testimony, バプテスマ=baptism, 天の御父=Heavenly Father, 御名=name, 聖典=scriptures, 安息日=Sabbath day, 神殿=temple, 伝道=missionary work, 改宗=conversion, 聖約=covenant, 教義=doctrine, 総大会=general conference, 大管長=President, 監督=bishop, 定員会=quorum, ステーク=stake, ワード=ward, 扶助協会=Relief Society, 初等協会=Primary, セミナリー=seminary, 柔和=meekness, 贖い=redemption, 昇栄=exaltation, 御霊=the Spirit, 聖霊=the Holy Ghost, モルモン書=the Book of Mormon, 教義と聖約=the Doctrine and Covenants, 高価な真珠=the Pearl of Great Price, 知恵の言葉=the Word of Wisdom, 救いの計画=the plan of salvation, 鉄の棒=the iron rod, 命の木=the tree of life, リアホナ=the Liahona, ゲツセマネ=Gethsemane, 主=the Lord, キリスト=Christ, 宣教師=missionary/missionaries, 信仰箇条=the Articles of Faith
+1. 【完全文の徹底（最重要）】: "sentences" の各要素は、必ず「主語＋述語」が揃い、意味が完結した1文（末尾は句点「。」）にしてください。「そして、」「また、」「その時にですね、」「私は、」「〜ですから、」「〜で、」のような文の途中の未完断片を単独の要素として出力することを【厳禁】とします。
+2. 【途切れ文節の吸収・統合】: 息継ぎで分断された短い文節（「そして」「また」「その時に」「私は」等）は、前後の文に自然に結合・吸収して意味の通る格調高い1文に推敲してください。
+3. 【適正な文の長さ】: 字幕カードとして最も読みやすい1文30〜70文字程度を目安にしてください。3つ以上の文節が連なる長すぎる文は、意味の切れ目で自然な2文に分割してください。
+4. 【文脈の調和】: 直前の発話文脈をふまえ、説教・祈り・証の流れに調和するよう自然な敬語・教会用語に整形してください。
+5. 出力は必ず以下のJSON形式のみで返してください。余計な解説・挨拶・前置き・マークダウン記法は一切不要です。
+6. "ja" には補正後の完全な日本語1文を、"en" には教会の公式英語用語を用いた主語・動詞の揃った高品質な英語完全文を入れてください。
+7. JSON構文崩れを防ぐため、英語訳内の引用符にはダブルクォート（"）を使わずシングルクォート（'）を使ってください。
+8. 英語の教会用語: 聖餐=Sacrament, 贖罪=Atonement, 証=testimony, バプテスマ=baptism, 天の御父=Heavenly Father, 御名=name, 聖典=scriptures, 安息日=Sabbath day, 神殿=temple, 伝道=missionary work, 改宗=conversion, 聖約=covenant, 教義=doctrine, 総大会=general conference, 大管長=President, 監督=bishop, 定員会=quorum, ステーク=stake, ワード=ward, 扶助協会=Relief Society, 初等協会=Primary, セミナリー=seminary, 柔和=meekness, 贖い=redemption, 昇栄=exaltation, 御霊=the Spirit, 聖霊=the Holy Ghost, モルモン書=the Book of Mormon, 教義と聖約=the Doctrine and Covenants, 高価な真珠=the Pearl of Great Price, 知恵の言葉=the Word of Wisdom, 救いの計画=the plan of salvation, 鉄の棒=the iron rod, 命の木=the tree of life, リアホナ=the Liahona, ゲツセマネ=Gethsemane, 主=the Lord, キリスト=Christ, 宣教師=missionary/missionaries, 信仰箇条=the Articles of Faith
 
 出力JSON形式（必ずsentences配列形式で返す。入力が1文でも配列にする）:
-{"sentences": [{"ja": "補正後の日本語テキスト1", "en": "English translation 1"}, {"ja": "補正後の日本語テキスト2", "en": "English translation 2"}]}`;
+{"sentences": [{"ja": "意味が完結した補正後の日本語テキスト1。", "en": "High-quality complete English translation 1."}, {"ja": "意味が完結した補正後の日本語テキスト2。", "en": "High-quality complete English translation 2."}]}`;
 
         // 直近の確定発話履歴（最大3件）を保持するコンテキストウィンドウ
         let recentContextHistory = [];
@@ -3780,12 +3787,47 @@ function fixScriptureReferences(text) {
                         }
 
                         if (aiSentences.length > 0) {
+                            // 【クライアント側スマートマージ】未完の短い断片（「そして、」「その時に、」等）を後続の文に自動結合
+                            const mergedSentences = [];
+                            let pendingFragment = null;
+
+                            for (let s = 0; s < aiSentences.length; s++) {
+                                const cur = aiSentences[s];
+                                let curJa = (cur.ja || '').trim();
+                                let curEn = cur.en ? cur.en.trim() : null;
+
+                                if (pendingFragment) {
+                                    curJa = pendingFragment.ja + (curJa.startsWith('、') ? '' : '') + curJa;
+                                    curEn = pendingFragment.en ? (pendingFragment.en + ' ' + (curEn || '')) : curEn;
+                                    pendingFragment = null;
+                                }
+
+                                // 途切れ文節判定: 10文字未満かつ末尾が「、」または接続詞・主語単体
+                                const isFragment = (curJa.length <= 12 && /[、，,]$/.test(curJa)) ||
+                                                   /^(そして|また|その時[には]*|私[はがも]*|ですから|なので)[、，,\s]*$/.test(curJa);
+
+                                if (isFragment && s < aiSentences.length - 1) {
+                                    pendingFragment = { ja: curJa.replace(/[、，,]$/, '、'), en: curEn };
+                                } else {
+                                    mergedSentences.push({ ja: curJa, en: curEn || null });
+                                }
+                            }
+                            if (pendingFragment) {
+                                if (mergedSentences.length > 0) {
+                                    const last = mergedSentences[mergedSentences.length - 1];
+                                    last.ja = last.ja + ' ' + pendingFragment.ja;
+                                    if (pendingFragment.en) last.en = (last.en ? (last.en + ' ') : '') + pendingFragment.en;
+                                } else {
+                                    mergedSentences.push({ ja: pendingFragment.ja, en: pendingFragment.en || null });
+                                }
+                            }
+
                             // バッチ全体の生テキストおよび辞書補正テキスト
                             const combinedRaw = items.map(i => i.rawChunk).join(' ');
                             const combinedPre = items.map(i => i.preCorrected).join(' ');
 
-                            // Geminiが生成・整形した文配列をそのままダイレクトに結果とする（ズレ・不足を完全根絶）
-                            const resultSentences = aiSentences.map((aiItem, idx) => {
+                            // Geminiが生成・整形した完全文配列をそのままダイレクトに結果とする
+                            const resultSentences = mergedSentences.map((aiItem, idx) => {
                                 const jaText = fixScriptureReferences((aiItem.ja || '').trim());
                                 const enText = aiItem.en ? aiItem.en.trim() : null;
                                 if (!isTest) {
@@ -3796,9 +3838,8 @@ function fixScriptureReferences(text) {
                                     if (recentContextHistory.length > 3) recentContextHistory.shift();
                                     detectSectionSync(jaText);
                                 }
-                                // 対応する元のrawChunk（要素数が一致すれば個別、異なれば全体テキスト）
-                                const matchingRaw = (aiSentences.length === items.length && items[idx]) ? items[idx].rawChunk : combinedRaw;
-                                const matchingPre = (aiSentences.length === items.length && items[idx]) ? items[idx].preCorrected : combinedPre;
+                                const matchingRaw = (mergedSentences.length === items.length && items[idx]) ? items[idx].rawChunk : combinedRaw;
+                                const matchingPre = (mergedSentences.length === items.length && items[idx]) ? items[idx].preCorrected : combinedPre;
                                 const isChanged = jaText !== matchingRaw;
 
                                 return {
