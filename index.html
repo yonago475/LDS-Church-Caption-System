@@ -569,6 +569,29 @@
         // ==================== 場面自動検出エンジン & スマート分割 & 辞書 ====================
 // ==================== 200語超規模の標準教会用語辞書プリセット (日本語音声認識→日本語正式用語) ====================
         const DEFAULT_DICTIONARY = {
+            // --- 2026/09/01 手動修正ログ分析に基づく新用語プリセット ---
+            "電動に出る": "伝道に出る",
+            "全道に出る": "伝道に出る",
+            "電動について": "伝道について",
+            "電動から帰還": "伝道から帰還",
+            "電動の飯": "伝道の召し",
+            "伝道の飯": "伝道の召し",
+            "一種の電動": "一種の伝道",
+            "山上の水訓": "山上の垂訓",
+            "東京 新田": "東京神殿",
+            "東京新田": "東京神殿",
+            "インスピュート": "インスティテュート",
+            "祝福しのうち": "祝福師の家",
+            "祝福しての家": "祝福師の家",
+            "祝福しては": "祝福師は",
+            "鮫島 祝福し": "鮫島祝福師",
+            "松井先生とイエスキリスト教会": "末日聖徒イエス・キリスト教会",
+            "松井先生とイエス・キリスト教会": "末日聖徒イエス・キリスト教会",
+            "末日生徒イエスキリスト教会": "末日聖徒イエス・キリスト教会",
+            "私は貸しします": "私は証します",
+            "主にムカついた": "主にひざまずいた",
+            "キリストのような交渉の愛": "キリストのような高尚な愛",
+
             // --- 聖餐会・組織・役職・クラス ---
             "まつじつせいと": "末日聖徒",
             "まついせいと": "末日聖徒",
@@ -592,7 +615,6 @@
             "親権者の兄弟たち": "神権者の兄弟たち",
             "しんけんしゃ": "神権者",
             "親権": "神権",
-            "真剣": "神権",
             "神件": "神権",
             "しんけんのかぎ": "神権の鍵",
             "美 ショップ": "ビショップ",
@@ -1252,8 +1274,6 @@
             "日の栄の考え": "日の栄えの考え方",
             "日の栄の考え方": "日の栄えの考え方",
             "教師 会": "司会",
-            "しんけん": "神権",
-            "真剣": "神権",
             "神件": "神権",
             "しんけんのかぎ": "神権の鍵",
             "ばぷてすま": "バプテスマ",
@@ -1774,6 +1794,7 @@ const SECTION_HINTS = {
         };
 
 // マークダウンの ```json や中途切断されたレスポンスから ja と en を確実に救出する超堅牢パーサー
+// バッチ処理対応: {"sentences": [{ja, en}, ...]} 形式と旧 {"ja": ..., "en": ...} 形式の両方に対応
 function extractJsonFromAiResponse(raw) {
     if (!raw) return null;
     let cleaned = raw.trim();
@@ -1786,11 +1807,62 @@ function extractJsonFromAiResponse(raw) {
         if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
             const candidate = cleaned.substring(firstBrace, lastBrace + 1);
             const parsed = JSON.parse(candidate);
-            if (parsed && typeof parsed === 'object' && parsed.ja) return parsed;
+            if (parsed && typeof parsed === 'object') {
+                // バッチ形式: {"sentences": [{ja, en}, ...]}
+                if (Array.isArray(parsed.sentences) && parsed.sentences.length > 0 && parsed.sentences[0].ja) {
+                    return {
+                        sentences: parsed.sentences.map(s => ({
+                            ja: s.ja ? String(s.ja).trim() : '',
+                            en: (s.en && String(s.en).trim()) ? String(s.en).trim() : null
+                        })).filter(s => !!s.ja)
+                    };
+                }
+                // 旧形式: {"ja": "...", "en": "..."}（後方互換）
+                if (parsed.ja) {
+                    return {
+                        ja: String(parsed.ja).trim(),
+                        en: (parsed.en && String(parsed.en).trim()) ? String(parsed.en).trim() : null
+                    };
+                }
+            }
         }
     } catch (e) { console.warn('JSON parse error (regex extract):', e.message); }
 
-    // 2. トークン上限等で中途切断された場合の正規表現救出
+    // 2. バッチ形式の部分パース（中途切断時の救出）
+    // "sentences" キーの存在を検出
+    if (cleaned.includes('"sentences"')) {
+        const sentences = [];
+        // 各 {ja, en} ブロックを正規表現で抽出
+        const blockRegex = /\{\s*"ja"\s*:\s*"((?:[^"\\]|\\.)*)"\s*(?:,\s*"en"\s*:\s*"((?:[^"\\]|\\.)*)")?\s*\}/g;
+        let match;
+        while ((match = blockRegex.exec(cleaned)) !== null) {
+            let ja = null, en = null;
+            try { ja = JSON.parse(`"${match[1]}"`); } catch (e) { ja = match[1]; }
+            if (match[2]) {
+                try { en = JSON.parse(`"${match[2]}"`); } catch (e) { en = match[2]; }
+            }
+            if (ja && ja.trim()) {
+                sentences.push({ ja: ja.trim(), en: en ? en.trim() : null });
+            }
+        }
+        // 最後の1文が途中で切れている場合の救出（閉じ括弧なし）
+        if (sentences.length === 0 || cleaned.lastIndexOf('{') > cleaned.lastIndexOf('}')) {
+            const lastJaMatch = cleaned.match(/\{\s*"ja"\s*:\s*"((?:[^"\\]|\\.)*)(?:"|\s*$)/);
+            if (lastJaMatch && lastJaMatch[1]) {
+                let lastJa = null;
+                try { lastJa = JSON.parse(`"${lastJaMatch[1]}"`); } catch (e) { lastJa = lastJaMatch[1]; }
+                if (lastJa && lastJa.trim()) {
+                    const isDup = sentences.some(s => s.ja === lastJa.trim());
+                    if (!isDup) sentences.push({ ja: lastJa.trim(), en: null });
+                }
+            }
+        }
+        if (sentences.length > 0) {
+            return { sentences };
+        }
+    }
+
+    // 3. 旧形式のトークン上限等で中途切断された場合の正規表現救出
     let ja = null;
     let en = null;
 
@@ -1824,7 +1896,7 @@ function extractJsonFromAiResponse(raw) {
         return { ja: ja.trim(), en: en ? en.trim() : null };
     }
 
-    // 3. 生のテキストから JSONプレフィックス・ゴミ文字を綺麗に除去して救出
+    // 4. 生のテキストから JSONプレフィックス・ゴミ文字を綺麗に除去して救出
     cleaned = cleaned.replace(/^\{?\s*"ja"\s*:\s*"?/i, '').replace(/"?\s*,?\s*"en"\s*:.*$/is, '').replace(/[}"']+$/g, '').trim();
     if (cleaned) {
         return { ja: cleaned, en: null };
@@ -2337,6 +2409,7 @@ function fixScriptureReferences(text) {
         const manualQueueCountBadge = document.getElementById('manualQueueCountBadge');
         let manualPendingQueue = [];
         let currentManualOriginalRaw = '';
+        let currentManualEnglishText = null;
 
         const audioDeviceSelect = document.getElementById('audioDeviceSelect');
         const refreshAudioDevicesBtn = document.getElementById('refreshAudioDevicesBtn');
@@ -2748,11 +2821,12 @@ function fixScriptureReferences(text) {
                     const nextItem = manualPendingQueue.shift();
                     const nextText = (typeof nextItem === 'object' && nextItem !== null) ? nextItem.text : nextItem;
                     const nextOrig = (typeof nextItem === 'object' && nextItem !== null) ? nextItem.original : nextItem;
+                    const nextEnglish = (typeof nextItem === 'object' && nextItem !== null) ? nextItem.englishText : null;
                     const norm = normalizeCaption(nextText);
                     // 直近30秒以内の過去送信履歴との重複を自動スキップ
                     const isDup = recentSentHistory.some(h => (now - h.timestamp < 30000) && (h.norm === norm));
                     if (!isDup && nextText && nextText.trim()) {
-                        return { text: nextText, original: nextOrig };
+                        return { text: nextText, original: nextOrig, englishText: nextEnglish };
                     }
                 }
                 return null;
@@ -2764,9 +2838,12 @@ function fixScriptureReferences(text) {
                 if (text) {
                     const corrected = fixScriptureReferences(replaceChurchTerms(text));
                     const isManuallyEdited = currentManualOriginalRaw && (normalizeCaption(text) !== normalizeCaption(currentManualOriginalRaw));
+                    // ユーザーが大幅に編集していなければ、Geminiが生成した公式教会用語英訳をそのまま直通配信
+                    const finalEnglishText = isManuallyEdited ? null : currentManualEnglishText;
                     dispatchCaption(corrected, {
                         original: currentManualOriginalRaw,
-                        isEdited: isManuallyEdited
+                        isEdited: isManuallyEdited,
+                        englishText: finalEnglishText
                     });
                 }
                 // 配信完了後、待機キューに次の文があれば「重複のない次の一文だけ」を取り出してエディターにセット
@@ -2774,9 +2851,11 @@ function fixScriptureReferences(text) {
                 if (nextItem) {
                     manualCaptionInput.value = nextItem.text;
                     currentManualOriginalRaw = nextItem.original;
+                    currentManualEnglishText = nextItem.englishText || null;
                 } else {
                     manualCaptionInput.value = '';
                     currentManualOriginalRaw = '';
+                    currentManualEnglishText = null;
                 }
                 updateManualQueueUI();
                 manualCaptionInput.focus();
@@ -2789,6 +2868,11 @@ function fixScriptureReferences(text) {
                 const currentVal = manualCaptionInput.value.trim();
                 manualCaptionInput.value = currentVal ? `${currentVal} ${nextItem.text}` : nextItem.text;
                 currentManualOriginalRaw = currentManualOriginalRaw ? `${currentManualOriginalRaw} ${nextItem.original}` : nextItem.original;
+                if (nextItem.englishText && currentManualEnglishText) {
+                    currentManualEnglishText = `${currentManualEnglishText} ${nextItem.englishText}`;
+                } else if (nextItem.englishText) {
+                    currentManualEnglishText = nextItem.englishText;
+                }
                 updateManualQueueUI();
                 manualCaptionInput.focus();
                 manualCaptionInput.selectionStart = manualCaptionInput.selectionEnd = manualCaptionInput.value.length;
@@ -2814,9 +2898,11 @@ function fixScriptureReferences(text) {
                     if (nextItem) {
                         manualCaptionInput.value = nextItem.text;
                         currentManualOriginalRaw = nextItem.original;
+                        currentManualEnglishText = nextItem.englishText || null;
                     } else {
                         manualCaptionInput.value = '';
                         currentManualOriginalRaw = '';
+                        currentManualEnglishText = null;
                     }
                     updateManualQueueUI();
                     manualCaptionInput.focus();
@@ -3385,13 +3471,15 @@ function fixScriptureReferences(text) {
 
 【厳格な出力ルール】
 1. 直前の文脈（直前発話履歴）をふまえ、説教・祈り・証の流れに調和するよう自然な日本語に整形してください。
-2. 出力は必ず以下のJSON形式のみで返してください。余計な解説・挨拶・前置き・マークダウン記法は一切不要です。
-3. "ja" には補正後の日本語を、"en" には教会の公式英語用語を用いた高品質な英語訳を入れてください。
-4. JSON構文崩れを防ぐため、英語訳内の引用符にはダブルクォート（"）を使わずシングルクォート（'）を使ってください。
-5. 英語の教会用語: 聖餐=Sacrament, 贖罪=Atonement, 証=testimony, バプテスマ=baptism, 天の御父=Heavenly Father, 御名=name, 聖典=scriptures, 安息日=Sabbath day, 神殿=temple, 伝道=missionary work, 改宗=conversion, 聖約=covenant, 教義=doctrine, 総大会=general conference, 大管長=President, 監督=bishop, 定員会=quorum, ステーク=stake, ワード=ward, 扶助協会=Relief Society, 初等協会=Primary, セミナリー=seminary, 柔和=meekness, 贖い=redemption, 昇栄=exaltation, 御霊=the Spirit, 聖霊=the Holy Ghost, モルモン書=the Book of Mormon, 教義と聖約=the Doctrine and Covenants, 高価な真珠=the Pearl of Great Price, 知恵の言葉=the Word of Wisdom, 救いの計画=the plan of salvation, 鉄の棒=the iron rod, 命の木=the tree of life, リアホナ=the Liahona, ゲツセマネ=Gethsemane, 主=the Lord, キリスト=Christ, 宣教師=missionary/missionaries, 信仰箇条=the Articles of Faith
+2. 入力テキストは「===」区切りで複数の文章が渡される場合があります。その場合、それぞれを独立した文として補正・翻訳してください。
+3. 文節の区切りが不自然な場合（息継ぎで途切れた文、意味的に結合すべき断片）は適切に分割・結合し、自然な1文単位に整形してください。
+4. 出力は必ず以下のJSON形式のみで返してください。余計な解説・挨拶・前置き・マークダウン記法は一切不要です。
+5. "ja" には補正後の日本語を、"en" には教会の公式英語用語を用いた高品質な英語訳を入れてください。
+6. JSON構文崩れを防ぐため、英語訳内の引用符にはダブルクォート（"）を使わずシングルクォート（'）を使ってください。
+7. 英語の教会用語: 聖餐=Sacrament, 贖罪=Atonement, 証=testimony, バプテスマ=baptism, 天の御父=Heavenly Father, 御名=name, 聖典=scriptures, 安息日=Sabbath day, 神殿=temple, 伝道=missionary work, 改宗=conversion, 聖約=covenant, 教義=doctrine, 総大会=general conference, 大管長=President, 監督=bishop, 定員会=quorum, ステーク=stake, ワード=ward, 扶助協会=Relief Society, 初等協会=Primary, セミナリー=seminary, 柔和=meekness, 贖い=redemption, 昇栄=exaltation, 御霊=the Spirit, 聖霊=the Holy Ghost, モルモン書=the Book of Mormon, 教義と聖約=the Doctrine and Covenants, 高価な真珠=the Pearl of Great Price, 知恵の言葉=the Word of Wisdom, 救いの計画=the plan of salvation, 鉄の棒=the iron rod, 命の木=the tree of life, リアホナ=the Liahona, ゲツセマネ=Gethsemane, 主=the Lord, キリスト=Christ, 宣教師=missionary/missionaries, 信仰箇条=the Articles of Faith
 
-出力JSON形式:
-{"ja": "補正後の日本語テキスト", "en": "High-quality English translation using official LDS terminology"}`;
+出力JSON形式（必ずsentences配列形式で返す。入力が1文でも配列にする）:
+{"sentences": [{"ja": "補正後の日本語テキスト1", "en": "English translation 1"}, {"ja": "補正後の日本語テキスト2", "en": "English translation 2"}]}`;
 
         // 直近の確定発話履歴（最大3件）を保持するコンテキストウィンドウ
         let recentContextHistory = [];
@@ -3438,71 +3526,82 @@ function fixScriptureReferences(text) {
             return null;
         }
 
-        async function correctWithGemini(rawText, options = {}) {
-            if (!rawText || !rawText.trim()) return { ja: '', en: null, isAiSuccess: false, status: 'EMPTY', model: '-', latency: 0, preCorrected: '', dictChanged: false };
+        // ==================== バッチ処理対応 Gemini API 一括補正・翻訳 ====================
+        // items: [{rawChunk, preCorrected, dictChanged}, ...] の配列
+        // 戻り値: {sentences: [{ja, en, isAiSuccess, rawChunk, preCorrected, dictChanged, model, latency, status}, ...]}
+        async function correctWithGeminiBatch(items, options = {}) {
+            if (!items || items.length === 0) return { sentences: [] };
 
             const isTest = !!options.isTest;
-
-            // 【第1段】教会用語辞書および聖典参照フォーマットで基礎補正（0ms）
-            const preCorrected = fixScriptureReferences(replaceChurchTerms(rawText.trim()));
-            const dictChanged = (preCorrected !== rawText.trim());
 
             // 本番時のみ統計カウント
             if (!isTest) {
                 if (!aiStats.sessionStartTime) aiStats.sessionStartTime = Date.now();
-                aiStats.totalCaptions++;
+                aiStats.totalCaptions += items.length;
             }
 
+            // AI無効時: 辞書補正済みテキストをそのまま返す
             if (!isGeminiAiEnabled || !geminiApiKey) {
-                if (!isTest) {
-                    recentContextHistory.push(preCorrected);
-                    if (recentContextHistory.length > 3) recentContextHistory.shift();
-                    aiStats.dictFallbacks++;
-                    detectSectionSync(preCorrected);
-                    updateAiStatsDisplay();
-                }
-                return { ja: preCorrected, en: null, isAiSuccess: false, status: 'AI無効（ローカル辞書適用）', model: '-', latency: 0, preCorrected: preCorrected, dictChanged: dictChanged };
+                const fallbackSentences = items.map(item => {
+                    if (!isTest) {
+                        recentContextHistory.push(item.preCorrected);
+                        if (recentContextHistory.length > 3) recentContextHistory.shift();
+                        aiStats.dictFallbacks++;
+                        detectSectionSync(item.preCorrected);
+                    }
+                    return { ja: item.preCorrected, en: null, isAiSuccess: false, status: 'AI無効（ローカル辞書適用）', model: '-', latency: 0, preCorrected: item.preCorrected, dictChanged: item.dictChanged, rawChunk: item.rawChunk };
+                });
+                if (!isTest) updateAiStatsDisplay();
+                return { sentences: fallbackSentences };
             }
 
-            // 【保護1: 極短文・相槌のスキップ】テスト時以外は8文字未満のAIリクエストを節約（辞書補正のみ）
-            if (!isTest) {
-                const plainLen = preCorrected.replace(/[\s\u3000、。！？]+/g, '').length;
-                if (plainLen < 8) {
-                    recentContextHistory.push(preCorrected);
+            // 全アイテムが8文字未満の短文のみの場合はスキップ
+            const longItems = items.filter(item => item.preCorrected.replace(/[\s\u3000、。！？]+/g, '').length >= 8);
+            if (longItems.length === 0 && !isTest) {
+                const skipSentences = items.map(item => {
+                    recentContextHistory.push(item.preCorrected);
                     if (recentContextHistory.length > 3) recentContextHistory.shift();
                     aiStats.dictFallbacks++;
-                    detectSectionSync(preCorrected);
-                    updateAiStatsDisplay();
-                    return { ja: preCorrected, en: null, isAiSuccess: false, status: 'スキップ（短文<8文字）', model: '-', latency: 0, preCorrected: preCorrected, dictChanged: dictChanged };
-                }
+                    detectSectionSync(item.preCorrected);
+                    return { ja: item.preCorrected, en: null, isAiSuccess: false, status: 'スキップ（全文短文<8文字）', model: '-', latency: 0, preCorrected: item.preCorrected, dictChanged: item.dictChanged, rawChunk: item.rawChunk };
+                });
+                updateAiStatsDisplay();
+                return { sentences: skipSentences };
+            }
 
+            if (!isTest) {
                 const now = Date.now();
 
-                // 【保護2: 429レート制限受信時の自動冷却クールダウン（10秒間辞書待機）】
+                // 【保護: 429レート制限受信時の自動冷却クールダウン（10秒間辞書待機）】
                 if (now < last429CooldownUntil) {
-                    aiStats.dictFallbacks++;
-                    aiStats.rateLimitedCount = (aiStats.rateLimitedCount || 0) + 1;
-                    recentContextHistory.push(preCorrected);
-                    if (recentContextHistory.length > 3) recentContextHistory.shift();
-                    detectSectionSync(preCorrected);
+                    const cooldownSentences = items.map(item => {
+                        aiStats.dictFallbacks++;
+                        aiStats.rateLimitedCount = (aiStats.rateLimitedCount || 0) + 1;
+                        recentContextHistory.push(item.preCorrected);
+                        if (recentContextHistory.length > 3) recentContextHistory.shift();
+                        detectSectionSync(item.preCorrected);
+                        return { ja: item.preCorrected, en: null, isAiSuccess: false, status: 'スキップ（429制限10秒冷却中）', model: '-', latency: 0, preCorrected: item.preCorrected, dictChanged: item.dictChanged, rawChunk: item.rawChunk };
+                    });
                     updateAiStatsDisplay();
-                    return { ja: preCorrected, en: null, isAiSuccess: false, status: 'スキップ（429制限10秒冷却中）', model: '-', latency: 0, preCorrected: preCorrected, dictChanged: dictChanged };
+                    return { sentences: cooldownSentences };
                 }
 
-                // 【保護3: 15 RPM レートリミット保護ガード（最短4.0秒インターバル & 60秒10回上限）】
+                // 【保護: 15 RPM レートリミット保護ガード】
                 while (geminiCallTimestampsWindow.length > 0 && (now - geminiCallTimestampsWindow[0]) > 60000) {
                     geminiCallTimestampsWindow.shift();
                 }
-
                 const isRateLimitRisk = geminiCallTimestampsWindow.length >= 10 || (now - lastGeminiCallTimestamp < 4000);
                 if (isRateLimitRisk) {
-                    aiStats.dictFallbacks++;
-                    aiStats.rateLimitedCount = (aiStats.rateLimitedCount || 0) + 1;
-                    recentContextHistory.push(preCorrected);
-                    if (recentContextHistory.length > 3) recentContextHistory.shift();
-                    detectSectionSync(preCorrected);
+                    const rateLimitSentences = items.map(item => {
+                        aiStats.dictFallbacks++;
+                        aiStats.rateLimitedCount = (aiStats.rateLimitedCount || 0) + 1;
+                        recentContextHistory.push(item.preCorrected);
+                        if (recentContextHistory.length > 3) recentContextHistory.shift();
+                        detectSectionSync(item.preCorrected);
+                        return { ja: item.preCorrected, en: null, isAiSuccess: false, status: 'スキップ（15RPM保護ガード作動）', model: '-', latency: 0, preCorrected: item.preCorrected, dictChanged: item.dictChanged, rawChunk: item.rawChunk };
+                    });
                     updateAiStatsDisplay();
-                    return { ja: preCorrected, en: null, isAiSuccess: false, status: 'スキップ（15RPM保護ガード作動）', model: '-', latency: 0, preCorrected: preCorrected, dictChanged: dictChanged };
+                    return { sentences: rateLimitSentences };
                 }
 
                 lastGeminiCallTimestamp = now;
@@ -3518,19 +3617,19 @@ function fixScriptureReferences(text) {
             }
 
             const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 5500);
+            // バッチ処理は複数文を含むため、タイムアウトをやや長めに設定
+            const timeoutMs = isTest ? 5500 : Math.min(5500 + (items.length - 1) * 1000, 10000);
+            const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
             const startTime = performance.now();
 
-            // 試行するモデル候補リスト（自動検出モデル ＋ 最新モデル群フォールバック）
+            // 試行するモデル候補リスト（バッチ処理に最適化: lite系を優先）
             let candidateModels = [
                 cachedWorkingGeminiModel,
                 'gemini-3.5-flash-lite',
-                'gemini-2.5-flash',
                 'gemini-2.5-flash-lite',
                 'gemini-2.0-flash',
                 'gemini-1.5-flash'
             ].filter(Boolean);
-            // 重複排除
             candidateModels = Array.from(new Set(candidateModels));
 
             let successData = null;
@@ -3545,7 +3644,13 @@ function fixScriptureReferences(text) {
                 if (validContext.length > 0) {
                     userPrompt += `【直前の発話文脈】\n${validContext.slice(-2).join('\n')}\n\n`;
                 }
-                userPrompt += `【今回の発話（校正対象）】\n${preCorrected}`;
+
+                // バッチ入力: 複数文を === 区切りで連結
+                const batchInput = items.map(item => item.preCorrected).join('\n===\n');
+                userPrompt += `【今回の発話（校正対象）】\n${batchInput}`;
+
+                // maxOutputTokens をバッチサイズに応じて調整
+                const maxTokens = Math.min(1000 + (items.length - 1) * 500, 4000);
 
                 // モデルフォールバックループ
                 for (let i = 0; i < candidateModels.length; i++) {
@@ -3570,7 +3675,7 @@ function fixScriptureReferences(text) {
                                 ],
                                 generationConfig: {
                                     temperature: 0.1,
-                                    maxOutputTokens: 1000
+                                    maxOutputTokens: maxTokens
                                 }
                             })
                         });
@@ -3635,30 +3740,90 @@ function fixScriptureReferences(text) {
                 const aiOutput = successData.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || successData.candidates?.[0]?.text?.trim();
 
                 if (aiOutput && aiOutput.length > 0) {
-                    let jaText = null;
-                    let enText = null;
-
                     // 堅牢な JSON パーサーで抽出
                     const parsed = extractJsonFromAiResponse(aiOutput);
+                    
                     if (parsed && typeof parsed === 'object') {
-                        jaText = parsed.ja ? fixScriptureReferences(parsed.ja.trim()) : null;
-                        enText = parsed.en ? parsed.en.trim() : null;
-                    } else {
-                        jaText = fixScriptureReferences(aiOutput.replace(/^["'\s]+|["'\s]+$/g, ''));
-                        enText = null;
-                    }
+                        let aiSentences = [];
 
-                    if (jaText) {
+                        // バッチ形式: {"sentences": [{ja, en}, ...]}
+                        if (Array.isArray(parsed.sentences)) {
+                            aiSentences = parsed.sentences;
+                        }
+                        // 旧形式互換: {"ja": "...", "en": "..."} → 配列に変換
+                        else if (parsed.ja) {
+                            aiSentences = [{ ja: parsed.ja, en: parsed.en || null }];
+                        }
+
+                        if (aiSentences.length > 0) {
+                            // AI結果を元のアイテムとマッピング
+                            const resultSentences = items.map((item, idx) => {
+                                const aiItem = aiSentences[idx] || null;
+                                if (aiItem && aiItem.ja) {
+                                    const jaText = fixScriptureReferences(aiItem.ja.trim());
+                                    const enText = aiItem.en ? aiItem.en.trim() : null;
+                                    const isChanged = jaText !== item.rawChunk;
+                                    if (!isTest) {
+                                        aiStats.aiCorrected++;
+                                        aiStats.lastErrorMessage = null;
+                                        aiStats.activeModelName = successfulModel;
+                                        recentContextHistory.push(jaText);
+                                        if (recentContextHistory.length > 3) recentContextHistory.shift();
+                                        detectSectionSync(jaText);
+                                    }
+                                    return { ja: jaText, en: enText, isAiSuccess: true && isChanged, model: successfulModel, latency: Math.round(elapsed), status: 'HTTP 200 OK', preCorrected: item.preCorrected, dictChanged: item.dictChanged, rawChunk: item.rawChunk };
+                                } else {
+                                    // AI結果がこのインデックスに対応しない場合は辞書補正済みを返す
+                                    if (!isTest) {
+                                        aiStats.dictFallbacks++;
+                                        recentContextHistory.push(item.preCorrected);
+                                        if (recentContextHistory.length > 3) recentContextHistory.shift();
+                                        detectSectionSync(item.preCorrected);
+                                    }
+                                    return { ja: item.preCorrected, en: null, isAiSuccess: false, model: successfulModel, latency: Math.round(elapsed), status: 'AI応答不足（辞書フォールバック）', preCorrected: item.preCorrected, dictChanged: item.dictChanged, rawChunk: item.rawChunk };
+                                }
+                            });
+
+                            // AI結果がitems数より多い場合（Geminiが文を分割した場合）
+                            if (aiSentences.length > items.length) {
+                                for (let k = items.length; k < aiSentences.length; k++) {
+                                    const extraItem = aiSentences[k];
+                                    if (extraItem && extraItem.ja) {
+                                        const jaText = fixScriptureReferences(extraItem.ja.trim());
+                                        const enText = extraItem.en ? extraItem.en.trim() : null;
+                                        if (!isTest) {
+                                            aiStats.aiCorrected++;
+                                            recentContextHistory.push(jaText);
+                                            if (recentContextHistory.length > 3) recentContextHistory.shift();
+                                            detectSectionSync(jaText);
+                                        }
+                                        resultSentences.push({ ja: jaText, en: enText, isAiSuccess: true, model: successfulModel, latency: Math.round(elapsed), status: 'HTTP 200 OK (AI分割)', preCorrected: jaText, dictChanged: false, rawChunk: jaText });
+                                    }
+                                }
+                            }
+
+                            if (!isTest) updateAiStatsDisplay();
+                            return { sentences: resultSentences };
+                        }
+                    }
+                    
+                    // JSONパース失敗だが生テキストがある場合: 全文を1つの結果として返す
+                    const rawJaText = fixScriptureReferences(aiOutput.replace(/^["'\s]+|["'\s]+$/g, ''));
+                    if (rawJaText && items.length > 0) {
                         if (!isTest) {
                             aiStats.aiCorrected++;
-                            aiStats.lastErrorMessage = null;
-                            aiStats.activeModelName = successfulModel;
-                            recentContextHistory.push(jaText);
+                            recentContextHistory.push(rawJaText);
                             if (recentContextHistory.length > 3) recentContextHistory.shift();
-                            detectSectionSync(jaText);
+                            detectSectionSync(rawJaText);
                             updateAiStatsDisplay();
                         }
-                        return { ja: jaText, en: enText, isAiSuccess: true, model: successfulModel, latency: Math.round(elapsed), status: 'HTTP 200 OK', preCorrected: preCorrected, dictChanged: dictChanged };
+                        const fallback = items.map((item, idx) => {
+                            if (idx === 0) {
+                                return { ja: rawJaText, en: null, isAiSuccess: true, model: successfulModel, latency: Math.round(elapsed), status: 'HTTP 200 OK (生テキスト救出)', preCorrected: item.preCorrected, dictChanged: item.dictChanged, rawChunk: item.rawChunk };
+                            }
+                            return { ja: item.preCorrected, en: null, isAiSuccess: false, model: successfulModel, latency: Math.round(elapsed), status: '辞書フォールバック', preCorrected: item.preCorrected, dictChanged: item.dictChanged, rawChunk: item.rawChunk };
+                        });
+                        return { sentences: fallback };
                     }
                 }
             } catch (err) {
@@ -3666,30 +3831,49 @@ function fixScriptureReferences(text) {
                 if (!isTest) {
                     if (err.name === 'AbortError') {
                         aiStats.aiTimeouts++;
-                        aiStats.lastErrorMessage = 'タイムアウト (4.5秒超過)';
+                        aiStats.lastErrorMessage = 'タイムアウト (バッチ処理超過)';
                     } else {
                         aiStats.aiErrors++;
                         if (!aiStats.lastErrorMessage) aiStats.lastErrorMessage = err.message;
                     }
                 }
-                console.error('Gemini AI補正エラー（辞書フォールバック）:', err);
-                const statusMsg = (err && err.name === 'AbortError') ? 'タイムアウト (4.5秒超過)' : (lastDetailError || (err ? err.message : 'ERROR'));
+                console.error('Gemini AI バッチ補正エラー（辞書フォールバック）:', err);
+                const statusMsg = (err && err.name === 'AbortError') ? 'タイムアウト (バッチ処理超過)' : (lastDetailError || (err ? err.message : 'ERROR'));
                 if (isTest) {
-                    return { ja: preCorrected, en: null, isAiSuccess: false, error: err.message, status: statusMsg, model: successfulModel || '-', latency: Math.round(performance.now() - startTime), preCorrected: preCorrected, dictChanged: dictChanged };
+                    const testFallback = items.map(item => ({
+                        ja: item.preCorrected, en: null, isAiSuccess: false, error: err.message, status: statusMsg, model: successfulModel || '-', latency: Math.round(performance.now() - startTime), preCorrected: item.preCorrected, dictChanged: item.dictChanged, rawChunk: item.rawChunk
+                    }));
+                    return { sentences: testFallback };
                 }
             } finally {
                 clearTimeout(timeoutId);
             }
 
+            // 全失敗時: 辞書補正済みを返す
             if (!isTest) {
-                aiStats.dictFallbacks++;
-                recentContextHistory.push(preCorrected);
-                if (recentContextHistory.length > 3) recentContextHistory.shift();
-                detectSectionSync(preCorrected);
                 updateAiStatsDisplay();
             }
             const fallbackStatus = lastDetailError || '辞書フォールバック';
-            return { ja: preCorrected, en: null, isAiSuccess: false, status: fallbackStatus, model: successfulModel || '-', latency: Math.round(performance.now() - startTime), preCorrected: preCorrected, dictChanged: dictChanged };
+            const fallbackSentences = items.map(item => {
+                if (!isTest) {
+                    aiStats.dictFallbacks++;
+                    recentContextHistory.push(item.preCorrected);
+                    if (recentContextHistory.length > 3) recentContextHistory.shift();
+                    detectSectionSync(item.preCorrected);
+                }
+                return { ja: item.preCorrected, en: null, isAiSuccess: false, status: fallbackStatus, model: successfulModel || '-', latency: Math.round(performance.now() - startTime), preCorrected: item.preCorrected, dictChanged: item.dictChanged, rawChunk: item.rawChunk };
+            });
+            return { sentences: fallbackSentences };
+        }
+
+        // 接続テスト互換ラッパー: 単一テキストを旧形式で処理（接続テストUI用）
+        async function correctWithGemini(rawText, options = {}) {
+            if (!rawText || !rawText.trim()) return { ja: '', en: null, isAiSuccess: false, status: 'EMPTY', model: '-', latency: 0, preCorrected: '', dictChanged: false };
+            const preCorrected = fixScriptureReferences(replaceChurchTerms(rawText.trim()));
+            const dictChanged = (preCorrected !== rawText.trim());
+            const batchResult = await correctWithGeminiBatch([{ rawChunk: rawText.trim(), preCorrected, dictChanged }], options);
+            const first = batchResult.sentences[0] || {};
+            return { ja: first.ja || preCorrected, en: first.en || null, isAiSuccess: !!first.isAiSuccess, status: first.status || 'N/A', model: first.model || '-', latency: first.latency || 0, preCorrected: preCorrected, dictChanged: dictChanged, error: first.error };
         }
 
 
@@ -4322,110 +4506,167 @@ ${existingKeys.slice(0, 100).join(', ')}
             recognition.interimResults = true;
             recognition.lang = 'ja-JP';
 
-            // AI文脈補正・配信の順序保証キュー（レースコンディションによる文の順序逆転を完全防止）
-            let aiProcessingQueue = Promise.resolve();
+            // ==================== 5秒バッチバッファ機構 ====================
+            // 音声認識で確定した文章をバッファに蓄積し、最初の文到着から5秒後にまとめてGemini APIで一括処理
+            const batchBuffer = [];        // {rawChunk, preCorrected, dictChanged, provisionalId} の配列
+            let batchTimer = null;         // 5秒タイマーID
+            const BATCH_INTERVAL_MS = 5000; // バッチ間隔（5秒）
+            let provisionalIdCounter = 0;  // 仮表示ID管理用
 
-            // 配信モードに応じたチャンク処理（自動配信時は直接dispatch、手動モード時はエディターまたは待機キューへ格納）
-            function handleRecognizedChunk(rawChunk) {
+            // バッチバッファにアイテムを追加（辞書プレパス済み）
+            function addToBatchBuffer(rawChunk) {
                 if (!rawChunk || !rawChunk.trim()) return;
 
-                aiProcessingQueue = aiProcessingQueue.then(async () => {
-                    let processedChunk = rawChunk;
-                    let englishText = null;
-                    let isAi = false;
-                    let telemetryResult = null;
+                // 第1段: 辞書プレパス（即時、0ms）
+                const preCorrected = fixScriptureReferences(replaceChurchTerms(rawChunk.trim()));
+                const dictChanged = (preCorrected !== rawChunk.trim());
+                provisionalIdCounter++;
+                const provisionalId = `prov_${provisionalIdCounter}`;
 
-                    try {
-                        const result = await correctWithGemini(rawChunk);
-                        telemetryResult = result;
-                        processedChunk = result.ja || rawChunk;
-                        englishText = result.en || null;
-                        isAi = isGeminiAiEnabled && !!geminiApiKey && !!result && result.isAiSuccess && (processedChunk !== rawChunk);
-                    } catch (e) {
-                        console.warn('AI補正スキップ:', e);
-                        processedChunk = fixScriptureReferences(replaceChurchTerms(rawChunk.trim()));
-                        telemetryResult = {
-                            preCorrected: processedChunk,
-                            dictChanged: (processedChunk !== rawChunk.trim()),
-                            status: `エラーフォールバック: ${e.message}`,
-                            model: '-',
-                            latency: 0
-                        };
+                batchBuffer.push({ rawChunk: rawChunk.trim(), preCorrected, dictChanged, provisionalId });
+
+                // ホスト画面に辞書補正済みテキストを「仮表示」
+                showProvisionalCaption(preCorrected, rawChunk, provisionalId);
+
+                // 最初の文が来た時のみタイマー開始（5秒後にフラッシュ）
+                if (!batchTimer) {
+                    batchTimer = setTimeout(() => {
+                        batchTimer = null;
+                        flushBatchBuffer();
+                    }, BATCH_INTERVAL_MS);
+                }
+            }
+
+            // ホスト画面に辞書補正済みテキストを「仮表示」（Gemini結果が返るまでの暫定プレビュー）
+            function showProvisionalCaption(preCorrected, rawChunk, provisionalId) {
+                if (isManualMode) {
+                    // 手動配信モード: interimTextに処理待ちを表示
+                    if (interimText) {
+                        interimText.textContent = `⏳ バッチ処理待ち (${batchBuffer.length}文蓄積中)...`;
                     }
+                } else {
+                    // 自動配信モード: interimTextに仮テキストをプレビュー
+                    if (interimText) {
+                        interimText.textContent = `📝 ${preCorrected} ⏳`;
+                    }
+                }
+            }
 
-                    if (!processedChunk) processedChunk = rawChunk;
-                    const isEdited = processedChunk !== rawChunk;
-                    let finalAction = 'BROADCAST';
+            // 仮表示のクリア
+            function clearProvisionalCaptions() {
+                // 仮表示は interimText に表示しているだけなので、特別なクリーンアップは不要
+                // interimText は次の音声認識イベントで自然に更新される
+            }
 
-                    if (isManualMode) {
-                        const normChunk = normalizeCaption(processedChunk);
-                        const now = Date.now();
+            // バッチバッファを一括フラッシュ: Gemini APIで全文を一括処理して配信
+            async function flushBatchBuffer() {
+                if (batchBuffer.length === 0) return;
 
-                        // 1. 直近30秒以内の過去送信履歴との重複チェック
-                        const isSentDuplicate = recentSentHistory.some(item => {
-                            return (now - item.timestamp < 30000) && (item.norm === normChunk);
-                        });
+                // バッファからアイテムを取り出し（コピーして空に）
+                const items = batchBuffer.splice(0);
+                clearProvisionalCaptions();
 
-                        // 2. 現在のエディタ入力内容との重複チェック
-                        const isCurrentInputDuplicate = manualCaptionInput && (normalizeCaption(manualCaptionInput.value.trim()) === normChunk);
+                try {
+                    // Gemini API へ一括送信
+                    const batchResult = await correctWithGeminiBatch(items);
+                    const sentences = batchResult.sentences || [];
 
-                        // 3. 待機キュー内の既存アイテムとの重複チェック
-                        const isQueueDuplicate = manualPendingQueue.some(item => {
-                            const itemText = (typeof item === 'object' && item !== null) ? item.text : item;
-                            return normalizeCaption(itemText) === normChunk;
-                        });
+                    // 結果を1文ずつ配信/手動キューに振り分け
+                    for (let idx = 0; idx < sentences.length; idx++) {
+                        const result = sentences[idx];
+                        const rawChunk = result.rawChunk || (items[idx] ? items[idx].rawChunk : '');
+                        const processedChunk = result.ja || rawChunk;
+                        const englishText = result.en || null;
+                        const isAi = isGeminiAiEnabled && !!geminiApiKey && !!result.isAiSuccess && (processedChunk !== rawChunk);
+                        const isEdited = processedChunk !== rawChunk;
+                        let finalAction = 'BROADCAST';
 
-                        if (isSentDuplicate || isCurrentInputDuplicate || isQueueDuplicate) {
-                            finalAction = 'DUPLICATE_SUPPRESSED';
-                        } else {
-                            finalAction = 'MANUAL_QUEUED';
-                            if (manualCaptionInput) {
-                                const currentVal = manualCaptionInput.value.trim();
-                                if (!currentVal) {
-                                    manualCaptionInput.value = processedChunk;
-                                    currentManualOriginalRaw = rawChunk;
-                                    manualCaptionInput.scrollTop = manualCaptionInput.scrollHeight;
-                                } else {
-                                    manualPendingQueue.push({ text: processedChunk, original: rawChunk, isAi: isAi });
-                                    updateManualQueueUI();
+                        if (isManualMode) {
+                            const normChunk = normalizeCaption(processedChunk);
+                            const now = Date.now();
+
+                            // 1. 直近30秒以内の過去送信履歴との重複チェック
+                            const isSentDuplicate = recentSentHistory.some(item => {
+                                return (now - item.timestamp < 30000) && (item.norm === normChunk);
+                            });
+
+                            // 2. 現在のエディタ入力内容との重複チェック
+                            const isCurrentInputDuplicate = manualCaptionInput && (normalizeCaption(manualCaptionInput.value.trim()) === normChunk);
+
+                            // 3. 待機キュー内の既存アイテムとの重複チェック
+                            const isQueueDuplicate = manualPendingQueue.some(item => {
+                                const itemText = (typeof item === 'object' && item !== null) ? item.text : item;
+                                return normalizeCaption(itemText) === normChunk;
+                            });
+
+                            if (isSentDuplicate || isCurrentInputDuplicate || isQueueDuplicate) {
+                                finalAction = 'DUPLICATE_SUPPRESSED';
+                            } else {
+                                finalAction = 'MANUAL_QUEUED';
+                                if (manualCaptionInput) {
+                                    const currentVal = manualCaptionInput.value.trim();
+                                    if (!currentVal) {
+                                        manualCaptionInput.value = processedChunk;
+                                        currentManualOriginalRaw = rawChunk;
+                                        currentManualEnglishText = englishText;
+                                        manualCaptionInput.scrollTop = manualCaptionInput.scrollHeight;
+                                    } else {
+                                        manualPendingQueue.push({ text: processedChunk, original: rawChunk, isAi: isAi, englishText: englishText });
+                                        updateManualQueueUI();
+                                    }
                                 }
                             }
+                        } else {
+                            const dispatchRes = dispatchCaption(processedChunk, { original: rawChunk, isEdited: isEdited, isAi: isAi, englishText: englishText });
+                            if (dispatchRes && dispatchRes.action) {
+                                finalAction = dispatchRes.action;
+                            }
                         }
-                    } else {
-                        const dispatchRes = dispatchCaption(processedChunk, { original: rawChunk, isEdited: isEdited, isAi: isAi, englishText: englishText });
-                        if (dispatchRes && dispatchRes.action) {
-                            finalAction = dispatchRes.action;
-                        }
-                    }
 
-                    // 診断テレメトリログへの記録
-                    logDiagnosticTelemetry({
-                        rawText: rawChunk,
-                        dictText: telemetryResult ? telemetryResult.preCorrected : processedChunk,
-                        dictChanged: telemetryResult ? telemetryResult.dictChanged : false,
-                        geminiStatus: telemetryResult ? telemetryResult.status : 'N/A',
-                        geminiModel: telemetryResult ? telemetryResult.model : '-',
-                        latencyMs: telemetryResult ? telemetryResult.latency : 0,
-                        outputText: processedChunk,
-                        englishText: englishText,
-                        isAiApplied: isAi,
-                        action: finalAction
-                    });
-                }).catch(err => {
-                    console.error('AI処理キュー回復:', err);
-                    const dispatchRes = dispatchCaption(rawChunk, { original: rawChunk, isEdited: false, isAi: false });
-                    logDiagnosticTelemetry({
-                        rawText: rawChunk,
-                        dictText: rawChunk,
-                        dictChanged: false,
-                        geminiStatus: `キュー回復フォールバック: ${err.message}`,
-                        geminiModel: '-',
-                        latencyMs: 0,
-                        outputText: rawChunk,
-                        isAiApplied: false,
-                        action: (dispatchRes && dispatchRes.action) ? dispatchRes.action : 'BROADCAST'
-                    });
-                });
+                        // 診断テレメトリログへの記録
+                        logDiagnosticTelemetry({
+                            rawText: rawChunk,
+                            dictText: result.preCorrected || processedChunk,
+                            dictChanged: result.dictChanged || false,
+                            geminiStatus: result.status || 'N/A',
+                            geminiModel: result.model || '-',
+                            latencyMs: result.latency || 0,
+                            outputText: processedChunk,
+                            englishText: englishText,
+                            isAiApplied: isAi,
+                            action: finalAction
+                        });
+                    }
+                } catch (err) {
+                    console.error('バッチ処理キュー回復:', err);
+                    // エラー時は辞書補正済みテキストで各文を個別配信（フォールバック）
+                    for (const item of items) {
+                        const processedChunk = item.preCorrected;
+                        const dispatchRes = dispatchCaption(processedChunk, { original: item.rawChunk, isEdited: item.dictChanged, isAi: false });
+                        logDiagnosticTelemetry({
+                            rawText: item.rawChunk,
+                            dictText: processedChunk,
+                            dictChanged: item.dictChanged,
+                            geminiStatus: `バッチ回復フォールバック: ${err.message}`,
+                            geminiModel: '-',
+                            latencyMs: 0,
+                            outputText: processedChunk,
+                            isAiApplied: false,
+                            action: (dispatchRes && dispatchRes.action) ? dispatchRes.action : 'BROADCAST'
+                        });
+                    }
+                }
+
+                // バッチ処理完了後、待機中のinterimTextをリセット
+                if (interimText && batchBuffer.length === 0) {
+                    interimText.textContent = '（次の音声入力を待機中...）';
+                }
+            }
+
+            // handleRecognizedChunk: バッチバッファへの橋渡し
+            function handleRecognizedChunk(rawChunk) {
+                if (!rawChunk || !rawChunk.trim()) return;
+                addToBatchBuffer(rawChunk);
             }
 
             // 現在の未確定音声ストリームにおける追跡
@@ -4570,6 +4811,9 @@ ${existingKeys.slice(0, 100).join(', ')}
                 if (isRecognizing) {
                     isRecognizing = false;
                     flushUnhandledInterim();
+                    // バッチバッファに残っている文章も即座にフラッシュ
+                    if (batchTimer) { clearTimeout(batchTimer); batchTimer = null; }
+                    flushBatchBuffer();
                     lastCommittedInterim = '';
                     currentUnhandledText = '';
                     if (recognitionRestartTimer) clearTimeout(recognitionRestartTimer);
