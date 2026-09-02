@@ -3508,8 +3508,11 @@ function fixScriptureReferences(text) {
                         .map(m => m.name.replace(/^models\//, ''));
 
                     // flashモデルを優先順位をつけて自動選択
-                    const preferred = validModels.find(m => m.includes('3.5-flash')) ||
+                    const preferred = validModels.find(m => m.includes('3.5-flash-lite')) ||
+                                      validModels.find(m => m.includes('3.5-flash')) ||
+                                      validModels.find(m => m.includes('2.5-flash-lite')) ||
                                       validModels.find(m => m.includes('2.5-flash')) ||
+                                      validModels.find(m => m.includes('2.0-flash-lite')) ||
                                       validModels.find(m => m.includes('2.0-flash')) ||
                                       validModels.find(m => m.includes('1.5-flash')) ||
                                       validModels.find(m => m.includes('flash')) ||
@@ -3617,16 +3620,18 @@ function fixScriptureReferences(text) {
             }
 
             const controller = new AbortController();
-            // バッチ処理は複数文を含むため、タイムアウトをやや長めに設定
-            const timeoutMs = isTest ? 5500 : Math.min(5500 + (items.length - 1) * 1000, 10000);
+            // バッチ処理および接続テストでのタイムアウトを十分に確保
+            const timeoutMs = isTest ? 12000 : Math.min(8000 + (items.length - 1) * 1000, 18000);
             const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
             const startTime = performance.now();
 
-            // 試行するモデル候補リスト（バッチ処理に最適化: lite系を優先）
+            // 試行するモデル候補リスト（最速のgemini-3.5-flash-liteを最優先）
             let candidateModels = [
                 cachedWorkingGeminiModel,
                 'gemini-3.5-flash-lite',
                 'gemini-2.5-flash-lite',
+                'gemini-2.5-flash',
+                'gemini-2.0-flash-lite',
                 'gemini-2.0-flash',
                 'gemini-1.5-flash'
             ].filter(Boolean);
