@@ -981,8 +981,27 @@
             "あんもん": "アンモン",
             "ひらまん": "ヒラマン",
             "もーろないは": "モーロナイハ",
-            "えてる": "エテル",
+            "えてるしょ": "エテル書",
+            "エテル記": "エテル書",
             "こりあんたまー": "コリアンタマー",
+
+            // --- 歴代指導者・使徒・地域名 ---
+            "べとな": "ベドナー",
+            "ベトナ": "ベドナー",
+            "べとな長老": "ベドナー長老",
+            "ベトナ長老": "ベドナー長老",
+            "ベトナ チョロ": "ベドナー長老",
+            "ベトナ チョーロー": "ベドナー長老",
+            "ベトナチョロ": "ベドナー長老",
+            "入江 ステーク 会長": "入江ステーク会長",
+            "旭川 ステーク": "旭川ステーク",
+            "新琴似 ワード": "新琴似ワード",
+            "死んでに": "神殿に",
+            "死んでで": "神殿で",
+            "死んでへ": "神殿へ",
+            "私のコロナに": "私の心に",
+            "教師 会": "司会",
+            "教師会をして": "司会をして",
 
             // --- 聖典の地名・事物 ---
             "てつのぼう": "鉄の棒",
@@ -1398,7 +1417,7 @@
             "あるま": "アルマ",
             "ひらまん": "ヒラマン",
             "もろない": "モロナイ",
-            "えてる": "エテル",
+            "えてるしょ": "エテル書",
             "えのす": "エノス",
             "やこぶ": "ヤコブ",
             "もるもん": "モルモン",
@@ -3761,51 +3780,39 @@ function fixScriptureReferences(text) {
                         }
 
                         if (aiSentences.length > 0) {
-                            // AI結果を元のアイテムとマッピング
-                            const resultSentences = items.map((item, idx) => {
-                                const aiItem = aiSentences[idx] || null;
-                                if (aiItem && aiItem.ja) {
-                                    const jaText = fixScriptureReferences(aiItem.ja.trim());
-                                    const enText = aiItem.en ? aiItem.en.trim() : null;
-                                    const isChanged = jaText !== item.rawChunk;
-                                    if (!isTest) {
-                                        aiStats.aiCorrected++;
-                                        aiStats.lastErrorMessage = null;
-                                        aiStats.activeModelName = successfulModel;
-                                        recentContextHistory.push(jaText);
-                                        if (recentContextHistory.length > 3) recentContextHistory.shift();
-                                        detectSectionSync(jaText);
-                                    }
-                                    return { ja: jaText, en: enText, isAiSuccess: true && isChanged, model: successfulModel, latency: Math.round(elapsed), status: 'HTTP 200 OK', preCorrected: item.preCorrected, dictChanged: item.dictChanged, rawChunk: item.rawChunk };
-                                } else {
-                                    // AI結果がこのインデックスに対応しない場合は辞書補正済みを返す
-                                    if (!isTest) {
-                                        aiStats.dictFallbacks++;
-                                        recentContextHistory.push(item.preCorrected);
-                                        if (recentContextHistory.length > 3) recentContextHistory.shift();
-                                        detectSectionSync(item.preCorrected);
-                                    }
-                                    return { ja: item.preCorrected, en: null, isAiSuccess: false, model: successfulModel, latency: Math.round(elapsed), status: 'AI応答不足（辞書フォールバック）', preCorrected: item.preCorrected, dictChanged: item.dictChanged, rawChunk: item.rawChunk };
-                                }
-                            });
+                            // バッチ全体の生テキストおよび辞書補正テキスト
+                            const combinedRaw = items.map(i => i.rawChunk).join(' ');
+                            const combinedPre = items.map(i => i.preCorrected).join(' ');
 
-                            // AI結果がitems数より多い場合（Geminiが文を分割した場合）
-                            if (aiSentences.length > items.length) {
-                                for (let k = items.length; k < aiSentences.length; k++) {
-                                    const extraItem = aiSentences[k];
-                                    if (extraItem && extraItem.ja) {
-                                        const jaText = fixScriptureReferences(extraItem.ja.trim());
-                                        const enText = extraItem.en ? extraItem.en.trim() : null;
-                                        if (!isTest) {
-                                            aiStats.aiCorrected++;
-                                            recentContextHistory.push(jaText);
-                                            if (recentContextHistory.length > 3) recentContextHistory.shift();
-                                            detectSectionSync(jaText);
-                                        }
-                                        resultSentences.push({ ja: jaText, en: enText, isAiSuccess: true, model: successfulModel, latency: Math.round(elapsed), status: 'HTTP 200 OK (AI分割)', preCorrected: jaText, dictChanged: false, rawChunk: jaText });
-                                    }
+                            // Geminiが生成・整形した文配列をそのままダイレクトに結果とする（ズレ・不足を完全根絶）
+                            const resultSentences = aiSentences.map((aiItem, idx) => {
+                                const jaText = fixScriptureReferences((aiItem.ja || '').trim());
+                                const enText = aiItem.en ? aiItem.en.trim() : null;
+                                if (!isTest) {
+                                    aiStats.aiCorrected++;
+                                    aiStats.lastErrorMessage = null;
+                                    aiStats.activeModelName = successfulModel;
+                                    recentContextHistory.push(jaText);
+                                    if (recentContextHistory.length > 3) recentContextHistory.shift();
+                                    detectSectionSync(jaText);
                                 }
-                            }
+                                // 対応する元のrawChunk（要素数が一致すれば個別、異なれば全体テキスト）
+                                const matchingRaw = (aiSentences.length === items.length && items[idx]) ? items[idx].rawChunk : combinedRaw;
+                                const matchingPre = (aiSentences.length === items.length && items[idx]) ? items[idx].preCorrected : combinedPre;
+                                const isChanged = jaText !== matchingRaw;
+
+                                return {
+                                    ja: jaText,
+                                    en: enText,
+                                    isAiSuccess: true,
+                                    model: successfulModel,
+                                    latency: Math.round(elapsed),
+                                    status: 'HTTP 200 OK',
+                                    preCorrected: matchingPre,
+                                    dictChanged: (matchingPre !== matchingRaw),
+                                    rawChunk: matchingRaw
+                                };
+                            }).filter(s => !!s.ja);
 
                             if (!isTest) updateAiStatsDisplay();
                             return { sentences: resultSentences };
