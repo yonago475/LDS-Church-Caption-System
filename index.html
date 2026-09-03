@@ -3,6 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- Content Security Policy for Defense-in-Depth Security -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.tailwindcss.com https://unpkg.com https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; font-src 'self' https://cdnjs.cloudflare.com data:; img-src 'self' data: blob: https:; connect-src 'self' https://generativelanguage.googleapis.com https://*.peerjs.com wss://*.peerjs.com https://api.mymemory.translated.net https://translate.googleapis.com https://*.metered.ca wss://*.metered.ca;">
     <title>多言語字幕配信 | The Church of Jesus Christ of Latter-day Saints</title>
     <!-- Tailwind CSS for UI Styling -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -3512,11 +3514,11 @@ function fixScriptureReferences(text) {
 【実践的な変換の具体例（Few-Shot）】
 ・例1（聖餐と安息日）:
   入力: 今日は安息日に教会に来て 精算を受けることができて感謝しています
-  出力: 今日は安息日に教会に来て、聖餐を受けることができて感謝しています。
+  出力: {"sentences": [{"ja": "今日は安息日に教会に来て、聖餐を受けることができて感謝しています。", "en": "I am grateful to come to church on the Sabbath day and partake of the sacrament."}]}
 
 ・例2（祈りと天の御父・イエス・キリストの御名）:
   入力: 音痴のお導きに感謝し これらのことを手話の皆によってお祈りします アーメン
-  出力: 天の御父のお導きに感謝し、これらのことを主の御名によってお祈りします。アーメン。
+  出力: {"sentences": [{"ja": "天の御父のお導きに感謝し、これらのことを主の御名によってお祈りします。アーメン。", "en": "We thank Thee for Heavenly Father's guidance, and we pray for these things in the name of the Lord. Amen."}]}
 
 ・例3（什分の一の律法と日の栄えの考え方）:
   入力: 1/10を完全に収めることによって天の窓が開かれ 日の境の考え方を抱くことができます
@@ -5280,6 +5282,24 @@ ${existingKeys.slice(0, 100).join(', ')}
             return result;
         }
 
+        // ==================== BudouX 機械学習による日本語自然文節改行 ====================
+        let budouXJapaneseParser = null;
+        function formatJapaneseWithBudouX(text) {
+            if (!text) return '';
+            const safeEscaped = escapeHtml(text);
+            try {
+                if (!budouXJapaneseParser && window.BudouX && typeof window.BudouX.loadDefaultJapaneseParser === 'function') {
+                    budouXJapaneseParser = window.BudouX.loadDefaultJapaneseParser();
+                }
+                if (budouXJapaneseParser) {
+                    return budouXJapaneseParser.translateHTMLString(safeEscaped);
+                }
+            } catch (e) {
+                console.warn('BudouX parsing error:', e);
+            }
+            return safeEscaped;
+        }
+
         // ==================== Viewer 字幕表示 ====================
         function appendViewerCaption(translatedText, originalText, timestamp) {
             const placeholder = document.getElementById('captionPlaceholder');
@@ -5304,6 +5324,8 @@ ${existingKeys.slice(0, 100).join(', ')}
             item.className = 'caption-card bg-slate-800/80 p-3.5 sm:p-4 rounded-xl border border-slate-700/60 shadow-md backdrop-blur-sm transition-all';
             
             const isJapaneseMode = targetLangSelect.value === 'ja';
+            const displayedMainText = isJapaneseMode ? formatJapaneseWithBudouX(translatedText) : escapeHtml(translatedText);
+            const displayedOrigText = !isJapaneseMode ? formatJapaneseWithBudouX(originalText) : '';
 
             item.innerHTML = `
                 <div class="flex justify-between items-center text-[10px] text-slate-400 mb-1.5 border-b border-slate-700/40 pb-1">
@@ -5311,9 +5333,9 @@ ${existingKeys.slice(0, 100).join(', ')}
                     <span class="font-mono">${escapeHtml(timestamp || '')}</span>
                 </div>
                 <div class="${currentSizeClass} font-semibold text-white leading-relaxed break-words">
-                    ${escapeHtml(translatedText)}
+                    ${displayedMainText}
                 </div>
-                ${!isJapaneseMode ? `<div class="text-[11px] sm:text-xs text-slate-400 mt-2 italic font-normal break-words">${escapeHtml(originalText)}</div>` : ''}
+                ${!isJapaneseMode ? `<div class="text-[11px] sm:text-xs text-slate-400 mt-2 italic font-normal break-words">${displayedOrigText}</div>` : ''}
             `;
 
             viewerCaptionFeed.appendChild(item);
