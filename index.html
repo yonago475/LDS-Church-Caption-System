@@ -5087,6 +5087,21 @@ function fixScriptureReferences(text) {
 
             }
 
+            const newCaptionBadgeText = document.getElementById('newCaptionBadgeText');
+            if (newCaptionBadgeText) {
+                newCaptionBadgeText.textContent = s.newCaptionBadge || "🆕 New Caption ⬇";
+            }
+            const prevCardBtnEl = document.getElementById('prevCardBtn');
+            if (prevCardBtnEl) {
+                prevCardBtnEl.title = s.prevCard || "Previous Card";
+                prevCardBtnEl.setAttribute('aria-label', s.prevCard || "Previous Card");
+            }
+            const latestCardBtnEl = document.getElementById('latestCardBtn');
+            if (latestCardBtnEl) {
+                latestCardBtnEl.title = s.latestCard || "Latest Card";
+                latestCardBtnEl.setAttribute('aria-label', s.latestCard || "Latest Card");
+            }
+
             const placeholder = document.getElementById('captionPlaceholder');
 
             if (placeholder) {
@@ -10537,19 +10552,31 @@ ${existingKeys.slice(0, 100).join(', ')}
 
 
 
+            // カード追加前のスクロール位置で「最新付近にいるか」を正確に判定（追加後だとカードの高さ分だけ下にずれるため）
+            const wasNearBottom = isViewerNearBottom();
+
             viewerCaptionFeed.appendChild(item);
 
-            const isNearBottom = isViewerNearBottom();
-            if (viewerAutoScroll && isNearBottom) {
+            if (viewerAutoScroll && wasNearBottom) {
+                // 最新カード閲覧中: 新着カードが下からフワッと滑らかにせり上がるようゆっくりスムーズスクロール
                 requestAnimationFrame(() => {
-                    viewerCaptionFeed.scrollTop = viewerCaptionFeed.scrollHeight;
+                    viewerCaptionFeed.scrollTo({
+                        top: viewerCaptionFeed.scrollHeight,
+                        behavior: 'smooth'
+                    });
                 });
                 if (newCaptionBadge) {
                     newCaptionBadge.classList.add('hidden');
                 }
             } else {
-                // 過去ログ閲覧中または自動スクロールOFF時: 読書位置を保持し、新着バッジを表示
+                // 過去ログ閲覧中または自動スクロールOFF時: 読書位置を保持し、選択言語に合わせた新着バッジを表示
                 if (newCaptionBadge) {
+                    const currentLang = targetLangSelect ? targetLangSelect.value : 'ja';
+                    const currentStrings = VIEWER_UI_STRINGS[currentLang] || VIEWER_UI_STRINGS['ja'];
+                    const badgeTextEl = document.getElementById('newCaptionBadgeText');
+                    if (badgeTextEl && currentStrings && currentStrings.newCaptionBadge) {
+                        badgeTextEl.textContent = currentStrings.newCaptionBadge;
+                    }
                     newCaptionBadge.classList.remove('hidden');
                 }
                 updateCardNavButtonState(false);
