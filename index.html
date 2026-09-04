@@ -7275,14 +7275,12 @@ const validModels = models
                                 if (cachedWorkingGeminiModel === modelName) cachedWorkingGeminiModel = null;
                                 continue;
                             } else if (response.status === 429) {
-                                if (!isTest) {
-                                    aiStats.lastErrorMessage = 'HTTP 429 (レート制限超過・2秒冷却待機中)';
-                                    last429CooldownUntil = Date.now() + 2000;
-                                }
+                                // Googleの無料枠はモデル個別（limit: 20, model: ...）に割り当てられているため、
+                                // 当該モデルが一時上限に達した場合はキャッシュを解除し、別モデル（gemini-3-flash-preview等）へ即時フォールバック
+                                if (cachedWorkingGeminiModel === modelName) cachedWorkingGeminiModel = null;
                                 lastDetailError = `[${modelName}] ${detailMsg}`;
                                 attemptHistory.push(`${modelName}: 429レート制限`);
-                                // 429レート制限時は他モデルを叩いてもクォータ浪費になるため即座にフォールバック中断
-                                break;
+                                continue;
                             } else {
                                 continue;
                             }
@@ -7318,6 +7316,10 @@ const validModels = models
 
 
                 if (!successData) {
+                    if (!isTest && lastDetailError && lastDetailError.includes("429")) {
+                        aiStats.lastErrorMessage = 'HTTP 429 (全モデルレート制限超過・2秒冷却待機中)';
+                        last429CooldownUntil = Date.now() + 2000;
+                    }
                     const attemptsSummary = attemptHistory.length > 0 ? ` (試行結果: ${attemptHistory.slice(0, 5).join(', ')})` : '';
                     throw new Error((lastDetailError || '全候補モデルでの応答取得に失敗') + attemptsSummary);
                 }
