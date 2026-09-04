@@ -6880,16 +6880,16 @@ const validModels = models
                         .map(m => m.name.replace(/^models\//, ''))
                         .filter(m => m.toLowerCase().startsWith('gemini') && !m.toLowerCase().includes('gemma') && !m.toLowerCase().includes('tts') && !m.toLowerCase().includes('image'));
 
-                    // Google公式の最新Flashモデルを優先順位をつけて自動選択（3.5系、2.5系を最優先）
-                    const preferred = validModels.find(m => m.includes('3.5-flash-lite')) ||
-                                      validModels.find(m => m.includes('3.5-flash')) ||
+                    // 高速（約4秒）・低遅延で安定実績のある 2.5系 Flash を最優先（現在 3.5系 は過負荷503・14秒遅延のため後方フォールバック）
+                    const preferred = validModels.find(m => m === 'gemini-2.5-flash') ||
                                       validModels.find(m => m.includes('2.5-flash-lite')) ||
-                                      validModels.find(m => m === 'gemini-2.5-flash') ||
                                       validModels.find(m => m.includes('2.5-flash')) ||
-                                      validModels.find(m => m.includes('2.0-flash-lite')) ||
                                       validModels.find(m => m.includes('2.0-flash')) ||
+                                      validModels.find(m => m.includes('2.0-flash-lite')) ||
                                       validModels.find(m => m.includes('1.5-flash-latest')) ||
                                       validModels.find(m => m.includes('1.5-flash')) ||
+                                      validModels.find(m => m.includes('3.5-flash-lite')) ||
+                                      validModels.find(m => m.includes('3.5-flash')) ||
                                       validModels.find(m => m.includes('flash')) ||
                                       validModels[0];
 
@@ -7107,8 +7107,8 @@ const validModels = models
 
 
 
-            // 全体タイムアウト（接続テスト時は25秒、本番バッチは最大20秒）
-            const overallTimeoutMs = isTest ? 45000 : Math.min(10000 + (items.length - 1) * 1500, 25000);
+            // 全体タイムアウト（接続テスト時は45秒、本番バッチは最大30秒）
+            const overallTimeoutMs = isTest ? 45000 : Math.min(15000 + (items.length - 1) * 2000, 30000);
             const overallController = new AbortController();
             const overallTimeoutId = setTimeout(() => {
                 overallController.abort(new Error(`通信タイムアウト (${overallTimeoutMs / 1000}秒)`));
@@ -7116,9 +7116,7 @@ const validModels = models
 
             const startTime = performance.now();
 
-
-
-            // 試行するモデル候補リスト（gemma等の不要モデルを完全除外し、3.5系/2.5系Flashのみを優先）
+            // 試行するモデル候補リスト（実績のある2.5系/2.0系Flash最優先。3.5系は過負荷のため後方フォールバック）
             const discoveredModels = (lastModelDiscoveryDiagnostics && lastModelDiscoveryDiagnostics.success)
                 ? (lastModelDiscoveryDiagnostics.models || [])
                 : [];
@@ -7129,16 +7127,16 @@ const validModels = models
             });
 
             let candidateModels = [
-                cachedWorkingGeminiModel,
-                'gemini-3.5-flash-lite',
-                'gemini-3.5-flash',
-                'gemini-2.5-flash-lite',
+                (cachedWorkingGeminiModel && !cachedWorkingGeminiModel.includes('3.5')) ? cachedWorkingGeminiModel : null,
                 'gemini-2.5-flash',
-                ...validDiscoveredFlash,
-                'gemini-2.0-flash-lite',
+                'gemini-2.5-flash-lite',
                 'gemini-2.0-flash',
+                'gemini-2.0-flash-lite',
                 'gemini-1.5-flash-latest',
-                'gemini-1.5-flash'
+                'gemini-1.5-flash',
+                ...validDiscoveredFlash.filter(m => !m.includes('3.5')),
+                'gemini-3.5-flash-lite',
+                'gemini-3.5-flash'
             ].filter(Boolean);
             candidateModels = Array.from(new Set(candidateModels)).filter(m => m.startsWith('gemini') && !m.includes('gemma'));
 
@@ -7199,7 +7197,7 @@ const validModels = models
 
                         // モデル単位の個別タイムアウト（1リクエストあたり最大7秒）
                         const modelController = new AbortController();
-                        const perModelTimeoutMs = isTest ? 15000 : 8000;
+                        const perModelTimeoutMs = isTest ? 15000 : 10000;
                         const modelTimeoutId = setTimeout(() => {
                             modelController.abort(new Error(`モデル ${modelName} (${apiVer}) タイムアウト`));
                         }, perModelTimeoutMs);
@@ -7266,6 +7264,11 @@ const validModels = models
                                 attemptHistory.push(`${modelName}(${apiVer}): ${response.status}`);
 
                                 if (response.status === 404) {
+                                    continue;
+                                } else if (response.status === 503) {
+                                    // Googleサーバー過負荷時はキャッシュを解除して即座に別モデルへフォールバック
+                                    if (cachedWorkingGeminiModel === modelName) cachedWorkingGeminiModel = null;
+                                    attemptHistory.push(`${modelName}(${apiVer}): 503過負荷`);
                                     continue;
                                 } else if (response.status === 429) {
                                     if (!isTest) {
