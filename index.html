@@ -6880,7 +6880,8 @@ function fixScriptureReferences(text) {
                         .map(m => m.name.replace(/^models\//, ''));
 
                     // Google公式の最新Flashモデルを優先順位をつけて自動選択
-                    const preferred = validModels.find(m => m.includes('3.5-flash-lite')) ||
+                    const preferred = validModels.find(m => m === 'gemini-2.5-flash') ||
+                                      validModels.find(m => m.includes('3.5-flash-lite')) ||
                                       validModels.find(m => m.includes('3.5-flash')) ||
                                       validModels.find(m => m.includes('2.5-flash-lite')) ||
                                       validModels.find(m => m.includes('2.5-flash')) ||
@@ -7116,13 +7117,18 @@ function fixScriptureReferences(text) {
 
 
 
-            // 試行するモデル候補リスト（最速のgemini-3.5-flash-liteを最優先）
+            // 試行するモデル候補リスト（Google API認識モデルをダイレクトに最優先試行）
+            const discoveredModels = (lastModelDiscoveryDiagnostics && lastModelDiscoveryDiagnostics.success)
+                ? (lastModelDiscoveryDiagnostics.models || [])
+                : [];
+
             let candidateModels = [
                 cachedWorkingGeminiModel,
+                'gemini-2.5-flash',
+                ...discoveredModels,
                 'gemini-3.5-flash-lite',
                 'gemini-3.5-flash',
                 'gemini-2.5-flash-lite',
-                'gemini-2.5-flash',
                 'gemini-2.0-flash-lite',
                 'gemini-2.0-flash',
                 'gemini-1.5-flash-latest',
@@ -7172,163 +7178,114 @@ function fixScriptureReferences(text) {
 
 
 
-                // モデルフォールバックループ
+                // モデルフォールバックループ（v1beta と v1 の両バージョンに対応）
+                const attemptHistory = [];
 
                 for (let i = 0; i < candidateModels.length; i++) {
                     if (overallController.signal.aborted) break;
 
                     const modelName = candidateModels[i];
-                    // モデル単位の個別タイムアウト（1モデルあたり最大7秒）
-                    const modelController = new AbortController();
-                    const perModelTimeoutMs = isTest ? 7000 : 6000;
-                    const modelTimeoutId = setTimeout(() => {
-                        modelController.abort(new Error(`モデル ${modelName} タイムアウト (${perModelTimeoutMs / 1000}秒)`));
-                    }, perModelTimeoutMs);
+                    const apiVersions = ['v1beta', 'v1'];
+                    let modelSuccess = false;
 
-                    const abortForwarder = () => {
-                        modelController.abort(new Error('通信全体タイムアウト'));
-                    };
-                    overallController.signal.addEventListener('abort', abortForwarder, { once: true });
+                    for (const apiVer of apiVersions) {
+                        if (overallController.signal.aborted) break;
 
-                    try {
-                        const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${encodeURIComponent(cleanKey)}`;
-                        const response = await fetch(url, {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json',
-                                'x-goog-api-key': cleanKey
-                            },
-                            signal: modelController.signal,
+                        // モデル単位の個別タイムアウト（1リクエストあたり最大7秒）
+                        const modelController = new AbortController();
+                        const perModelTimeoutMs = isTest ? 7000 : 5000;
+                        const modelTimeoutId = setTimeout(() => {
+                            modelController.abort(new Error(`モデル ${modelName} (${apiVer}) タイムアウト`));
+                        }, perModelTimeoutMs);
 
-                            body: JSON.stringify({
+                        const abortForwarder = () => {
+                            modelController.abort(new Error('通信全体タイムアウト'));
+                        };
+                        overallController.signal.addEventListener('abort', abortForwarder, { once: true });
 
-                                systemInstruction: {
-
-                                    parts: [{ text: GEMINI_SYSTEM_PROMPT }]
-
+                        try {
+                            const url = `https://generativelanguage.googleapis.com/${apiVer}/models/${modelName}:generateContent?key=${encodeURIComponent(cleanKey)}`;
+                            const response = await fetch(url, {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                    'x-goog-api-key': cleanKey
                                 },
-
-                                contents: [
-
-                                    {
-
-                                        role: 'user',
-
-                                        parts: [{ text: userPrompt }]
-
+                                signal: modelController.signal,
+                                body: JSON.stringify({
+                                    systemInstruction: {
+                                        parts: [{ text: GEMINI_SYSTEM_PROMPT }]
+                                    },
+                                    contents: [
+                                        {
+                                            role: 'user',
+                                            parts: [{ text: userPrompt }]
+                                        }
+                                    ],
+                                    generationConfig: {
+                                        temperature: 0.1,
+                                        maxOutputTokens: maxTokens
                                     }
+                                })
+                            });
 
-                                ],
+                            clearTimeout(modelTimeoutId);
+                            overallController.signal.removeEventListener('abort', abortForwarder);
 
-                                generationConfig: {
-
-                                    temperature: 0.1,
-
-                                    maxOutputTokens: maxTokens
-
+                            if (response.ok) {
+                                const resJson = await response.json();
+                                const rawOut = resJson.candidates?.[0]?.content?.parts?.[0]?.text || resJson.candidates?.[0]?.text;
+                                if (rawOut && rawOut.trim().length > 0) {
+                                    successData = resJson;
+                                    successfulModel = `${modelName} (${apiVer})`;
+                                    cachedWorkingGeminiModel = modelName;
+                                    modelSuccess = true;
+                                    break;
+                                } else {
+                                    const finishReason = resJson.candidates?.[0]?.finishReason || 'NO_TEXT';
+                                    lastDetailError = `[${modelName}] 応答が空でした (${finishReason})`;
+                                    attemptHistory.push(`${modelName}(${apiVer}): 空応答`);
+                                    continue;
                                 }
-
-                            })
-
-                        });
-
-
-
-                        clearTimeout(modelTimeoutId);
-                        overallController.signal.removeEventListener('abort', abortForwarder);
-
-                        if (response.ok) {
-                            const resJson = await response.json();
-
-                            const rawOut = resJson.candidates?.[0]?.content?.parts?.[0]?.text || resJson.candidates?.[0]?.text;
-
-                            if (rawOut && rawOut.trim().length > 0) {
-
-                                successData = resJson;
-
-                                successfulModel = modelName;
-
-                                cachedWorkingGeminiModel = modelName;
-
-                                break;
-
                             } else {
+                                const errRaw = await response.text();
+                                let detailMsg = `HTTP ${response.status}`;
+                                try {
+                                    const parsedErr = JSON.parse(errRaw);
+                                    if (parsedErr.error && parsedErr.error.message) {
+                                        detailMsg = `HTTP ${response.status}: ${parsedErr.error.message}`;
+                                    }
+                                } catch (pe) {}
+                                lastDetailError = `[${modelName} (${apiVer})] ${detailMsg}`;
+                                attemptHistory.push(`${modelName}(${apiVer}): ${response.status}`);
 
-                                const finishReason = resJson.candidates?.[0]?.finishReason || 'NO_TEXT';
+                                if (response.status === 404) {
+                                    continue;
+                                } else if (response.status === 429) {
+                                    if (!isTest) {
+                                        aiStats.lastErrorMessage = 'HTTP 429 (レート制限超過・10秒冷却待機中)';
+                                        last429CooldownUntil = Date.now() + 10000;
+                                    }
+                                    throw new Error(detailMsg);
+                                } else {
+                                    continue;
+                                }
+                            }
+                        } catch (fetchErr) {
+                            clearTimeout(modelTimeoutId);
+                            overallController.signal.removeEventListener('abort', abortForwarder);
 
-                                lastDetailError = `モデル応答が空でした (${finishReason})`;
-
-                                continue;
-
+                            if (overallController.signal.aborted) {
+                                throw new Error(`通信全体タイムアウト (${overallTimeoutMs / 1000}秒)`);
                             }
 
-                        } else {
-
-                            const errRaw = await response.text();
-
-                            let detailMsg = `HTTP ${response.status}`;
-
-                            try {
-
-                                const parsedErr = JSON.parse(errRaw);
-
-                                if (parsedErr.error && parsedErr.error.message) {
-
-                                    detailMsg = `HTTP ${response.status}: ${parsedErr.error.message}`;
-
-                                }
-
-                            } catch (pe) { console.warn('JSON parse error (error response):', pe.message); }
-
-                            lastDetailError = detailMsg;
-
-
-
-                            if (response.status === 404) {
-
-                                continue;
-
-                            } else if (response.status === 429) {
-
-                                if (!isTest) {
-
-                                    aiStats.lastErrorMessage = 'HTTP 429 (レート制限超過・10秒冷却待機中)';
-
-                                    last429CooldownUntil = Date.now() + 10000;
-
-                                }
-
-                                throw new Error(detailMsg);
-
-                            } else {
-
-                                if (!isTest) aiStats.lastErrorMessage = detailMsg;
-
-                                throw new Error(detailMsg);
-
-                            }
-
-                        }
-
-                    } catch (fetchErr) {
-                        clearTimeout(modelTimeoutId);
-                        overallController.signal.removeEventListener('abort', abortForwarder);
-
-                        if (overallController.signal.aborted) {
-                            throw new Error(`通信全体タイムアウト (${overallTimeoutMs / 1000}秒)`);
-                        }
-
-                        lastDetailError = `[${modelName}] ${fetchErr.message}`;
-                        console.warn(`モデル ${modelName} 通信試行エラー:`, fetchErr.message);
-
-                        if (i === candidateModels.length - 1 && !successData) {
-                            throw fetchErr;
+                            lastDetailError = `[${modelName} (${apiVer})] ${fetchErr.message}`;
+                            attemptHistory.push(`${modelName}(${apiVer}): ${fetchErr.message}`);
                         }
                     }
 
+                    if (modelSuccess) break;
                 }
-
-
 
                 clearTimeout(overallTimeoutId);
                 const elapsed = performance.now() - startTime;
@@ -7346,9 +7303,8 @@ function fixScriptureReferences(text) {
 
 
                 if (!successData) {
-
-                    throw new Error(lastDetailError || '全候補モデルでの応答取得に失敗');
-
+                    const attemptsSummary = attemptHistory.length > 0 ? ` (試行結果: ${attemptHistory.slice(0, 5).join(', ')})` : '';
+                    throw new Error((lastDetailError || '全候補モデルでの応答取得に失敗') + attemptsSummary);
                 }
 
 
