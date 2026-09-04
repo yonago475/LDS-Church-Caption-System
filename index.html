@@ -43,9 +43,7 @@
         }
 
         .caption-scroll {
-
-            scroll-behavior: smooth;
-
+            scroll-behavior: auto !important;
         }
 
         /* スマホViewerモード時：画面全体をスマホ画面（100dvh）に完全に固定し、枠の縦伸びを防止 */
@@ -1042,7 +1040,7 @@
 
                 <!-- Caption Output Stream -->
 
-                <div id="viewerCaptionFeed" class="overflow-y-auto caption-scroll flex-1 min-h-0 space-y-3 sm:space-y-4 pr-1" style="-webkit-overflow-scrolling: touch;" aria-live="polite" aria-atomic="false">
+                <div id="viewerCaptionFeed" class="overflow-y-auto caption-scroll flex-1 min-h-0 space-y-3 sm:space-y-4 pr-1" style="-webkit-overflow-scrolling: touch; scroll-behavior: auto !important;" aria-live="polite" aria-atomic="false">
 
                     <div id="captionPlaceholder" class="text-slate-400 text-sm text-center italic py-10">
 
@@ -1106,7 +1104,7 @@
 
                         <span class="text-[10px] sm:text-[11px] text-slate-400 px-1.5 py-0.5 rounded bg-slate-800/80 border border-slate-700/60 shrink-0">
 
-                            <i class="fa-solid fa-layer-group mr-1 text-slate-500"></i><span id="totalCardsLabel">カード</span>: <span id="totalCardsCount" class="font-mono text-indigo-300 font-bold">0</span> <span class="ml-1 text-[9px] px-1 py-0.5 rounded bg-indigo-900/60 text-indigo-300 font-mono border border-indigo-700/50">v1.5</span>
+                            <i class="fa-solid fa-layer-group mr-1 text-slate-500"></i><span id="totalCardsLabel">カード</span>: <span id="totalCardsCount" class="font-mono text-indigo-300 font-bold">0</span> <span class="ml-1 text-[9px] px-1 py-0.5 rounded bg-indigo-900/60 text-indigo-300 font-mono border border-indigo-700/50">v1.6</span>
 
                         </span>
 
@@ -10420,15 +10418,19 @@ ${existingKeys.slice(0, 100).join(', ')}
             }
         }
 
-        // チャット標準スムーズスクロール（所要時間 約800ms、easeOutCubic でゆったり滑らかにせり上がる）
-        function smoothScrollToLatest(durationMs = 800) {
+        // 完全一定速度（等速リニア）スクロールエンジン
+        // 加減速（イージング）を完全排除し、最初から最後まで一定のスピード（350px/秒）で滑らかにスクロール
+        const CONSTANT_SCROLL_SPEED_PX_PER_SEC = 350;
+        let lastFrameTime = null;
+
+        function smoothScrollToLatest(speedPxPerSec = CONSTANT_SCROLL_SPEED_PX_PER_SEC) {
             if (!viewerCaptionFeed) return;
 
-            const startTop = viewerCaptionFeed.scrollTop;
-            const targetTop = viewerCaptionFeed.scrollHeight - viewerCaptionFeed.clientHeight;
-            const distance = targetTop - startTop;
+            // スクロールコンテナのネイティブ補間を確実に無効化（CSS干渉の完全防止）
+            viewerCaptionFeed.style.scrollBehavior = 'auto';
 
-            if (distance <= 0) {
+            const maxScrollTop = viewerCaptionFeed.scrollHeight - viewerCaptionFeed.clientHeight;
+            if (viewerCaptionFeed.scrollTop >= maxScrollTop - 2) {
                 isAutoScrollingActive = false;
                 if (newCaptionBadge) newCaptionBadge.classList.add('hidden');
                 updateCardNavButtonState(true);
@@ -10440,32 +10442,39 @@ ${existingKeys.slice(0, 100).join(', ')}
                 activeScrollAnimationId = null;
             }
 
-            const startTime = performance.now();
             isAutoScrollingActive = true;
+            lastFrameTime = performance.now();
 
             function step(now) {
                 if (!isAutoScrollingActive || !viewerCaptionFeed) return;
 
-                const elapsed = now - startTime;
-                const progress = Math.min(elapsed / durationMs, 1);
+                const deltaTime = Math.min((now - lastFrameTime) / 1000, 0.1); // 秒換算（フレーム間最大0.1秒ガード）
+                lastFrameTime = now;
 
-                // スッと滑らかにせり上がり、最後にふわりと吸い付く easeOutCubic
-                const ease = 1 - Math.pow(1 - progress, 3);
+                const currentMaxScrollTop = viewerCaptionFeed.scrollHeight - viewerCaptionFeed.clientHeight;
+                const remainingDistance = currentMaxScrollTop - viewerCaptionFeed.scrollTop;
 
-                // アニメーション途中に後続カードが届いた場合でも、動的に最新の最下部へ追従！
-                const currentTargetTop = viewerCaptionFeed.scrollHeight - viewerCaptionFeed.clientHeight;
-                viewerCaptionFeed.scrollTop = startTop + (currentTargetTop - startTop) * ease;
-
-                if (progress < 1) {
-                    activeScrollAnimationId = requestAnimationFrame(step);
-                } else {
-                    viewerCaptionFeed.scrollTop = viewerCaptionFeed.scrollHeight - viewerCaptionFeed.clientHeight;
+                if (remainingDistance <= 0.5) {
+                    viewerCaptionFeed.scrollTop = currentMaxScrollTop;
                     isAutoScrollingActive = false;
                     activeScrollAnimationId = null;
                     updateCardNavButtonState(true);
-                    if (newCaptionBadge) {
-                        newCaptionBadge.classList.add('hidden');
-                    }
+                    if (newCaptionBadge) newCaptionBadge.classList.add('hidden');
+                    return;
+                }
+
+                // 一定速度で移動するピクセル数（px/秒 × 経過秒数）
+                const moveStep = speedPxPerSec * deltaTime;
+
+                if (remainingDistance <= moveStep) {
+                    viewerCaptionFeed.scrollTop = currentMaxScrollTop;
+                    isAutoScrollingActive = false;
+                    activeScrollAnimationId = null;
+                    updateCardNavButtonState(true);
+                    if (newCaptionBadge) newCaptionBadge.classList.add('hidden');
+                } else {
+                    viewerCaptionFeed.scrollTop += moveStep;
+                    activeScrollAnimationId = requestAnimationFrame(step);
                 }
             }
 
@@ -10478,7 +10487,7 @@ ${existingKeys.slice(0, 100).join(', ')}
             if (newCaptionBadge) newCaptionBadge.classList.add('hidden');
 
             if (smooth) {
-                smoothScrollToLatest(700);
+                smoothScrollToLatest(CONSTANT_SCROLL_SPEED_PX_PER_SEC);
             } else {
                 stopCustomAutoScroll(false);
                 viewerCaptionFeed.scrollTop = viewerCaptionFeed.scrollHeight;
@@ -10622,8 +10631,8 @@ ${existingKeys.slice(0, 100).join(', ')}
             viewerCaptionFeed.appendChild(item);
 
             if (viewerAutoScroll && wasFollowing) {
-                // 最新カード閲覧中: ゆったり優しい約0.8秒で滑らかに最新カードへスクロール
-                smoothScrollToLatest(800);
+                // 最新カード閲覧中: 完全一定速度（350px/秒）で滑らかに最新カードへスクロール
+                smoothScrollToLatest(CONSTANT_SCROLL_SPEED_PX_PER_SEC);
                 if (newCaptionBadge) {
                     newCaptionBadge.classList.add('hidden');
                 }
