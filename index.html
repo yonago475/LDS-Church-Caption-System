@@ -10435,8 +10435,9 @@ ${existingKeys.slice(0, 100).join(', ')}
                 activeScrollAnimationId = null;
             }
 
-            // スピードを現在の1/4に調整（距離1pxにつき約7.5ms、150pxで約1.2秒、複数カードでも最大約4.5秒）
-            const duration = durationOverride || Math.max(1200, Math.min(4500, distance * 7.5));
+            // スピードを現在のさらに1/4に調整（距離1pxにつき約30ms、150pxのカード1枚で約4.5秒、最小3秒〜最大16秒）
+            // ナビボタン等から手動で最新へジャンプした時（durationOverrideあり）は約1.2秒
+            const duration = durationOverride || Math.max(3000, Math.min(16000, distance * 30));
             const startTime = performance.now();
             isAutoScrollingActive = true;
 
@@ -10446,10 +10447,14 @@ ${existingKeys.slice(0, 100).join(', ')}
                 const elapsed = now - startTime;
                 const progress = Math.min(elapsed / duration, 1);
 
-                // 読みやすさを追求した滑らかな easeInOutQuad
-                const ease = progress < 0.5
-                    ? 2 * progress * progress
-                    : 1 - Math.pow(-2 * progress + 2, 2) / 2;
+                // 文字がブレずに一定ペースで読めるプロンプター仕様（ほぼ等速、最後の10%だけふわりと静かに着地）
+                let ease;
+                if (progress < 0.9) {
+                    ease = progress;
+                } else {
+                    const t = (progress - 0.9) / 0.1;
+                    ease = 0.9 + (1 - Math.pow(1 - t, 2)) * 0.1;
+                }
 
                 // アニメーション途中にさらに後続カードが追加されても、最新のscrollHeightへ自動追従！
                 const currentMaxTop = viewerCaptionFeed.scrollHeight - viewerCaptionFeed.clientHeight;
