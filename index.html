@@ -10399,27 +10399,92 @@ ${existingKeys.slice(0, 100).join(', ')}
         // ==================== カードナビゲーション & スマートスクロール ====================
         function isViewerNearBottom() {
             if (!viewerCaptionFeed) return true;
-            const threshold = 60; // 下端から60px以内なら最新付近と判定
+            const threshold = 120; // 下端から120px以内なら最新付近と判定
             return (viewerCaptionFeed.scrollHeight - viewerCaptionFeed.scrollTop - viewerCaptionFeed.clientHeight) <= threshold;
+        }
+
+        // ==================== カードナビゲーション & 1/4速ゆっくりオートスクロール ====================
+        let activeScrollAnimationId = null;
+        let isAutoScrollingActive = false;
+
+        function stopCustomAutoScroll() {
+            if (activeScrollAnimationId) {
+                cancelAnimationFrame(activeScrollAnimationId);
+                activeScrollAnimationId = null;
+            }
+            isAutoScrollingActive = false;
+        }
+
+        // オートスクロールのスピードを通常の1/4（約4倍の時間をかけて穏やかにスクロール）
+        function smoothScrollToBottomCustom(durationOverride) {
+            if (!viewerCaptionFeed) return;
+
+            const startTop = viewerCaptionFeed.scrollTop;
+            const targetTop = viewerCaptionFeed.scrollHeight - viewerCaptionFeed.clientHeight;
+            const distance = targetTop - startTop;
+
+            if (distance <= 0) {
+                isAutoScrollingActive = false;
+                if (newCaptionBadge) newCaptionBadge.classList.add('hidden');
+                updateCardNavButtonState(true);
+                return;
+            }
+
+            if (activeScrollAnimationId) {
+                cancelAnimationFrame(activeScrollAnimationId);
+                activeScrollAnimationId = null;
+            }
+
+            // スピードを現在の1/4に調整（距離1pxにつき約7.5ms、150pxで約1.2秒、複数カードでも最大約4.5秒）
+            const duration = durationOverride || Math.max(1200, Math.min(4500, distance * 7.5));
+            const startTime = performance.now();
+            isAutoScrollingActive = true;
+
+            function animate(now) {
+                if (!isAutoScrollingActive) return;
+
+                const elapsed = now - startTime;
+                const progress = Math.min(elapsed / duration, 1);
+
+                // 読みやすさを追求した滑らかな easeInOutQuad
+                const ease = progress < 0.5
+                    ? 2 * progress * progress
+                    : 1 - Math.pow(-2 * progress + 2, 2) / 2;
+
+                // アニメーション途中にさらに後続カードが追加されても、最新のscrollHeightへ自動追従！
+                const currentMaxTop = viewerCaptionFeed.scrollHeight - viewerCaptionFeed.clientHeight;
+                viewerCaptionFeed.scrollTop = startTop + (currentMaxTop - startTop) * ease;
+
+                if (progress < 1) {
+                    activeScrollAnimationId = requestAnimationFrame(animate);
+                } else {
+                    viewerCaptionFeed.scrollTop = viewerCaptionFeed.scrollHeight - viewerCaptionFeed.clientHeight;
+                    activeScrollAnimationId = null;
+                    isAutoScrollingActive = false;
+                    updateCardNavButtonState(true);
+                    if (newCaptionBadge) {
+                        newCaptionBadge.classList.add('hidden');
+                    }
+                }
+            }
+
+            activeScrollAnimationId = requestAnimationFrame(animate);
         }
 
         function scrollToLatestCard(smooth = true) {
             if (!viewerCaptionFeed) return;
             if (smooth) {
-                viewerCaptionFeed.scrollTo({
-                    top: viewerCaptionFeed.scrollHeight,
-                    behavior: 'smooth'
-                });
+                smoothScrollToBottomCustom(800);
             } else {
+                stopCustomAutoScroll();
                 viewerCaptionFeed.scrollTop = viewerCaptionFeed.scrollHeight;
+                if (newCaptionBadge) newCaptionBadge.classList.add('hidden');
+                updateCardNavButtonState(true);
             }
-            if (newCaptionBadge) {
-                newCaptionBadge.classList.add('hidden');
-            }
-            updateCardNavButtonState(true);
         }
 
         function scrollToPreviousCard() {
+            stopCustomAutoScroll();
             if (!viewerCaptionFeed) return;
             const cards = Array.from(viewerCaptionFeed.querySelectorAll('.caption-card'));
             if (cards.length === 0) return;
@@ -10455,9 +10520,14 @@ ${existingKeys.slice(0, 100).join(', ')}
         function setupCardNavigation() {
             if (!viewerCaptionFeed) return;
 
+            // ユーザーが手動で画面を操作（指スワイプ、ホイール、タップ）した時はオートスクロールを即時停止
+            viewerCaptionFeed.addEventListener('wheel', stopCustomAutoScroll, { passive: true });
+            viewerCaptionFeed.addEventListener('touchstart', stopCustomAutoScroll, { passive: true });
+            viewerCaptionFeed.addEventListener('pointerdown', stopCustomAutoScroll, { passive: true });
+
             viewerCaptionFeed.addEventListener('scroll', () => {
                 const isBottom = isViewerNearBottom();
-                if (isBottom && newCaptionBadge) {
+                if (isBottom && newCaptionBadge && !isAutoScrollingActive) {
                     newCaptionBadge.classList.add('hidden');
                 }
                 updateCardNavButtonState(isBottom);
@@ -10479,97 +10549,56 @@ ${existingKeys.slice(0, 100).join(', ')}
         // ==================== Viewer 字幕表示 ====================
 
         function appendViewerCaption(translatedText, originalText, timestamp) {
-
             const placeholder = document.getElementById('captionPlaceholder');
-
             if (placeholder) {
-
                 placeholder.remove();
-
             }
-
-
 
             // 長時間集会でのメモリ消費抑制: 画面内のカードが上限を超えた場合、最古のカードを安全にDOMから除去
-
             const MAX_VISIBLE_CARDS = 200;
-
             const existingCards = viewerCaptionFeed.querySelectorAll('.caption-card');
-
             if (existingCards.length >= MAX_VISIBLE_CARDS) {
-
                 existingCards[0].remove();
-
             }
-
-
 
             viewerCardCount++;
-
             if (totalCardsCount) {
-
                 totalCardsCount.textContent = viewerCardCount;
-
             }
 
-
-
             const currentSizeClass = fontClasses[currentFontSizeIndex];
-
             const item = document.createElement('div');
-
             item.className = 'caption-card bg-slate-800/80 p-3.5 sm:p-4 rounded-xl border border-slate-700/60 shadow-md backdrop-blur-sm transition-all';
-
             
-
             const isJapaneseMode = targetLangSelect.value === 'ja';
-
             const displayedMainText = isJapaneseMode ? formatJapaneseWithBudouX(translatedText) : escapeHtml(translatedText);
-
             const displayedOrigText = !isJapaneseMode ? formatJapaneseWithBudouX(originalText) : '';
 
-
-
             item.innerHTML = `
-
                 <div class="flex justify-between items-center text-[10px] text-slate-400 mb-1.5 border-b border-slate-700/40 pb-1">
-
                     <span><i class="fa-solid fa-globe mr-1 text-indigo-400"></i> ${escapeHtml(targetLangSelect.options[targetLangSelect.selectedIndex].text)}</span>
-
                     <span class="font-mono">${escapeHtml(timestamp || '')}</span>
-
                 </div>
-
                 <div class="${currentSizeClass} font-semibold text-white leading-relaxed break-words">
-
                     ${displayedMainText}
-
                 </div>
-
                 ${!isJapaneseMode ? `<div class="text-[11px] sm:text-xs text-slate-400 mt-2 italic font-normal break-words">${displayedOrigText}</div>` : ''}
-
             `;
 
-
-
-            // カード追加前のスクロール位置で「最新付近にいるか」を正確に判定（追加後だとカードの高さ分だけ下にずれるため）
-            const wasNearBottom = isViewerNearBottom();
+            // カード追加前のスクロール位置、または現在オートスクロール追従中であるかを判定
+            // （複数カードが連続で届いた場合でも、1枚目で止まらず最新カードまでひと続きで追従）
+            const wasFollowing = isViewerNearBottom() || isAutoScrollingActive;
 
             viewerCaptionFeed.appendChild(item);
 
-            if (viewerAutoScroll && wasNearBottom) {
-                // 最新カード閲覧中: 新着カードが下からフワッと滑らかにせり上がるようゆっくりスムーズスクロール
-                requestAnimationFrame(() => {
-                    viewerCaptionFeed.scrollTo({
-                        top: viewerCaptionFeed.scrollHeight,
-                        behavior: 'smooth'
-                    });
-                });
+            if (viewerAutoScroll && wasFollowing) {
+                // 最新カード閲覧中: 現在の1/4のゆっくりしたスピードで、後続カードも漏らさず最新までスクロール
+                smoothScrollToBottomCustom();
                 if (newCaptionBadge) {
                     newCaptionBadge.classList.add('hidden');
                 }
             } else {
-                // 過去ログ閲覧中または自動スクロールOFF時: 読書位置を保持し、選択言語に合わせた新着バッジを表示
+                // 過去ログ閲覧中（手動停止中）または自動スクロールOFF時: 読書位置を保持し、選択言語に合わせた新着バッジを表示
                 if (newCaptionBadge) {
                     const currentLang = targetLangSelect ? targetLangSelect.value : 'ja';
                     const currentStrings = VIEWER_UI_STRINGS[currentLang] || VIEWER_UI_STRINGS['ja'];
@@ -10584,8 +10613,7 @@ ${existingKeys.slice(0, 100).join(', ')}
         }
 
 
-
-        function setupAutoScrollButton() {
+                function setupAutoScrollButton() {
 
             if (autoScrollToggleBtn) {
 
