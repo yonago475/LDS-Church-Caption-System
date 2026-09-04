@@ -1056,7 +1056,7 @@
 
                 <!-- 新着字幕通知バッジ（過去ログ閲覧中に新着が届いた時に出現） -->
 
-                <button id="newCaptionBadge" type="button" class="hidden absolute bottom-16 left-1/2 -translate-x-1/2 z-20 px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-full shadow-lg border border-indigo-400/60 text-xs font-bold flex items-center gap-1.5 transition-all transform active:scale-95 animate-bounce" aria-label="最新の字幕へスクロール">
+                <button id="newCaptionBadge" type="button" class="hidden absolute bottom-16 left-1/2 -translate-x-1/2 z-20 px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-full shadow-xl border border-indigo-400/80 text-xs font-bold flex items-center gap-1.5 transition-all transform active:scale-95 cursor-pointer touch-manipulation shadow-indigo-500/30 ring-2 ring-indigo-400/30" aria-label="最新の字幕へスクロール">
 
                     <span id="newCaptionBadgeText">🆕 新着字幕あり ⬇</span>
 
@@ -1101,7 +1101,7 @@
                         </div>
 
                         <span class="text-[10px] sm:text-[11px] text-slate-400 px-1.5 py-0.5 rounded bg-slate-800/80 border border-slate-700/60 shrink-0">
-                            <i class="fa-solid fa-layer-group mr-1 text-slate-500"></i><span id="totalCardsLabel">カード</span>: <span id="totalCardsCount" class="font-mono text-indigo-300 font-bold">0</span> <span class="ml-1 text-[9px] px-1 py-0.5 rounded bg-indigo-900/60 text-indigo-300 font-mono border border-indigo-700/50">v1.8</span>
+                            <i class="fa-solid fa-layer-group mr-1 text-slate-500"></i><span id="totalCardsLabel">カード</span>: <span id="totalCardsCount" class="font-mono text-indigo-300 font-bold">0</span> <span class="ml-1 text-[9px] px-1 py-0.5 rounded bg-indigo-900/60 text-indigo-300 font-mono border border-indigo-700/50">v1.9</span>
                         </span>
                     </div>
 
@@ -10484,12 +10484,13 @@ ${existingKeys.slice(0, 100).join(', ')}
             const maxScrollTop = viewerCaptionFeed.scrollHeight - viewerCaptionFeed.clientHeight;
 
             if (direction === 'up') {
-                // 上方向: 現在のビューポート上端より上にあるカードのうち直近のものを探す
+                // 上方向: 現在画面の上端より上にある直近のカードを探す
                 stopCustomAutoScroll(true);
                 let targetCard = null;
                 for (let i = cards.length - 1; i >= 0; i--) {
                     const cardRect = cards[i].getBoundingClientRect();
-                    if (cardRect.top < feedRect.top - 15) {
+                    // ビューポートの上端より少し上にあるカード
+                    if (cardRect.top < feedRect.top - 10) {
                         targetCard = cards[i];
                         break;
                     }
@@ -10498,24 +10499,27 @@ ${existingKeys.slice(0, 100).join(', ')}
                     targetCard = cards[0];
                 }
                 if (targetCard) {
-                    const targetTop = Math.max(0, currentScrollTop + (targetCard.getBoundingClientRect().top - feedRect.top) - 10);
+                    const cardTopRelativeToFeed = targetCard.getBoundingClientRect().top - feedRect.top;
+                    const targetTop = Math.max(0, currentScrollTop + cardTopRelativeToFeed - 10);
                     smoothScrollToTarget(targetTop, FAST_SCROLL_SPEED_PX_PER_SEC, () => {
                         updateCardNavButtonState(isViewerNearBottom());
                         updateAutoScrollButtonUI();
                     });
                 }
             } else if (direction === 'down') {
-                // 下方向: 現在のビューポート上端より下にあるカードのうち直近のものを探す
+                // 下方向: 現在画面の上端より下にある直近のカードを探す
                 let targetCard = null;
                 for (let i = 0; i < cards.length; i++) {
                     const cardRect = cards[i].getBoundingClientRect();
-                    if (cardRect.top > feedRect.top + 25) {
+                    // ビューポートの上端より少し下にあるカード
+                    if (cardRect.top > feedRect.top + 20) {
                         targetCard = cards[i];
                         break;
                     }
                 }
                 if (targetCard) {
-                    const targetTop = Math.min(maxScrollTop, currentScrollTop + (targetCard.getBoundingClientRect().top - feedRect.top) - 10);
+                    const cardTopRelativeToFeed = targetCard.getBoundingClientRect().top - feedRect.top;
+                    const targetTop = Math.min(maxScrollTop, currentScrollTop + cardTopRelativeToFeed - 10);
                     smoothScrollToTarget(targetTop, FAST_SCROLL_SPEED_PX_PER_SEC, () => {
                         const isBottom = isViewerNearBottom();
                         if (isBottom) {
@@ -10574,7 +10578,7 @@ ${existingKeys.slice(0, 100).join(', ')}
                 }
             }, { passive: true });
 
-            // スクロール時のボタン状態更新＆最下部復帰判定
+            // スクロール時のボタン状態更新＆最下部復帰判定＆自動スクロール表示リアルタイム連動！
             viewerCaptionFeed.addEventListener('scroll', () => {
                 const isBottom = isViewerNearBottom();
                 if (isBottom) {
@@ -10584,18 +10588,32 @@ ${existingKeys.slice(0, 100).join(', ')}
                     }
                 }
                 updateCardNavButtonState(isBottom);
+                updateAutoScrollButtonUI(); // 過去カード閲覧時は即座にOFF、最下部復帰時はONに連動！
             }, { passive: true });
 
+            // ↓ボタン: 次のカード1つ分へ速いスピードでスクロール（最下部なら最新へ）
             if (latestCardBtn) {
-                latestCardBtn.onclick = () => scrollToLatestCard(true);
+                latestCardBtn.onclick = (e) => {
+                    e.preventDefault();
+                    scrollOneCard('down');
+                };
             }
 
+            // 新着案内ボタン: 1回のタップで確実に高速スクロール復帰（900px/秒）
             if (newCaptionBadge) {
-                newCaptionBadge.onclick = () => scrollToLatestCard(true);
+                const handleBadgeClick = (e) => {
+                    e.preventDefault();
+                    scrollToLatestCard(true, FAST_SCROLL_SPEED_PX_PER_SEC);
+                };
+                newCaptionBadge.onclick = handleBadgeClick;
             }
 
+            // ↑ボタン: 前のカード1つ分へ速いスピードでスクロール
             if (prevCardBtn) {
-                prevCardBtn.onclick = scrollToPreviousCard;
+                prevCardBtn.onclick = (e) => {
+                    e.preventDefault();
+                    scrollOneCard('up');
+                };
             }
         }
 
