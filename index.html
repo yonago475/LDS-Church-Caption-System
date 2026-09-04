@@ -8,9 +8,7 @@
 
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-    <!-- Content Security Policy for Defense-in-Depth Security -->
-
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.tailwindcss.com https://unpkg.com https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; font-src 'self' https://cdnjs.cloudflare.com data:; img-src 'self' data: blob: https:; connect-src 'self' https://generativelanguage.googleapis.com https://*.peerjs.com wss://*.peerjs.com https://api.mymemory.translated.net https://translate.googleapis.com https://*.metered.ca wss://*.metered.ca;">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.tailwindcss.com https://unpkg.com https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; font-src 'self' https://cdnjs.cloudflare.com data:; img-src 'self' data: blob: https:; media-src 'self' data: blob:; connect-src 'self' https://generativelanguage.googleapis.com https://*.peerjs.com wss://*.peerjs.com https://api.mymemory.translated.net https://translate.googleapis.com https://*.metered.ca wss://*.metered.ca;">
 
     <title>多言語字幕配信 | The Church of Jesus Christ of Latter-day Saints</title>
 
@@ -1103,40 +1101,29 @@
                         </div>
 
                         <span class="text-[10px] sm:text-[11px] text-slate-400 px-1.5 py-0.5 rounded bg-slate-800/80 border border-slate-700/60 shrink-0">
-
-                            <i class="fa-solid fa-layer-group mr-1 text-slate-500"></i><span id="totalCardsLabel">カード</span>: <span id="totalCardsCount" class="font-mono text-indigo-300 font-bold">0</span> <span class="ml-1 text-[9px] px-1 py-0.5 rounded bg-indigo-900/60 text-indigo-300 font-mono border border-indigo-700/50">v1.6</span>
-
+                            <i class="fa-solid fa-layer-group mr-1 text-slate-500"></i><span id="totalCardsLabel">カード</span>: <span id="totalCardsCount" class="font-mono text-indigo-300 font-bold">0</span> <span class="ml-1 text-[9px] px-1 py-0.5 rounded bg-indigo-900/60 text-indigo-300 font-mono border border-indigo-700/50">v1.7</span>
                         </span>
-
                     </div>
 
-
-
                     <!-- 下段: 操作コントロールボタングループ（自動スクロール / スリープ防止 / 文字サイズ） -->
-
                     <div class="flex items-center justify-between sm:justify-end gap-1.5 flex-wrap w-full">
-
                         <!-- 自動スクロール切り替え -->
-
                         <button id="autoScrollToggleBtn" class="flex-1 sm:flex-initial px-2 py-1 bg-indigo-800 hover:bg-indigo-700 text-indigo-200 rounded-lg text-[11px] sm:text-xs flex items-center justify-center transition-colors border border-indigo-600/60" aria-pressed="true">
-
                             <i class="fa-solid fa-arrows-down-to-line mr-1"></i>
-
                             <span id="autoScrollLabelText">自動スクロール: ON</span>
-
                         </button>
 
-
-
-                        <!-- 画面スリープ防止トグルボタン -->
-
-                        <button id="wakeLockBtn" class="flex-1 sm:flex-initial px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-[11px] sm:text-xs flex items-center justify-center transition-colors border border-slate-700" aria-pressed="true">
-
-                            <i class="fa-solid fa-lightbulb text-amber-400 mr-1" id="wakeLockIcon"></i>
-
-                            <span id="wakeLockText">スリープ防止: ON</span>
-
-                        </button>
+                        <!-- 画面スリープ防止トグルボタン & 案内ポップアップ -->
+                        <div class="relative flex-1 sm:flex-initial">
+                            <div id="wakeLockTooltip" class="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2.5 py-1.5 bg-amber-500 text-slate-950 font-bold text-[10px] sm:text-[11px] rounded-lg shadow-xl flex items-center gap-1 z-30 transition-all duration-300 pointer-events-none animate-bounce whitespace-nowrap">
+                                <span id="wakeLockTooltipText">💡 タップで画面消灯を防止</span>
+                                <div class="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-amber-500"></div>
+                            </div>
+                            <button id="wakeLockBtn" class="w-full px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-400 rounded-lg text-[11px] sm:text-xs flex items-center justify-center transition-colors border border-slate-700" aria-pressed="false">
+                                <i class="fa-solid fa-lightbulb text-slate-500 mr-1" id="wakeLockIcon"></i>
+                                <span id="wakeLockText">スリープ防止: OFF</span>
+                            </button>
+                        </div>
 
 
 
@@ -3125,113 +3112,59 @@
             "でーるじーれんらんど": "デール・G・レンランド",
 
             "れんらんどちょうろう": "レンランド長老",
-
             "れんらんど": "レンランド",
-
             "げりっとだぶりゅーごんぐ": "ゲリット・W・ゴング",
-
             "ごんぐちょうろう": "ゴング長老",
-
             "ごんぐ": "ゴング",
-
             "うりせすそあれす": "ウリセス・ソアレス",
-
             "そあれすちょうろう": "ソアレス長老",
-
             "そあれす": "ソアレス",
-
             "ぱとりっくきあろん": "パトリック・キアロン",
-
             "きあろんちょうろう": "キアロン長老",
-
             "きあろん": "キアロン",
-
             "だりんえいちおーくす": "ダリン・H・オークス",
-
             "おーくすかんちょう": "オークス管長",
-
             "へんりーびーあいりんぐ": "ヘンリー・B・アイリング",
-
             "あいりんぐかんちょう": "アイリング管長"
-
         };
 
-
-
         // ==================== 多言語教会用語辞書 (翻訳後テキストの後置換補正) ====================
-
         const TARGET_GLOSSARY = {
-
             "en": {
-
                 "communion": "Sacrament",
-
                 "eucharist": "Sacrament",
-
                 "lord's supper": "Sacrament",
-
                 "priesthood authority": "Priesthood",
-
                 "relief association": "Relief Society",
-
                 "elementary school": "Primary",
-
                 "primary school": "Primary",
-
                 "sunday school": "Sunday School",
-
                 "mormon book": "Book of Mormon",
-
                 "doctrine & covenants": "Doctrine and Covenants",
-
                 "pearl of great price": "Pearl of Great Price",
-
                 "general conference": "General Conference",
-
                 "fast & testimony": "Fast and Testimony",
-
                 "word of wisdom": "Word of Wisdom",
-
                 "family history": "Family History",
-
                 "plan of salvation": "Plan of Salvation",
-
                 "baptism": "Baptism",
-
                 "atonement": "Atonement",
-
                 "testimony": "Testimony",
-
                 "gospel": "Gospel",
-
                 "scriptures": "Scriptures",
-
                 "sabbath": "Sabbath",
-
                 "temple": "Temple",
-
                 "endowment": "Endowment",
-
                 "sealing": "Sealing",
-
                 "tithing": "Tithing",
-
                 "holy spirit": "Holy Ghost",
-
                 "eternal life": "Eternal Life",
-
                 "missionary": "Missionary",
-
                 "elder": "Elder",
-
                 "high priest": "High Priest",
-
                 "deacon": "Deacon",
-
                 "twelve apostles": "Twelve Apostles",
-
                 "seventy": "Seventy",
-
                 "heavenly father": "Heavenly Father",
                 "patriarch": "Patriarch"
             },
@@ -3299,71 +3232,38 @@
                 "祝福师": "祝福师"
             },
             "zh-TW": {
-
                 "聖餐": "聖餐",
-
                 "神權": "神權",
-
                 "會長": "管長",
-
                 "慈助會": "慈助會",
-
                 "初級會": "初級會",
-
                 "主日學": "主日學",
-
                 "摩爾門經": "摩爾門經",
-
                 "教義和聖約": "教義和聖約",
-
                 "無價珍珠": "高價珍珠",
-
                 "總大會": "總大會",
-
                 "智慧語": "智慧語",
-
                 "家譜": "家譜歷史",
-
                 "洗禮": "洗禮",
-
                 "贖罪": "贖罪",
-
                 "見證": "見證",
-
                 "福音": "福音",
-
                 "經文": "經文",
-
                 "安息日": "安息日",
-
                 "聖殿": "聖殿",
-
                 "十一奉獻": "什一奉獻",
-
                 "聖靈": "聖靈",
-
                 "永生": "永生",
-
                 "傳教士": "傳教士",
-
                 "長老": "長老",
-
                 "大祭司": "大祭司",
-
                 "執事": "執事",
-
                 "十二使徒": "十二使徒",
-
                 "七十員": "七十員",
-
                 "天父": "天父",
-
                 "祝福師": "祝福師"
-
             },
-
             "pt": {
-
                 "comunhão": "Sacramento",
 
                 "eucaristia": "Sacramento",
@@ -4199,7 +4099,8 @@ function fixScriptureReferences(text) {
                 secTestimony: "✨ Testimony",
                 newCaptionBadge: "🆕 New Caption ⬇",
                 prevCard: "Previous Card",
-                latestCard: "Latest Card"
+                latestCard: "Latest Card",
+                wakeLockTooltip: "💡 Tap to keep screen on"
             },
             "ja": {
                 appTitle: "多言語字幕配信",
@@ -4228,7 +4129,8 @@ function fixScriptureReferences(text) {
                 secTestimony: "✨ 証",
                 newCaptionBadge: "🆕 新着字幕あり ⬇",
                 prevCard: "前のカードへ",
-                latestCard: "最新のカードへ"
+                latestCard: "最新のカードへ",
+                wakeLockTooltip: "💡 タップで画面消灯を防止"
             },
             "tl": {
                 appTitle: "Multilingual Subtitle Streaming",
@@ -4257,7 +4159,8 @@ function fixScriptureReferences(text) {
                 secTestimony: "✨ Patotoo",
                 newCaptionBadge: "🆕 Bagong Subtitle ⬇",
                 prevCard: "Nakaraang Card",
-                latestCard: "Pinakabagong Card"
+                latestCard: "Pinakabagong Card",
+                wakeLockTooltip: "💡 I-tap para hindi mamatay ang screen"
             },
             "zh-CN": {
                 appTitle: "多语言字幕直播",
@@ -4286,7 +4189,8 @@ function fixScriptureReferences(text) {
                 secTestimony: "✨ 见证",
                 newCaptionBadge: "🆕 有新字幕 ⬇",
                 prevCard: "上一张卡片",
-                latestCard: "最新卡片"
+                latestCard: "最新卡片",
+                wakeLockTooltip: "💡 点击防止屏幕熄灭"
             },
             "zh-TW": {
                 appTitle: "多語言字幕直播",
@@ -4315,7 +4219,8 @@ function fixScriptureReferences(text) {
                 secTestimony: "✨ 見證",
                 newCaptionBadge: "🆕 有新字幕 ⬇",
                 prevCard: "上一張卡片",
-                latestCard: "最新卡片"
+                latestCard: "最新卡片",
+                wakeLockTooltip: "💡 點擊防止螢幕熄滅"
             },
             "pt": {
                 appTitle: "Transmissão de Legendas Multilíngues",
@@ -4344,7 +4249,8 @@ function fixScriptureReferences(text) {
                 secTestimony: "✨ Testemunho",
                 newCaptionBadge: "🆕 Nova Legenda ⬇",
                 prevCard: "Cartão Anterior",
-                latestCard: "Último Cartão"
+                latestCard: "Último Cartão",
+                wakeLockTooltip: "💡 Toque para manter tela ligada"
             },
             "es": {
                 appTitle: "Transmisión de Subtítulos Multilingües",
@@ -4373,7 +4279,8 @@ function fixScriptureReferences(text) {
                 secTestimony: "✨ Testimonio",
                 newCaptionBadge: "🆕 Nuevo Subtítulo ⬇",
                 prevCard: "Tarjeta Anterior",
-                latestCard: "Última Tarjeta"
+                latestCard: "Última Tarjeta",
+                wakeLockTooltip: "💡 Toca para evitar que se apague"
             },
             "ko": {
                 appTitle: "다국어 자막 스트리밍",
@@ -4402,7 +4309,8 @@ function fixScriptureReferences(text) {
                 secTestimony: "✨ 간증",
                 newCaptionBadge: "🆕 새 자막 ⬇",
                 prevCard: "이전 카드",
-                latestCard: "최신 카드"
+                latestCard: "최신 카드",
+                wakeLockTooltip: "💡 탭하여 화면 꺼짐 방지"
             }
         };
 
@@ -4516,7 +4424,7 @@ function fixScriptureReferences(text) {
 
         let wakeLockObj = null;
 
-        let isWakeLockEnabled = true;
+        let isWakeLockEnabled = false;
 
         let currentRoomId = null;
 
@@ -5055,6 +4963,11 @@ function fixScriptureReferences(text) {
 
                 }
 
+            const wakeLockTooltipText = document.getElementById('wakeLockTooltipText');
+            if (wakeLockTooltipText && s.wakeLockTooltip) {
+                wakeLockTooltipText.textContent = s.wakeLockTooltip;
+            }
+
             }
 
             if (fontSizeBtnText) {
@@ -5184,126 +5097,135 @@ function fixScriptureReferences(text) {
 
 
 
-        // ==================== 画面スリープ防止 (Screen Wake Lock API) ====================
+        // ==================== 画面スリープ防止 (Screen Wake Lock API & NoSleep Fallback) ====================
+        let noSleepVideo = null;
+
+        function playNoSleepVideo() {
+            try {
+                if (!noSleepVideo) {
+                    noSleepVideo = document.createElement('video');
+                    noSleepVideo.setAttribute('playsinline', '');
+                    noSleepVideo.setAttribute('muted', '');
+                    noSleepVideo.setAttribute('loop', '');
+                    noSleepVideo.muted = true;
+                    noSleepVideo.style.position = 'fixed';
+                    noSleepVideo.style.top = '-9999px';
+                    noSleepVideo.style.left = '-9999px';
+                    noSleepVideo.style.width = '1px';
+                    noSleepVideo.style.height = '1px';
+                    noSleepVideo.style.opacity = '0.01';
+                    noSleepVideo.src = 'data:video/mp4;base64,AAAAHGZ0eXBtcDQyAAAAAG1wNDJpc29tYXZjMQAAAAhmcmVlAAAAGG1kYXQAAAEAAQAAAABGAAEAAP//AAAAMW1vb3YAAABsbXZoAAAAAAAAAAAAAAAAAAACWAAAAlgAAQAAAQAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgAAACN0cmFrAAAAXHRraGQAAAADAAAAAAAAAAAAAAAAAQAAAAAAAlgAAAAAAAAAAAAAAAEAAAAAAABAAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQAAAAAA';
+                    document.body.appendChild(noSleepVideo);
+                }
+                noSleepVideo.play().catch(e => console.warn('NoSleep video play notice:', e));
+            } catch (e) {
+                console.warn('NoSleep video setup error:', e);
+            }
+        }
+
+        function pauseNoSleepVideo() {
+            if (noSleepVideo) {
+                try {
+                    noSleepVideo.pause();
+                } catch (e) {}
+            }
+        }
+
+        function hideWakeLockTooltip() {
+            const tooltip = document.getElementById('wakeLockTooltip');
+            if (tooltip) {
+                tooltip.classList.add('opacity-0', 'scale-95');
+                setTimeout(() => tooltip.remove(), 300);
+            }
+        }
 
         function setupWakeLock() {
+            // 起動後 3.5秒間スリープ防止ボタンの上に吹き出し案内を表示し、その後自動フェードアウト
+            setTimeout(() => {
+                hideWakeLockTooltip();
+            }, 3500);
 
             if ('wakeLock' in navigator) {
-
-                requestWakeLock();
-
-                
-
+                // iPhone/Safariの仕様: ユーザー操作（タップ）なしの自動起動はブロックされるため、
+                // 初期状態はOFFとし、ユーザーがボタンを押した瞬間に確実にリクエストする。
                 document.addEventListener('visibilitychange', () => {
-
                     if (document.visibilityState === 'visible' && isWakeLockEnabled) {
-
                         requestWakeLock();
-
                     }
 
                     // スマホ画面復帰時: WebRTC接続のゾンビ化を検知して自動再接続
-
                     if (document.visibilityState === 'visible' && !isHost && currentRoomId) {
-
                         if (!hostConnection || !hostConnection.open) {
-
                             console.warn('画面復帰時にゾンビ接続を検知。再接続を開始します。');
-
                             scheduleViewerReconnect(true);
-
                         }
-
                     }
-
                 });
 
-
-
                 wakeLockBtn.onclick = function() {
-
+                    hideWakeLockTooltip();
                     isWakeLockEnabled = !isWakeLockEnabled;
-
                     if (isWakeLockEnabled) {
-
                         requestWakeLock();
-
                     } else {
-
                         releaseWakeLock();
-
                     }
-
                 };
-
             } else {
-
                 const lang = targetLangSelect ? targetLangSelect.value : 'en';
-
                 const s = VIEWER_UI_STRINGS[lang] || VIEWER_UI_STRINGS['en'];
-
                 wakeLockText.textContent = s.wakeLockUnsupported;
-
                 wakeLockBtn.classList.add('opacity-50', 'cursor-not-allowed');
-
                 wakeLockIcon.className = "fa-solid fa-lightbulb text-slate-500 mr-1.5";
-
             }
-
         }
-
-
 
         async function requestWakeLock() {
-
             try {
-
                 if ('wakeLock' in navigator) {
-
                     wakeLockObj = await navigator.wakeLock.request('screen');
+                    isWakeLockEnabled = true;
+
+                    // OS側で解除された（画面切り替え・省電力移行等）の検知
+                    wakeLockObj.addEventListener('release', () => {
+                        console.log('Wake Lock was released by system');
+                        if (!isWakeLockEnabled) return;
+                    });
 
                     const lang = targetLangSelect ? targetLangSelect.value : 'en';
-
                     const s = VIEWER_UI_STRINGS[lang] || VIEWER_UI_STRINGS['en'];
-
                     wakeLockText.textContent = s.wakeLockOn;
-
                     wakeLockIcon.className = "fa-solid fa-lightbulb text-amber-400 mr-1.5";
+                    wakeLockBtn.className = "w-full px-2 py-1 bg-slate-800 hover:bg-slate-700 text-amber-300 rounded-lg text-[11px] sm:text-xs flex items-center justify-center transition-colors border border-amber-500/50 shadow-sm";
+                    wakeLockBtn.setAttribute('aria-pressed', 'true');
 
-                    wakeLockBtn.className = "px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-amber-300 rounded text-xs flex items-center transition-colors border border-amber-500/40";
-
+                    // iPhone 二重防御: NoSleep動画も並行再生
+                    playNoSleepVideo();
                 }
-
             } catch (err) {
-
                 console.warn('Wake Lock request failed:', err);
-
+                isWakeLockEnabled = false;
+                // フォールバック: APIが制限されてもNoSleep動画再生を試みる
+                playNoSleepVideo();
             }
-
         }
 
-
-
         function releaseWakeLock() {
-
+            isWakeLockEnabled = false;
             if (wakeLockObj) {
-
-                wakeLockObj.release();
-
+                try {
+                    wakeLockObj.release();
+                } catch (e) {}
                 wakeLockObj = null;
-
             }
+            pauseNoSleepVideo();
 
             const lang = targetLangSelect ? targetLangSelect.value : 'en';
-
             const s = VIEWER_UI_STRINGS[lang] || VIEWER_UI_STRINGS['en'];
-
             wakeLockText.textContent = s.wakeLockOff;
-
             wakeLockIcon.className = "fa-solid fa-lightbulb text-slate-500 mr-1.5";
-
-            wakeLockBtn.className = "px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-400 rounded text-xs flex items-center transition-colors border border-slate-700";
-
+            wakeLockBtn.className = "w-full px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-400 rounded-lg text-[11px] sm:text-xs flex items-center justify-center transition-colors border border-slate-700";
+            wakeLockBtn.setAttribute('aria-pressed', 'false');
         }
 
 
@@ -10420,7 +10342,7 @@ ${existingKeys.slice(0, 100).join(', ')}
 
         // 完全一定速度（等速リニア）スクロールエンジン
         // 加減速（イージング）を完全排除し、最初から最後まで一定のスピード（350px/秒）で滑らかにスクロール
-        const CONSTANT_SCROLL_SPEED_PX_PER_SEC = 350;
+        const CONSTANT_SCROLL_SPEED_PX_PER_SEC = 175;
         let lastFrameTime = null;
 
         function smoothScrollToLatest(speedPxPerSec = CONSTANT_SCROLL_SPEED_PX_PER_SEC) {
