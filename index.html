@@ -10411,7 +10411,7 @@ ${existingKeys.slice(0, 100).join(', ')}
         let touchStartY = null;
 
         // 速度定数: 1秒間に進むピクセル数（約35px/秒＝文字が揺れず静かに読める超ゆったりプロンプター速度）
-        const AUTO_SCROLL_SPEED_PX_PER_SEC = 140;
+        const AUTO_SCROLL_SPEED_PX_PER_SEC = 280;
 
         function stopCustomAutoScroll(isManualUserAction = true) {
             if (activeScrollAnimationId) {
@@ -10455,7 +10455,7 @@ ${existingKeys.slice(0, 100).join(', ')}
 
                 // 毎秒 AUTO_SCROLL_SPEED_PX_PER_SEC ピクセル進む
                 // 1フレームあたりの移動量（最大でも8pxまでに制限してフレーム落ちによるワープを防止）
-                const movePx = Math.min(24, AUTO_SCROLL_SPEED_PX_PER_SEC * Math.max(0.001, deltaTime));
+                const movePx = Math.min(48, AUTO_SCROLL_SPEED_PX_PER_SEC * Math.max(0.001, deltaTime));
 
                 const currentMax = viewerCaptionFeed.scrollHeight - viewerCaptionFeed.clientHeight;
                 const nextTop = viewerCaptionFeed.scrollTop + movePx;
