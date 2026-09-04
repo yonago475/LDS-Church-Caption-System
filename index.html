@@ -7107,7 +7107,7 @@ function fixScriptureReferences(text) {
 
 
             // 全体タイムアウト（接続テスト時は25秒、本番バッチは最大20秒）
-            const overallTimeoutMs = isTest ? 25000 : Math.min(8000 + (items.length - 1) * 1000, 20000);
+            const overallTimeoutMs = isTest ? 45000 : Math.min(10000 + (items.length - 1) * 1500, 25000);
             const overallController = new AbortController();
             const overallTimeoutId = setTimeout(() => {
                 overallController.abort(new Error(`通信タイムアウト (${overallTimeoutMs / 1000}秒)`));
@@ -7193,7 +7193,7 @@ function fixScriptureReferences(text) {
 
                         // モデル単位の個別タイムアウト（1リクエストあたり最大7秒）
                         const modelController = new AbortController();
-                        const perModelTimeoutMs = isTest ? 7000 : 5000;
+                        const perModelTimeoutMs = isTest ? 15000 : 8000;
                         const modelTimeoutId = setTimeout(() => {
                             modelController.abort(new Error(`モデル ${modelName} (${apiVer}) タイムアウト`));
                         }, perModelTimeoutMs);
