@@ -1106,7 +1106,7 @@
 
                         <span class="text-[10px] sm:text-[11px] text-slate-400 px-1.5 py-0.5 rounded bg-slate-800/80 border border-slate-700/60 shrink-0">
 
-                            <i class="fa-solid fa-layer-group mr-1 text-slate-500"></i><span id="totalCardsLabel">カード</span>: <span id="totalCardsCount" class="font-mono text-indigo-300 font-bold">0</span>
+                            <i class="fa-solid fa-layer-group mr-1 text-slate-500"></i><span id="totalCardsLabel">カード</span>: <span id="totalCardsCount" class="font-mono text-indigo-300 font-bold">0</span> <span class="ml-1 text-[9px] px-1 py-0.5 rounded bg-indigo-900/60 text-indigo-300 font-mono border border-indigo-700/50">v1.4</span>
 
                         </span>
 
@@ -10403,15 +10403,11 @@ ${existingKeys.slice(0, 100).join(', ')}
             return (viewerCaptionFeed.scrollHeight - viewerCaptionFeed.scrollTop - viewerCaptionFeed.clientHeight) <= threshold;
         }
 
-        // ==================== カードナビゲーション & 速度固定型超安定オートスクロール ====================
+        // ==================== カードナビゲーション & チャット標準スムーズスクロール ====================
         let activeScrollAnimationId = null;
         let isAutoScrollingActive = false;
-        let lastFrameTime = null;
         let isUserManuallyScrolling = false; // ユーザーが指で過去ログを読んでいるかどうかのフラグ
         let touchStartY = null;
-
-        // 速度定数: 1秒間に進むピクセル数（約35px/秒＝文字が揺れず静かに読める超ゆったりプロンプター速度）
-        const AUTO_SCROLL_SPEED_PX_PER_SEC = 560;
 
         function stopCustomAutoScroll(isManualUserAction = true) {
             if (activeScrollAnimationId) {
@@ -10419,55 +10415,53 @@ ${existingKeys.slice(0, 100).join(', ')}
                 activeScrollAnimationId = null;
             }
             isAutoScrollingActive = false;
-            lastFrameTime = null;
             if (isManualUserAction) {
                 isUserManuallyScrolling = true;
             }
         }
 
-        // 速度固定型スムーズスクロールエンジン（途中でカードが追加されても絶対に停止せず、一定速度で最新まで進む）
-        function startVelocityAutoScroll() {
+        // チャット標準スムーズスクロール（所要時間 約400ms、easeOutCubic でスッと滑らかにせり上がる）
+        function smoothScrollToLatest(durationMs = 400) {
             if (!viewerCaptionFeed) return;
 
-            // 目標位置（最新カードの最下部）
-            const maxScrollTop = viewerCaptionFeed.scrollHeight - viewerCaptionFeed.clientHeight;
-            if (viewerCaptionFeed.scrollTop >= maxScrollTop - 2) {
-                // すでに最下部なら何もしない
+            const startTop = viewerCaptionFeed.scrollTop;
+            const targetTop = viewerCaptionFeed.scrollHeight - viewerCaptionFeed.clientHeight;
+            const distance = targetTop - startTop;
+
+            if (distance <= 0) {
                 isAutoScrollingActive = false;
                 if (newCaptionBadge) newCaptionBadge.classList.add('hidden');
                 updateCardNavButtonState(true);
                 return;
             }
 
-            if (isAutoScrollingActive && activeScrollAnimationId) {
-                // すでにスクロール進行中なら、そのまま継続（currentMaxはループ内で動的再計算されるためOK）
-                return;
+            if (activeScrollAnimationId) {
+                cancelAnimationFrame(activeScrollAnimationId);
+                activeScrollAnimationId = null;
             }
 
+            const startTime = performance.now();
             isAutoScrollingActive = true;
-            lastFrameTime = performance.now();
 
             function step(now) {
                 if (!isAutoScrollingActive || !viewerCaptionFeed) return;
 
-                const deltaTime = (now - lastFrameTime) / 1000; // 経過秒数
-                lastFrameTime = now;
+                const elapsed = now - startTime;
+                const progress = Math.min(elapsed / durationMs, 1);
 
-                // 毎秒 AUTO_SCROLL_SPEED_PX_PER_SEC ピクセル進む
-                // 1フレームあたりの移動量（最大でも8pxまでに制限してフレーム落ちによるワープを防止）
-                const movePx = Math.min(80, AUTO_SCROLL_SPEED_PX_PER_SEC * Math.max(0.001, deltaTime));
+                // スッと滑らかにせり上がり、最後にふわりと吸い付く easeOutCubic
+                const ease = 1 - Math.pow(1 - progress, 3);
 
-                const currentMax = viewerCaptionFeed.scrollHeight - viewerCaptionFeed.clientHeight;
-                const nextTop = viewerCaptionFeed.scrollTop + movePx;
+                // アニメーション途中に後続カードが届いた場合でも、動的に最新の最下部へ追従！
+                const currentTargetTop = viewerCaptionFeed.scrollHeight - viewerCaptionFeed.clientHeight;
+                viewerCaptionFeed.scrollTop = startTop + (currentTargetTop - startTop) * ease;
 
-                if (nextTop < currentMax) {
-                    viewerCaptionFeed.scrollTop = nextTop;
+                if (progress < 1) {
                     activeScrollAnimationId = requestAnimationFrame(step);
                 } else {
-                    viewerCaptionFeed.scrollTop = currentMax;
+                    viewerCaptionFeed.scrollTop = viewerCaptionFeed.scrollHeight - viewerCaptionFeed.clientHeight;
                     isAutoScrollingActive = false;
                     activeScrollAnimationId = null;
-                    lastFrameTime = null;
                     updateCardNavButtonState(true);
                     if (newCaptionBadge) {
                         newCaptionBadge.classList.add('hidden');
@@ -10480,42 +10474,11 @@ ${existingKeys.slice(0, 100).join(', ')}
 
         function scrollToLatestCard(smooth = true) {
             if (!viewerCaptionFeed) return;
-            isUserManuallyScrolling = false; // 最新へ戻る操作で手動フラグ解除
+            isUserManuallyScrolling = false; // 手動フラグ解除
             if (newCaptionBadge) newCaptionBadge.classList.add('hidden');
 
             if (smooth) {
-                // ワンタップで最新へ移動する時は、やや速めのスムーズスクロールで移動
-                if (activeScrollAnimationId) {
-                    cancelAnimationFrame(activeScrollAnimationId);
-                    activeScrollAnimationId = null;
-                }
-                const startTop = viewerCaptionFeed.scrollTop;
-                const targetTop = viewerCaptionFeed.scrollHeight - viewerCaptionFeed.clientHeight;
-                const distance = targetTop - startTop;
-                if (distance <= 0) {
-                    updateCardNavButtonState(true);
-                    return;
-                }
-                const duration = Math.min(800, Math.max(300, distance * 1.5));
-                const startTime = performance.now();
-                isAutoScrollingActive = true;
-
-                function jumpStep(now) {
-                    const elapsed = now - startTime;
-                    const progress = Math.min(elapsed / duration, 1);
-                    const ease = progress < 0.5 ? 2 * progress * progress : 1 - Math.pow(-2 * progress + 2, 2) / 2;
-                    const currentTarget = viewerCaptionFeed.scrollHeight - viewerCaptionFeed.clientHeight;
-                    viewerCaptionFeed.scrollTop = startTop + (currentTarget - startTop) * ease;
-                    if (progress < 1 && isAutoScrollingActive) {
-                        activeScrollAnimationId = requestAnimationFrame(jumpStep);
-                    } else {
-                        viewerCaptionFeed.scrollTop = viewerCaptionFeed.scrollHeight - viewerCaptionFeed.clientHeight;
-                        isAutoScrollingActive = false;
-                        activeScrollAnimationId = null;
-                        updateCardNavButtonState(true);
-                    }
-                }
-                activeScrollAnimationId = requestAnimationFrame(jumpStep);
+                smoothScrollToLatest(350);
             } else {
                 stopCustomAutoScroll(false);
                 viewerCaptionFeed.scrollTop = viewerCaptionFeed.scrollHeight;
@@ -10659,8 +10622,8 @@ ${existingKeys.slice(0, 100).join(', ')}
             viewerCaptionFeed.appendChild(item);
 
             if (viewerAutoScroll && wasFollowing) {
-                // 最新カード閲覧中: 速度固定（35px/秒）で、後続カードが何枚届いても途中で止まらず最新まで静かにスクロール
-                startVelocityAutoScroll();
+                // 最新カード閲覧中: チャット標準の約0.4秒でスッと滑らかに最新カードへスクロール
+                smoothScrollToLatest(400);
                 if (newCaptionBadge) {
                     newCaptionBadge.classList.add('hidden');
                 }
