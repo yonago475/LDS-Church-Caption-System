@@ -1101,7 +1101,7 @@
                         </div>
 
                         <span class="text-[10px] sm:text-[11px] text-slate-400 px-1.5 py-0.5 rounded bg-slate-800/80 border border-slate-700/60 shrink-0">
-                            <i class="fa-solid fa-layer-group mr-1 text-slate-500"></i><span id="totalCardsLabel">カード</span>: <span id="totalCardsCount" class="font-mono text-indigo-300 font-bold">0</span> <span class="ml-1 text-[9px] px-1 py-0.5 rounded bg-indigo-900/60 text-indigo-300 font-mono border border-indigo-700/50">v1.9</span>
+                            <i class="fa-solid fa-layer-group mr-1 text-slate-500"></i><span id="totalCardsLabel">カード</span>: <span id="totalCardsCount" class="font-mono text-indigo-300 font-bold">0</span> <span class="ml-1 text-[9px] px-1 py-0.5 rounded bg-indigo-900/60 text-indigo-300 font-mono border border-indigo-700/50">v2.0</span>
                         </span>
                     </div>
 
@@ -6842,15 +6842,14 @@ function fixScriptureReferences(text) {
 
         let last429CooldownUntil = 0;
 
+        let lastModelDiscoveryDiagnostics = { attempted: false, success: false, models: [], error: '', selected: null };
 
+        // 利用可能モデルの全自動検出（APIキーに割り当てられた公式最新Flashモデルを動的に特定）
+        async function discoverAvailableGeminiModel(cleanKey, forceRefresh = false) {
 
+            if (cachedWorkingGeminiModel && !forceRefresh) return cachedWorkingGeminiModel;
 
-
-        // 利用可能モデルの全自動検出（APIキーに割り当てられた最新Flashモデルを動的に特定）
-
-        async function discoverAvailableGeminiModel(cleanKey) {
-
-            if (cachedWorkingGeminiModel) return cachedWorkingGeminiModel;
+            if (!cleanKey) return null;
 
             try {
 
@@ -6858,9 +6857,15 @@ function fixScriptureReferences(text) {
 
                 const ctrl = new AbortController();
 
-                const tid = setTimeout(() => ctrl.abort(), 4000);
+                const tid = setTimeout(() => ctrl.abort(), 10000);
 
-                const res = await fetch(listUrl, { signal: ctrl.signal });
+                const res = await fetch(listUrl, {
+                    signal: ctrl.signal,
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'x-goog-api-key': cleanKey
+                    }
+                });
 
                 clearTimeout(tid);
 
@@ -6871,47 +6876,45 @@ function fixScriptureReferences(text) {
                     const models = data.models || [];
 
                     const validModels = models
-
                         .filter(m => (m.supportedGenerationMethods || []).includes('generateContent'))
-
                         .map(m => m.name.replace(/^models\//, ''));
 
-
-
-                    // flashモデルを優先順位をつけて自動選択
-
+                    // Google公式の最新Flashモデルを優先順位をつけて自動選択
                     const preferred = validModels.find(m => m.includes('3.5-flash-lite')) ||
-
                                       validModels.find(m => m.includes('3.5-flash')) ||
-
                                       validModels.find(m => m.includes('2.5-flash-lite')) ||
-
                                       validModels.find(m => m.includes('2.5-flash')) ||
-
                                       validModels.find(m => m.includes('2.0-flash-lite')) ||
-
                                       validModels.find(m => m.includes('2.0-flash')) ||
-
+                                      validModels.find(m => m.includes('1.5-flash-latest')) ||
                                       validModels.find(m => m.includes('1.5-flash')) ||
-
                                       validModels.find(m => m.includes('flash')) ||
-
                                       validModels[0];
 
-
+                    lastModelDiscoveryDiagnostics = { attempted: true, success: true, models: validModels, selected: preferred || null, error: '' };
 
                     if (preferred) {
-
                         cachedWorkingGeminiModel = preferred;
-
                         return preferred;
-
                     }
+
+                } else {
+
+                    const errRaw = await res.text();
+                    let errMsg = `HTTP ${res.status}`;
+                    try {
+                        const parsed = JSON.parse(errRaw);
+                        if (parsed.error && parsed.error.message) errMsg = `HTTP ${res.status}: ${parsed.error.message}`;
+                    } catch (e) {}
+
+                    lastModelDiscoveryDiagnostics = { attempted: true, success: false, models: [], selected: null, error: errMsg };
 
                 }
 
             } catch (e) {
 
+                const errMsg = (e.name === 'AbortError') ? 'タイムアウト (10秒)' : e.message;
+                lastModelDiscoveryDiagnostics = { attempted: true, success: false, models: [], selected: null, error: errMsg };
                 console.warn('モデル一覧の自動検出スキップ:', e);
 
             }
@@ -7115,25 +7118,17 @@ function fixScriptureReferences(text) {
 
 
             // 試行するモデル候補リスト（最速のgemini-3.5-flash-liteを最優先）
-
             let candidateModels = [
-
                 cachedWorkingGeminiModel,
-
                 'gemini-3.5-flash-lite',
-
+                'gemini-3.5-flash',
                 'gemini-2.5-flash-lite',
-
                 'gemini-2.5-flash',
-
                 'gemini-2.0-flash-lite',
-
                 'gemini-2.0-flash',
-
+                'gemini-1.5-flash-latest',
                 'gemini-1.5-flash'
-
             ].filter(Boolean);
-
             candidateModels = Array.from(new Set(candidateModels));
 
 
@@ -7189,13 +7184,10 @@ function fixScriptureReferences(text) {
                         const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${encodeURIComponent(cleanKey)}`;
 
                         const response = await fetch(url, {
-
                             method: 'POST',
-
                             headers: {
-
-                                'Content-Type': 'application/json'
-
+                                'Content-Type': 'application/json',
+                                'x-goog-api-key': cleanKey
                             },
 
                             signal: controller.signal,
@@ -7977,77 +7969,54 @@ function fixScriptureReferences(text) {
                     geminiApiKey = key;
 
                     cachedWorkingGeminiModel = null; // テスト時に最新モデルを強制再探索
-
                     const prevEnabled = isGeminiAiEnabled;
-
                     isGeminiAiEnabled = true;
 
-
+                    // 接続テスト時に利用可能モデルの探索を強制実行
+                    await discoverAvailableGeminiModel(key.trim(), true);
 
                     const result = await correctWithGemini(testPrompt, { isTest: true });
-
                     const elapsed = Math.round(performance.now() - startTime);
 
-
-
                     geminiApiKey = tempKey;
-
                     isGeminiAiEnabled = prevEnabled;
 
-
-
                     if (geminiLatencyText) geminiLatencyText.textContent = `${elapsed}ms`;
-
                     if (geminiTestOutput) {
-
                         const jaResult = result.ja || '';
-
                         const enResult = result.en || null;
-
                         const isSuccess = result.isAiSuccess;
-
                         const usedModel = result.model || 'Gemini Flash';
 
-
-
                         if (isSuccess) {
-
                             geminiTestOutput.innerHTML = `
-
                                 <div class="text-indigo-200">原文: <span class="text-slate-300 line-through">${testPrompt}</span></div>
-
                                 <div class="text-emerald-300 font-bold">➔ AI補正: ${escapeHtml(jaResult)}</div>
-
                                 ${enResult ? `<div class="text-sky-300 font-medium mt-0.5">🌐 英訳: ${escapeHtml(enResult)}</div>` : ''}
-
                                 <div class="text-[10px] text-emerald-400 mt-1 font-mono">✅ 接続成功 (使用モデル: ${escapeHtml(usedModel)})</div>
-
                             `;
-
                         } else {
-
                             const errDetail = result.error || 'モデルからの応答取得に失敗';
-
+                            let diagInfo = '';
+                            if (lastModelDiscoveryDiagnostics && lastModelDiscoveryDiagnostics.attempted) {
+                                if (lastModelDiscoveryDiagnostics.success) {
+                                    const mList = lastModelDiscoveryDiagnostics.models.slice(0, 5).join(', ');
+                                    diagInfo = `<div class="text-[10px] text-slate-400 mt-1 font-mono">📡 API認識モデル: [${escapeHtml(mList)}${lastModelDiscoveryDiagnostics.models.length > 5 ? ' ...他' : ''}]</div>`;
+                                } else {
+                                    diagInfo = `<div class="text-[10px] text-amber-400/90 mt-1 font-mono">⚠️ ListModels API: ${escapeHtml(lastModelDiscoveryDiagnostics.error)}</div>`;
+                                }
+                            }
                             geminiTestOutput.innerHTML = `
-
                                 <div class="text-amber-300 font-bold mb-1"><i class="fa-solid fa-triangle-exclamation mr-1"></i> API接続エラー</div>
-
-                                <div class="text-[11px] text-red-300 font-mono mb-1.5 p-1.5 bg-red-950/60 rounded border border-red-800/50">${escapeHtml(errDetail)}</div>
-
-                                <div class="text-[11px] text-slate-300">
-
-                                    💡 <strong>確認ポイント:</strong><br>
-
-                                    Google AI Studio の APIキー (<code>AQ.Ab...</code> または <code>AIzaSy...</code>) が正しく入力されているかご確認ください。<br>
-
-                                    <a href="https://aistudio.google.com/app/apikey" target="_blank" class="text-purple-300 underline font-semibold">aistudio.google.com</a> から取得したキーを貼り付けて「保存」してください。
-
+                                <div class="text-[11px] text-red-300 font-mono mb-1.5 p-1.5 bg-red-950/60 rounded border border-red-800/50 break-all">${escapeHtml(errDetail)}</div>
+                                ${diagInfo}
+                                <div class="text-[11px] text-slate-300 mt-2 space-y-1">
+                                    <div>💡 <strong>確認ポイント:</strong></div>
+                                    <div>1. <a href="https://aistudio.google.com/app/apikey" target="_blank" class="text-purple-300 underline font-semibold">aistudio.google.com</a> で発行されたGoogle AI Studio用のAPIキーかご確認ください。</div>
+                                    <div>2. Google Cloud プロジェクトの場合は、<a href="https://console.cloud.google.com/apis/library/generativelanguage.googleapis.com" target="_blank" class="text-sky-300 underline font-semibold">Generative Language API</a> が有効化されているかご確認ください。</div>
                                 </div>
-
                             `;
-
                         }
-
                     }
 
                 } catch (e) {
