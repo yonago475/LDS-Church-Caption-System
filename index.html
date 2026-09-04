@@ -6880,17 +6880,13 @@ const validModels = models
                         .map(m => m.name.replace(/^models\//, ''))
                         .filter(m => m.toLowerCase().startsWith('gemini') && !m.toLowerCase().includes('gemma') && !m.toLowerCase().includes('latest') && !m.toLowerCase().includes('tts') && !m.toLowerCase().includes('image'));
 
-                    // 高速・低遅延な Flash モデル優先選択（実績のある3.1系/2.5系/3系Preview等、v1beta対応モデル）
-                    const preferred = validModels.find(m => m.includes('3.1-flash-lite')) ||
-                                      validModels.find(m => m === 'gemini-2.5-flash') ||
-                                      validModels.find(m => m.includes('2.5-flash-lite')) ||
+                    // 実在するFlashモデルの中から優先順位をつけて選択（gemini-2.5-flash または gemini-3-flash-preview を最優先）
+                    const preferred = validModels.find(m => m === 'gemini-2.5-flash') ||
+                                      validModels.find(m => m === 'gemini-3-flash-preview') ||
                                       validModels.find(m => m.includes('2.5-flash')) ||
-                                      validModels.find(m => m.includes('3-flash-preview')) ||
+                                      validModels.find(m => m.includes('3-flash')) ||
                                       validModels.find(m => m.includes('2.0-flash')) ||
-                                      validModels.find(m => m.includes('2.0-flash-lite')) ||
                                       validModels.find(m => m.includes('1.5-flash')) ||
-                                      validModels.find(m => m.includes('3.5-flash-lite')) ||
-                                      validModels.find(m => m.includes('3.5-flash')) ||
                                       validModels.find(m => m.includes('flash')) ||
                                       validModels[0];
 
@@ -7117,7 +7113,7 @@ const validModels = models
 
             const startTime = performance.now();
 
-            // 試行するモデル候補リスト（v1beta対応の実績Flashモデル優先。404原因となるlatestエイリアスは完全除外）
+            // 実際に Google API (ListModels) で検出された実在Flashモデル群
             const discoveredModels = (lastModelDiscoveryDiagnostics && lastModelDiscoveryDiagnostics.success)
                 ? (lastModelDiscoveryDiagnostics.models || [])
                 : [];
@@ -7127,20 +7123,30 @@ const validModels = models
                 return lower.startsWith('gemini') && lower.includes('flash') && !lower.includes('latest') && !lower.includes('tts') && !lower.includes('image');
             });
 
-            let candidateModels = [
-                cachedWorkingGeminiModel,
-                'gemini-3.1-flash-lite',
+            // 実在するFlashモデルのみを優先度順に整理（架空モデルの無駄撃ちを完全防止）
+            const priorityOrder = [
                 'gemini-2.5-flash',
-                'gemini-2.5-flash-lite',
                 'gemini-3-flash-preview',
+                'gemini-2.5-flash-lite',
                 'gemini-2.0-flash',
-                'gemini-2.0-flash-lite',
-                'gemini-1.5-flash',
-                ...validDiscoveredFlash.filter(m => !m.includes('3.5')),
-                'gemini-3.5-flash-lite',
-                'gemini-3.5-flash'
-            ].filter(Boolean);
-            candidateModels = Array.from(new Set(candidateModels)).filter(m => m.startsWith('gemini') && !m.includes('gemma') && !m.includes('latest'));
+                'gemini-1.5-flash'
+            ];
+
+            let candidateModels = [];
+            if (validDiscoveredFlash.length > 0) {
+                candidateModels = [...validDiscoveredFlash].sort((a, b) => {
+                    const idxA = priorityOrder.findIndex(p => a === p || a.includes(p));
+                    const idxB = priorityOrder.findIndex(p => b === p || b.includes(p));
+                    return (idxA === -1 ? 999 : idxA) - (idxB === -1 ? 999 : idxB);
+                });
+            } else {
+                candidateModels = ['gemini-2.5-flash', 'gemini-3-flash-preview', 'gemini-2.0-flash'];
+            }
+
+            if (cachedWorkingGeminiModel && candidateModels.includes(cachedWorkingGeminiModel)) {
+                candidateModels = [cachedWorkingGeminiModel, ...candidateModels.filter(m => m !== cachedWorkingGeminiModel)];
+            }
+            candidateModels = Array.from(new Set(candidateModels));
 
 
 
@@ -7273,7 +7279,10 @@ const validModels = models
                                     aiStats.lastErrorMessage = 'HTTP 429 (レート制限超過・2秒冷却待機中)';
                                     last429CooldownUntil = Date.now() + 2000;
                                 }
-                                throw new Error(detailMsg);
+                                lastDetailError = `[${modelName}] ${detailMsg}`;
+                                attemptHistory.push(`${modelName}: 429レート制限`);
+                                // 429レート制限時は他モデルを叩いてもクォータ浪費になるため即座にフォールバック中断
+                                break;
                             } else {
                                 continue;
                             }
