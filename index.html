@@ -1106,7 +1106,7 @@
 
                         <span class="text-[10px] sm:text-[11px] text-slate-400 px-1.5 py-0.5 rounded bg-slate-800/80 border border-slate-700/60 shrink-0">
 
-                            <i class="fa-solid fa-layer-group mr-1 text-slate-500"></i><span id="totalCardsLabel">カード</span>: <span id="totalCardsCount" class="font-mono text-indigo-300 font-bold">0</span> <span class="ml-1 text-[9px] px-1 py-0.5 rounded bg-indigo-900/60 text-indigo-300 font-mono border border-indigo-700/50">v1.4</span>
+                            <i class="fa-solid fa-layer-group mr-1 text-slate-500"></i><span id="totalCardsLabel">カード</span>: <span id="totalCardsCount" class="font-mono text-indigo-300 font-bold">0</span> <span class="ml-1 text-[9px] px-1 py-0.5 rounded bg-indigo-900/60 text-indigo-300 font-mono border border-indigo-700/50">v1.5</span>
 
                         </span>
 
@@ -10420,8 +10420,8 @@ ${existingKeys.slice(0, 100).join(', ')}
             }
         }
 
-        // チャット標準スムーズスクロール（所要時間 約400ms、easeOutCubic でスッと滑らかにせり上がる）
-        function smoothScrollToLatest(durationMs = 400) {
+        // チャット標準スムーズスクロール（所要時間 約800ms、easeOutCubic でゆったり滑らかにせり上がる）
+        function smoothScrollToLatest(durationMs = 800) {
             if (!viewerCaptionFeed) return;
 
             const startTop = viewerCaptionFeed.scrollTop;
@@ -10478,7 +10478,7 @@ ${existingKeys.slice(0, 100).join(', ')}
             if (newCaptionBadge) newCaptionBadge.classList.add('hidden');
 
             if (smooth) {
-                smoothScrollToLatest(350);
+                smoothScrollToLatest(700);
             } else {
                 stopCustomAutoScroll(false);
                 viewerCaptionFeed.scrollTop = viewerCaptionFeed.scrollHeight;
@@ -10622,8 +10622,8 @@ ${existingKeys.slice(0, 100).join(', ')}
             viewerCaptionFeed.appendChild(item);
 
             if (viewerAutoScroll && wasFollowing) {
-                // 最新カード閲覧中: チャット標準の約0.4秒でスッと滑らかに最新カードへスクロール
-                smoothScrollToLatest(400);
+                // 最新カード閲覧中: ゆったり優しい約0.8秒で滑らかに最新カードへスクロール
+                smoothScrollToLatest(800);
                 if (newCaptionBadge) {
                     newCaptionBadge.classList.add('hidden');
                 }
