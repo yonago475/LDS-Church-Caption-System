@@ -7105,13 +7105,12 @@ function fixScriptureReferences(text) {
 
 
 
-            const controller = new AbortController();
-
-            // バッチ処理および接続テストでのタイムアウトを十分に確保
-
-            const timeoutMs = isTest ? 12000 : Math.min(8000 + (items.length - 1) * 1000, 18000);
-
-            const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+            // 全体タイムアウト（接続テスト時は25秒、本番バッチは最大20秒）
+            const overallTimeoutMs = isTest ? 25000 : Math.min(8000 + (items.length - 1) * 1000, 20000);
+            const overallController = new AbortController();
+            const overallTimeoutId = setTimeout(() => {
+                overallController.abort(new Error(`通信タイムアウト (${overallTimeoutMs / 1000}秒)`));
+            }, overallTimeoutMs);
 
             const startTime = performance.now();
 
@@ -7176,21 +7175,30 @@ function fixScriptureReferences(text) {
                 // モデルフォールバックループ
 
                 for (let i = 0; i < candidateModels.length; i++) {
+                    if (overallController.signal.aborted) break;
 
                     const modelName = candidateModels[i];
+                    // モデル単位の個別タイムアウト（1モデルあたり最大7秒）
+                    const modelController = new AbortController();
+                    const perModelTimeoutMs = isTest ? 7000 : 6000;
+                    const modelTimeoutId = setTimeout(() => {
+                        modelController.abort(new Error(`モデル ${modelName} タイムアウト (${perModelTimeoutMs / 1000}秒)`));
+                    }, perModelTimeoutMs);
+
+                    const abortForwarder = () => {
+                        modelController.abort(new Error('通信全体タイムアウト'));
+                    };
+                    overallController.signal.addEventListener('abort', abortForwarder, { once: true });
 
                     try {
-
                         const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${encodeURIComponent(cleanKey)}`;
-
                         const response = await fetch(url, {
                             method: 'POST',
                             headers: {
                                 'Content-Type': 'application/json',
                                 'x-goog-api-key': cleanKey
                             },
-
-                            signal: controller.signal,
+                            signal: modelController.signal,
 
                             body: JSON.stringify({
 
@@ -7226,8 +7234,10 @@ function fixScriptureReferences(text) {
 
 
 
-                        if (response.ok) {
+                        clearTimeout(modelTimeoutId);
+                        overallController.signal.removeEventListener('abort', abortForwarder);
 
+                        if (response.ok) {
                             const resJson = await response.json();
 
                             const rawOut = resJson.candidates?.[0]?.content?.parts?.[0]?.text || resJson.candidates?.[0]?.text;
@@ -7301,23 +7311,26 @@ function fixScriptureReferences(text) {
                         }
 
                     } catch (fetchErr) {
+                        clearTimeout(modelTimeoutId);
+                        overallController.signal.removeEventListener('abort', abortForwarder);
 
-                        if (fetchErr.name === 'AbortError') throw fetchErr;
-
-                        if (i === candidateModels.length - 1) {
-
-                            throw fetchErr;
-
+                        if (overallController.signal.aborted) {
+                            throw new Error(`通信全体タイムアウト (${overallTimeoutMs / 1000}秒)`);
                         }
 
+                        lastDetailError = `[${modelName}] ${fetchErr.message}`;
+                        console.warn(`モデル ${modelName} 通信試行エラー:`, fetchErr.message);
+
+                        if (i === candidateModels.length - 1 && !successData) {
+                            throw fetchErr;
+                        }
                     }
 
                 }
 
 
 
-                clearTimeout(timeoutId);
-
+                clearTimeout(overallTimeoutId);
                 const elapsed = performance.now() - startTime;
 
                 if (!isTest) {
@@ -7564,7 +7577,7 @@ function fixScriptureReferences(text) {
 
             } catch (err) {
 
-                clearTimeout(timeoutId);
+                clearTimeout(overallTimeoutId);
 
                 if (!isTest) {
 
