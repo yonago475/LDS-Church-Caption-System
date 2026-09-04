@@ -1535,6 +1535,13 @@
 
             "おんちち": "御父",
 
+            // Bug-12対策: 「主は」への強力な変換力を維持しつつ、最長一致優先で手話通訳等を安全に保護
+            "手話通訳者": "手話通訳者",
+
+            "手話通訳": "手話通訳",
+
+            "手話クラス": "手話クラス",
+
             "手話 ニーファイ人に": "主はニーファイ人に",
 
             "手話 私たちを": "主は私たちを",
@@ -1572,6 +1579,9 @@
             "温故の": "御子の",
 
             "温故": "御子",
+
+            // Bug-13対策: 「御子」への強力な変換力を維持しつつ、最長一致優先で交通運行状況等を保護
+            "運行状況": "運行状況",
 
             "運行は": "御子は",
 
@@ -2669,7 +2679,7 @@
 
             "心理を喜び": "真理を喜び",
 
-            "偽りを避難し": "偽りを非难し",
+            "偽りを避難し": "偽りを非難し",
 
             "非難し": "非難し",
 
@@ -2969,9 +2979,7 @@
 
             "さむ": "サム",
 
-            "べんじゃみんおう": "ベンジャミン王",
-
-            "べんじゃみん": "ベンジャミン",
+            "べんじゃみん": "ベニヤミン",
 
             "ぜにふ": "ゼニフ",
 
@@ -3480,11 +3488,16 @@ function createSectionDetector() {
 
     function detectSection(text) {
 
-        if (!text) return currentSectionType;
+        // 入力ガード: null/undefined/非文字列の場合は現在のセクションをそのまま返却
+        if (!text || typeof text !== 'string') return currentSectionType;
+
+
 
         // 聖餐の祈り（最優先判定: 非常に定型的なフレーズ）
 
         if (/おおかみよ|パンを祝福|御子の体の記念|水を祝福|いつも御子を覚え|御子の御霊を受けられる/.test(text)) {
+
+            if (sectionChangeTimer) { clearTimeout(sectionChangeTimer); sectionChangeTimer = null; }
 
             currentSectionType = 'sacrament_prayer';
 
@@ -3492,9 +3505,9 @@ function createSectionDetector() {
 
         }
 
-        // 祈りの終了検出（アーメン → 少し後にgeneralへ復帰）
-
-        if (/アーメン/.test(text) && (currentSectionType === 'prayer' || currentSectionType === 'sacrament_prayer')) {
+        // 祈り・証の終了検出（アーメン → 5秒後にgeneralへ復帰）
+        // Bug-06修正: testimony（証）もアーメンで一般に復帰できるように条件へ追加
+        if (/アーメン/.test(text) && (currentSectionType === 'prayer' || currentSectionType === 'sacrament_prayer' || currentSectionType === 'testimony')) {
 
             if (sectionChangeTimer) clearTimeout(sectionChangeTimer);
 
@@ -3505,8 +3518,10 @@ function createSectionDetector() {
         }
 
         // 祈りの開始
-
+        // Bug-07修正: 新しい祈り開始時に先行タイマーを確実にクリア
         if (/天の御父(様|よ)|父なる神(様|よ)|永遠の父なる/.test(text)) {
+
+            if (sectionChangeTimer) { clearTimeout(sectionChangeTimer); sectionChangeTimer = null; }
 
             currentSectionType = 'prayer';
 
@@ -3515,8 +3530,10 @@ function createSectionDetector() {
         }
 
         // 証
-
+        // Bug-07修正: 証開始時に先行タイマーを確実にクリア
         if (/証(を述べ|します|いたし|させて)|わたし(は|の)知って|真実であると(証|知)/.test(text)) {
+
+            if (sectionChangeTimer) { clearTimeout(sectionChangeTimer); sectionChangeTimer = null; }
 
             currentSectionType = 'testimony';
 
@@ -3697,10 +3714,15 @@ function extractJsonFromAiResponse(raw) {
         }
 
         // 最後の1文が途中で切れている場合の救出（閉じ括弧なし）
+        // Bug-09修正: cleaned全体ではなく最後の未完了ブロック(lastOpenBrace以降)からjaを抽出
+        // これにより先頭文との誤重複判定を防ぎ、途中で切断された末尾文を確実に救出
+        const lastOpenBrace = cleaned.lastIndexOf('{');
+        const lastCloseBrace = cleaned.lastIndexOf('}');
+        if (lastOpenBrace !== -1 && (sentences.length === 0 || lastOpenBrace > lastCloseBrace)) {
 
-        if (sentences.length === 0 || cleaned.lastIndexOf('{') > cleaned.lastIndexOf('}')) {
+            const unclosedChunk = cleaned.substring(lastOpenBrace);
 
-            const lastJaMatch = cleaned.match(/\{\s*"ja"\s*:\s*"((?:[^"\\]|\\.)*)(?:"|\s*$)/);
+            const lastJaMatch = unclosedChunk.match(/"ja"\s*:\s*"((?:[^"\\]|\\.)*)(?:"|\s*$)/);
 
             if (lastJaMatch && lastJaMatch[1]) {
 
@@ -3896,6 +3918,8 @@ const PROTECTED_TERMS = [
 
 function isInsideProtectedTerm(text, pos) {
 
+    if (!text || typeof text !== 'string') return false;
+
     for (const term of PROTECTED_TERMS) {
 
         let idx = text.indexOf(term);
@@ -3935,8 +3959,9 @@ function isInsideProtectedTerm(text, pos) {
  */
 
 // 終止表現・文末述語パターン（疑問文末・終止形・命令・禁止・願望・勧誘）※長語句を最優先評価 & 接続助詞ガード
-
-const SENTENCE_ENDINGS = /(ありませんでした|できませんでした|いけませんでした|なりませんでした|ませんでした|でしたか|ましたか|でしょうか|ないでしょうか|思っています|感謝いたします|お祈りします|ありません|できません|れません|でした|ました|ですか|ますか|だろうか|なのか|思います|願います|祈ります|証します|感謝します|信じます|言えます|言います|あります|なります|なりません|いけません|ましょう|くださいません|ください|なさい|のです|のだ|のである|ことです|ことだ|ことである|アーメン|です|ます)(?!(でした|ました|ので|から|が|て|ねば|ば|たら|なら|より|ほど|とき|時|と|し|のに|けれど|けど|でも|ながら|つつ|ため|因り|とおり|通り|ところ))([よねよかなぞねえわ。！？?]*)/g;
+// Bug-10修正: 否定先読みに「ます」(ますます対策)、「よう」(〜ますように対策)、「ら」(〜ですら対策)を追加
+// さらに (?<!ます)ます により「ますます」の2文字目の誤判定も完全防止
+const SENTENCE_ENDINGS = /(ありませんでした|できませんでした|いけませんでした|なりませんでした|ませんでした|でしたか|ましたか|でしょうか|ないでしょうか|思っています|感謝いたします|お祈りします|ありません|できません|れません|でした|ました|ですか|ますか|だろうか|なのか|思います|願います|祈ります|証します|感謝します|信じます|言えます|言います|あります|なります|なりません|いけません|ましょう|くださいません|ください|なさい|のです|のだ|のである|ことです|ことだ|ことである|アーメン|です|(?<!ます)ます)(?!(でした|ました|ので|から|が|て|ねば|ば|たら|なら|より|ほど|とき|時|と|し|のに|けれど|けど|でも|ながら|つつ|ため|因り|とおり|通り|ところ|ます|よう|ら))([よねよかなぞねえわ。！？?]*)/g;
 
 
 
@@ -4030,15 +4055,23 @@ function findSmartSplitIndex(text, isFinal = false) {
 
 function fixScriptureReferences(text) {
 
-    if (!text) return text;
+    if (!text || typeof text !== 'string') return text;
 
-    const numPattern = '[0-9０-９一二三四五六七八九十百]+';
+    const numPattern = '[0-9０-９一二三四五六七八九十百千]+';
 
     
 
-    // パターン1: (第)? (空白)? (数字) (勝|賞) (空白)? (数字) (節)? -> 「(第)?(空白)?X章Y節」
+    // Bug-08修正: 聖典の書名・巻名の文脈キーワード（前方にこれらがある場合は第なしでも章と判定）
 
-    const regexChVs = new RegExp(`(第)?(\\s*)(${numPattern})\\s*[勝賞]\\s*(${numPattern})\\s*節?`, 'g');
+    const bookPattern = '(?:ニーファイ|ヤコブ|エノス|ヤロム|オムナイ|モルモン|モーサヤ|アルマ|ヒラマン|エテル|モロナイ|マタイ|マルコ|ルカ|ヨハネ|使徒|ローマ|コリント|ガラテヤ|エペソ|ピリピ|コロサイ|テサロニケ|テモテ|テトス|ピレモン|ヘブル|ペテロ|ユダ|黙示録|創世記|出エジプト|レビ|民数|申命|ヨシュア|士師|ルツ|サムエル|列王|歴代|エズラ|ネヘミヤ|エステル|ヨブ|詩篇|箴言|伝道|雅歌|イザヤ|エレミヤ|哀歌|エゼキエル|ダニエル|ホセア|ヨエル|アモス|オバデヤ|ヨナ|ミカ|ナホム|ハバクク|ゼパニヤ|ハガイ|ゼカリヤ|マラキ|教義と聖約|モーセ|アブラハム|聖句|聖典|経典)';
+
+
+
+    // パターン1: 「〜節」が後続に明示されている場合（例: ヨハネ3勝16節、第3勝7節、10勝4節）
+
+    // 後続の「節」が必須のため「3勝2敗」「1勝1敗」等に誤マッチしない
+
+    const regexChVs = new RegExp(`(第)?(\\s*)(${numPattern})\\s*[勝賞]\\s*(${numPattern})\\s*節`, 'g');
 
     text = text.replace(regexChVs, (match, dai, sp, ch, vs) => {
 
@@ -4050,15 +4083,27 @@ function fixScriptureReferences(text) {
 
 
 
-    // パターン2: (第)? (空白)? (数字) (勝|賞) -> 「(第)?(空白)?X章」
+    // パターン2: 明示的な「第」プレフィックス付き（例: 第3勝、第 10 賞）
 
-    const regexChOnly = new RegExp(`(第)?(\\s*)(${numPattern})\\s*[勝賞]`, 'g');
+    const regexDaiCh = new RegExp(`第(\\s*)(${numPattern})\\s*[勝賞]`, 'g');
 
-    text = text.replace(regexChOnly, (match, dai, sp, ch) => {
+    text = text.replace(regexDaiCh, (match, sp, ch) => {
 
-        const prefix = dai ? '第' : '';
+        return `第${sp || ''}${ch.trim()}章`;
 
-        return `${prefix}${sp || ''}${ch.trim()}章`;
+    });
+
+
+
+    // パターン3: 聖典名が直前にある場合（例: ヒラマン 5 勝、アルマ三十二勝、モーサヤ2賞）
+
+    // 「ノーベル賞」「通算100勝」等には聖典名がないため誤マッチしない
+
+    const regexBookCh = new RegExp(`(${bookPattern}\\s*(?:第)?\\s*)(${numPattern})\\s*[勝賞]`, 'g');
+
+    text = text.replace(regexBookCh, (match, bookPrefix, ch) => {
+
+        return `${bookPrefix}${ch.trim()}章`;
 
     });
 
@@ -4380,6 +4425,33 @@ function fixScriptureReferences(text) {
 
 
 
+        // ==================== 安全な LocalStorage 操作ユーティリティ ====================
+        function safeLocalStorageSet(key, value) {
+            try {
+                localStorage.setItem(key, value);
+            } catch (e) {
+                console.warn(`[LocalStorage] Failed to save '${key}':`, e);
+            }
+        }
+
+        function safeLocalStorageGet(key, fallback = null) {
+            try {
+                const val = localStorage.getItem(key);
+                return val !== null ? val : fallback;
+            } catch (e) {
+                console.warn(`[LocalStorage] Failed to read '${key}':`, e);
+                return fallback;
+            }
+        }
+
+        function safeLocalStorageRemove(key) {
+            try {
+                localStorage.removeItem(key);
+            } catch (e) {
+                console.warn(`[LocalStorage] Failed to remove '${key}':`, e);
+            }
+        }
+
         let churchDictionary = {};
 
         let peer = null;
@@ -4396,7 +4468,7 @@ function fixScriptureReferences(text) {
 
         let recognition = null;
 
-        let currentFontSizeIndex = parseInt(localStorage.getItem('lds_viewer_font_size') || '1', 10);
+        let currentFontSizeIndex = parseInt(safeLocalStorageGet('lds_viewer_font_size', '1'), 10);
 
         const fontClasses = ["text-base", "text-xl", "text-3xl", "text-5xl"];
 
@@ -4417,6 +4489,8 @@ function fixScriptureReferences(text) {
         let analyser = null;
 
         let animFrameId = null;
+
+        let currentMonitorStream = null; // Bug-15修正: レベルモニター用MediaStream保持変数
 
 
 
@@ -4446,9 +4520,9 @@ function fixScriptureReferences(text) {
 
         // Gemini AI 文脈補正機能用状態
 
-        let geminiApiKey = localStorage.getItem('lds_gemini_api_key') || '';
+        let geminiApiKey = safeLocalStorageGet('lds_gemini_api_key', '');
 
-        let isGeminiAiEnabled = localStorage.getItem('lds_gemini_ai_enabled') === 'true';
+        let isGeminiAiEnabled = safeLocalStorageGet('lds_gemini_ai_enabled', 'false') === 'true';
 
 
 
@@ -4645,6 +4719,8 @@ function fixScriptureReferences(text) {
         let manualPendingQueue = [];
 
         let currentManualOriginalRaw = '';
+
+        let currentManualInitialText = ''; // Bug-04修正: エディタ投入時の初期テキスト（人間手動編集判定用）
 
         let currentManualEnglishText = null;
 
@@ -5053,13 +5129,15 @@ function fixScriptureReferences(text) {
 
             let currentLang = 'en'; // デフォルトは英語 (English)
 
-            const savedLang = localStorage.getItem('lds_caption_lang');
+            const savedLang = safeLocalStorageGet('lds_caption_lang');
 
             if (savedLang) {
 
                 currentLang = savedLang;
 
             }
+
+            if (!targetLangSelect) return;
 
             const options = targetLangSelect.options;
 
@@ -5087,7 +5165,7 @@ function fixScriptureReferences(text) {
 
                 const newLang = this.value;
 
-                localStorage.setItem('lds_caption_lang', newLang);
+                safeLocalStorageSet('lds_caption_lang', newLang);
 
                 updateViewerUIStrings(newLang);
 
@@ -5304,11 +5382,13 @@ function fixScriptureReferences(text) {
 
 
 
-            // 直近30秒以内の過去送信履歴との完全一致（Chromeバッファ再送・遅延再送）を完全ブロック
+            // Bug-05修正: 重複判定窓を30秒→6秒に短縮（「アーメン」等の短い定型句の意図的な再発話を許可）
+            // meta.force === true の場合（手動配信ボタン押下時等）は重複チェックをバイパス
+            const forceDispatch = meta && meta.force;
 
-            const isDuplicate = recentSentHistory.some(item => {
+            const isDuplicate = !forceDispatch && recentSentHistory.some(item => {
 
-                return (now - item.timestamp < 30000) && (item.norm === normClean);
+                return (now - item.timestamp < 6000) && (item.norm === normClean);
 
             });
 
@@ -5504,9 +5584,9 @@ function fixScriptureReferences(text) {
 
                     const norm = normalizeCaption(nextText);
 
-                    // 直近30秒以内の過去送信履歴との重複を自動スキップ
+                    // Bug-05修正: 直近6秒以内の過去送信履歴との重複を自動スキップ（30秒→6秒に短縮）
 
-                    const isDup = recentSentHistory.some(h => (now - h.timestamp < 30000) && (h.norm === norm));
+                    const isDup = recentSentHistory.some(h => (now - h.timestamp < 6000) && (h.norm === norm));
 
                     if (!isDup && nextText && nextText.trim()) {
 
@@ -5532,19 +5612,24 @@ function fixScriptureReferences(text) {
 
                     const corrected = fixScriptureReferences(replaceChurchTerms(text));
 
+                    // Bug-04修正: 人間がエディタ上でテキストを変更したかどうかは、
+                    // 音声認識生テキスト(raw)ではなくエディタ投入時初期テキスト(currentManualInitialText)と比較
+                    const isHumanEdited = currentManualInitialText && (normalizeCaption(text) !== normalizeCaption(currentManualInitialText));
                     const isManuallyEdited = currentManualOriginalRaw && (normalizeCaption(text) !== normalizeCaption(currentManualOriginalRaw));
 
-                    // ユーザーが大幅に編集していなければ、Geminiが生成した公式教会用語英訳をそのまま直通配信
+                    // ユーザーが手動編集していなければ、Geminiが生成した公式教会用語英訳をそのまま直通配信
+                    const finalEnglishText = isHumanEdited ? null : currentManualEnglishText;
 
-                    const finalEnglishText = isManuallyEdited ? null : currentManualEnglishText;
-
+                    // Bug-05修正: 手動配信ボタン押下は force: true で重複チェックをバイパス
                     dispatchCaption(corrected, {
 
                         original: currentManualOriginalRaw,
 
                         isEdited: isManuallyEdited,
 
-                        englishText: finalEnglishText
+                        englishText: finalEnglishText,
+
+                        force: true
 
                     });
 
@@ -5560,6 +5645,8 @@ function fixScriptureReferences(text) {
 
                     currentManualOriginalRaw = nextItem.original;
 
+                    currentManualInitialText = nextItem.text; // Bug-04修正: 新しいエディタ初期テキストを追跡
+
                     currentManualEnglishText = nextItem.englishText || null;
 
                 } else {
@@ -5567,6 +5654,8 @@ function fixScriptureReferences(text) {
                     manualCaptionInput.value = '';
 
                     currentManualOriginalRaw = '';
+
+                    currentManualInitialText = ''; // Bug-04修正: 初期テキストクリア
 
                     currentManualEnglishText = null;
 
@@ -5593,6 +5682,8 @@ function fixScriptureReferences(text) {
                 manualCaptionInput.value = currentVal ? `${currentVal} ${nextItem.text}` : nextItem.text;
 
                 currentManualOriginalRaw = currentManualOriginalRaw ? `${currentManualOriginalRaw} ${nextItem.original}` : nextItem.original;
+
+                currentManualInitialText = manualCaptionInput.value; // Bug-04修正: 連結後の新しい初期値として更新
 
                 if (nextItem.englishText && currentManualEnglishText) {
 
@@ -5654,6 +5745,8 @@ function fixScriptureReferences(text) {
 
                         currentManualOriginalRaw = nextItem.original;
 
+                        currentManualInitialText = nextItem.text; // Bug-04修正: 破棄後の次文を初期テキストとして追跡
+
                         currentManualEnglishText = nextItem.englishText || null;
 
                     } else {
@@ -5661,6 +5754,8 @@ function fixScriptureReferences(text) {
                         manualCaptionInput.value = '';
 
                         currentManualOriginalRaw = '';
+
+                        currentManualInitialText = ''; // Bug-04修正: 初期テキストクリア
 
                         currentManualEnglishText = null;
 
@@ -6022,6 +6117,16 @@ function fixScriptureReferences(text) {
 
                 if (animFrameId) cancelAnimationFrame(animFrameId);
 
+                // Bug-15修正: 前のMediaStreamトラックを停止してマイク資源を解放
+                if (currentMonitorStream) {
+                    try {
+                        currentMonitorStream.getTracks().forEach(t => t.stop());
+                    } catch (e) {
+                        console.warn('MediaStream stop error:', e);
+                    }
+                    currentMonitorStream = null;
+                }
+
                 if (audioContext) audioContext.close();
 
 
@@ -6031,6 +6136,8 @@ function fixScriptureReferences(text) {
                     audio: deviceId ? { deviceId: { exact: deviceId } } : true
 
                 });
+
+                currentMonitorStream = stream; // Bug-15修正: 新しいストリームを保持
 
 
 
@@ -6068,7 +6175,10 @@ function fixScriptureReferences(text) {
 
                     
 
-                    audioLevelBar.style.width = level + '%';
+                    // Bug-15/nullガード: audioLevelBarの存在確認
+                    if (audioLevelBar) {
+                        audioLevelBar.style.width = level + '%';
+                    }
 
                     animFrameId = requestAnimationFrame(updateMeter);
 
@@ -6094,7 +6204,7 @@ function fixScriptureReferences(text) {
 
             let customDict = {};
 
-            const customSaved = localStorage.getItem('lds_church_dict_custom');
+            const customSaved = safeLocalStorageGet('lds_church_dict_custom');
 
             if (customSaved) {
 
@@ -6108,7 +6218,7 @@ function fixScriptureReferences(text) {
 
                 // 旧形式（lds_church_dict）からのマイグレーション
 
-                const oldSaved = localStorage.getItem('lds_church_dict');
+                const oldSaved = safeLocalStorageGet('lds_church_dict');
 
                 if (oldSaved) {
 
@@ -6116,17 +6226,19 @@ function fixScriptureReferences(text) {
 
                         const parsedOld = JSON.parse(oldSaved);
 
-                        Object.keys(parsedOld).forEach(k => {
+                        if (parsedOld && typeof parsedOld === 'object' && !Array.isArray(parsedOld)) {
+                            Object.keys(parsedOld).forEach(k => {
 
-                            if (DEFAULT_DICTIONARY[k] !== parsedOld[k]) {
+                                if (DEFAULT_DICTIONARY[k] !== parsedOld[k]) {
 
-                                customDict[k] = parsedOld[k];
+                                    customDict[k] = parsedOld[k];
 
-                            }
+                                }
 
-                        });
+                            });
+                        }
 
-                        localStorage.setItem('lds_church_dict_custom', JSON.stringify(customDict));
+                        safeLocalStorageSet('lds_church_dict_custom', JSON.stringify(customDict));
 
                     } catch (e) { console.warn('JSON parse error (oldDict):', e.message); }
 
@@ -6158,9 +6270,9 @@ function fixScriptureReferences(text) {
 
             });
 
-            localStorage.setItem('lds_church_dict_custom', JSON.stringify(customDict));
+            safeLocalStorageSet('lds_church_dict_custom', JSON.stringify(customDict));
 
-            localStorage.setItem('lds_church_dict', JSON.stringify(churchDictionary));
+            safeLocalStorageSet('lds_church_dict', JSON.stringify(churchDictionary));
 
             renderDictionaryList();
 
@@ -6614,14 +6726,23 @@ function fixScriptureReferences(text) {
 
                         const imported = JSON.parse(evt.target.result);
 
-                        if (typeof imported === 'object' && imported !== null) {
-
-                            churchDictionary = { ...churchDictionary, ...imported };
-
-                            saveDictionary();
-
-                            alert(`辞書データ（${Object.keys(imported).length}件）をインポートしました！`);
-
+                        if (typeof imported === 'object' && imported !== null && !Array.isArray(imported)) {
+                            const validEntries = {};
+                            for (const [key, val] of Object.entries(imported)) {
+                                if (typeof key === 'string' && typeof val === 'string' && key.trim().length > 0) {
+                                    validEntries[key.trim()] = val.trim();
+                                }
+                            }
+                            const count = Object.keys(validEntries).length;
+                            if (count > 0) {
+                                churchDictionary = { ...churchDictionary, ...validEntries };
+                                saveDictionary();
+                                alert(`辞書データ（${count}件）を正常にインポートしました！`);
+                            } else {
+                                alert('インポート可能な辞書エントリ（文字列のキーと値のペア）が見つかりませんでした。');
+                            }
+                        } else {
+                            alert('JSONファイルのフォーマットが無効です。辞書オブジェクト（キーと値のペア）を指定してください。');
                         }
 
                     } catch (err) {
@@ -7775,7 +7896,7 @@ const validModels = models
 
                     isGeminiAiEnabled = this.checked;
 
-                    localStorage.setItem('lds_gemini_ai_enabled', isGeminiAiEnabled ? 'true' : 'false');
+                    safeLocalStorageSet('lds_gemini_ai_enabled', isGeminiAiEnabled ? 'true' : 'false');
 
                     updateGeminiUIState();
 
@@ -7873,7 +7994,7 @@ const validModels = models
 
                     geminiApiKey = newKey;
 
-                    localStorage.setItem('lds_gemini_api_key', geminiApiKey);
+                    safeLocalStorageSet('lds_gemini_api_key', geminiApiKey);
 
                     if (geminiApiKey) {
 
@@ -7881,7 +8002,7 @@ const validModels = models
 
                         if (geminiAiToggle) geminiAiToggle.checked = true;
 
-                        localStorage.setItem('lds_gemini_ai_enabled', 'true');
+                        safeLocalStorageSet('lds_gemini_ai_enabled', 'true');
 
                     } else {
 
@@ -7889,7 +8010,7 @@ const validModels = models
 
                         if (geminiAiToggle) geminiAiToggle.checked = false;
 
-                        localStorage.setItem('lds_gemini_ai_enabled', 'false');
+                        safeLocalStorageSet('lds_gemini_ai_enabled', 'false');
 
                     }
 
@@ -7949,14 +8070,14 @@ const validModels = models
 
 
 
-                try {
+                const tempKey = geminiApiKey;
+                const prevEnabled = isGeminiAiEnabled;
 
-                    const tempKey = geminiApiKey;
+                try {
 
                     geminiApiKey = key;
 
                     cachedWorkingGeminiModel = null; // テスト時に最新モデルを強制再探索
-                    const prevEnabled = isGeminiAiEnabled;
                     isGeminiAiEnabled = true;
 
                     // 接続テスト時に利用可能モデルの探索を強制実行
@@ -7964,9 +8085,6 @@ const validModels = models
 
                     const result = await correctWithGemini(testPrompt, { isTest: true });
                     const elapsed = Math.round(performance.now() - startTime);
-
-                    geminiApiKey = tempKey;
-                    isGeminiAiEnabled = prevEnabled;
 
                     if (geminiLatencyText) geminiLatencyText.textContent = `${elapsed}ms`;
                     if (geminiTestOutput) {
@@ -8011,6 +8129,10 @@ const validModels = models
                     if (geminiTestOutput) geminiTestOutput.innerHTML = `<span class="text-red-400">❌ エラー: ${escapeHtml(e.message)}</span>`;
 
                 } finally {
+
+                    // Bug-14修正: 例外発生時でも元のAPIキーとAI有効化状態を確実に復元
+                    geminiApiKey = tempKey;
+                    isGeminiAiEnabled = prevEnabled;
 
                     if (btnElement) {
 
@@ -8644,7 +8766,7 @@ ${existingKeys.slice(0, 100).join(', ')}
 
         function initPeerHost() {
 
-            const savedPeerId = localStorage.getItem('lds_caption_peer_id');
+            const savedPeerId = safeLocalStorageGet('lds_caption_peer_id');
 
 
 
@@ -8662,7 +8784,7 @@ ${existingKeys.slice(0, 100).join(', ')}
 
             peer.on('open', function(id) {
 
-                localStorage.setItem('lds_caption_peer_id', id);
+                safeLocalStorageSet('lds_caption_peer_id', id);
 
                 roomIdDisplay.textContent = id;
 
@@ -8674,13 +8796,14 @@ ${existingKeys.slice(0, 100).join(', ')}
 
             peer.on('connection', function(conn) {
 
-                peerConnections.push(conn);
-
-                updateViewerCount();
-
-
-
+                // Bug-01修正: ハンドシェイク完了(open)前にpushすると、broadcastToViewersの
+                // conn.openフィルターで永久除外されるRace Conditionが発生するため、
+                // openイベント完了後に初めて配列に追加する
                 conn.on('open', function() {
+
+                    if (!peerConnections.includes(conn)) {
+                        peerConnections.push(conn);
+                    }
 
                     updateViewerCount();
 
@@ -8732,7 +8855,7 @@ ${existingKeys.slice(0, 100).join(', ')}
 
                     console.warn('Saved Peer ID is unavailable. Generating a new one...');
 
-                    localStorage.removeItem('lds_caption_peer_id');
+                    safeLocalStorageRemove('lds_caption_peer_id');
 
                     peer.destroy();
 
@@ -8740,7 +8863,7 @@ ${existingKeys.slice(0, 100).join(', ')}
 
                     peer.on('open', function(id) {
 
-                        localStorage.setItem('lds_caption_peer_id', id);
+                        safeLocalStorageSet('lds_caption_peer_id', id);
 
                         roomIdDisplay.textContent = id;
 
@@ -8750,11 +8873,16 @@ ${existingKeys.slice(0, 100).join(', ')}
 
                     peer.on('connection', function(conn) {
 
-                        peerConnections.push(conn);
+                        // Bug-01修正: open完了後に追加（Race Condition対策）
+                        conn.on('open', function() {
 
-                        updateViewerCount();
+                            if (!peerConnections.includes(conn)) {
+                                peerConnections.push(conn);
+                            }
 
-                        conn.on('open', function() { updateViewerCount(); });
+                            updateViewerCount();
+
+                        });
 
                         conn.on('close', function() {
 
@@ -8898,6 +9026,8 @@ ${existingKeys.slice(0, 100).join(', ')}
 
             let provisionalIdCounter = 0;  // 仮表示ID管理用
 
+            let isBatchFlushing = false;   // Bug-03修正: バッチ処理排他ロック（並行実行防止）
+
 
 
             // バッチバッファにアイテムを追加（辞書プレパス済み）
@@ -8996,6 +9126,20 @@ ${existingKeys.slice(0, 100).join(', ')}
 
                 if (batchBuffer.length === 0) return;
 
+                // Bug-03修正: 排他ロック — 並行実行による字幕順序逆転を防止
+                // 処理中に新たな文が蓄積された場合、完了後に自動再フラッシュ
+                if (isBatchFlushing) {
+                    // 処理中はタイマーを仕掛けて、完了後に残りを処理
+                    if (!batchTimer) {
+                        batchTimer = setTimeout(() => {
+                            batchTimer = null;
+                            flushBatchBuffer();
+                        }, 1000);
+                    }
+                    return;
+                }
+                isBatchFlushing = true;
+
 
 
                 // バッファからアイテムを取り出し（コピーして空に）
@@ -9044,11 +9188,11 @@ ${existingKeys.slice(0, 100).join(', ')}
 
 
 
-                            // 1. 直近30秒以内の過去送信履歴との重複チェック
+                            // 1. Bug-05修正: 直近6秒以内の過去送信履歴との重複チェック（30秒→6秒に短縮）
 
                             const isSentDuplicate = recentSentHistory.some(item => {
 
-                                return (now - item.timestamp < 30000) && (item.norm === normChunk);
+                                return (now - item.timestamp < 6000) && (item.norm === normChunk);
 
                             });
 
@@ -9089,6 +9233,8 @@ ${existingKeys.slice(0, 100).join(', ')}
                                         manualCaptionInput.value = processedChunk;
 
                                         currentManualOriginalRaw = rawChunk;
+
+                                        currentManualInitialText = processedChunk; // Bug-04修正: 初期テキストを追跡
 
                                         currentManualEnglishText = englishText;
 
@@ -9152,21 +9298,58 @@ ${existingKeys.slice(0, 100).join(', ')}
 
                     console.error('バッチ処理キュー回復:', err);
 
-                    // エラー時は辞書補正済みテキストで各文を個別配信（フォールバック）
-
+                    // エラー時は辞書補正済みテキストで各文をフォールバック処理
                     for (const item of items) {
 
                         const processedChunk = item.preCorrected;
+                        const rawChunk = item.rawChunk;
+                        const dictChanged = item.dictChanged;
+                        let finalAction = 'BROADCAST';
 
-                        const dispatchRes = dispatchCaption(processedChunk, { original: item.rawChunk, isEdited: item.dictChanged, isAi: false });
+                        if (isManualMode) {
+                            // Bug-02修正: エラー時でも手動配信モードなら自動配信せずキューに格納
+                            const normChunk = normalizeCaption(processedChunk);
+                            const now = Date.now();
+
+                            const isSentDuplicate = recentSentHistory.some(h => (now - h.timestamp < 6000) && (h.norm === normChunk));
+                            const isCurrentInputDuplicate = manualCaptionInput && (normalizeCaption(manualCaptionInput.value.trim()) === normChunk);
+                            const isQueueDuplicate = manualPendingQueue.some(q => {
+                                const qText = (typeof q === 'object' && q !== null) ? q.text : q;
+                                return normalizeCaption(qText) === normChunk;
+                            });
+
+                            if (isSentDuplicate || isCurrentInputDuplicate || isQueueDuplicate) {
+                                finalAction = 'DUPLICATE_SUPPRESSED';
+                            } else {
+                                finalAction = 'MANUAL_QUEUED';
+                                if (manualCaptionInput) {
+                                    const currentVal = manualCaptionInput.value.trim();
+                                    if (!currentVal) {
+                                        manualCaptionInput.value = processedChunk;
+                                        currentManualOriginalRaw = rawChunk;
+                                        currentManualInitialText = processedChunk;
+                                        currentManualEnglishText = null;
+                                        manualCaptionInput.scrollTop = manualCaptionInput.scrollHeight;
+                                    } else {
+                                        manualPendingQueue.push({ text: processedChunk, original: rawChunk, isAi: false, englishText: null });
+                                        updateManualQueueUI();
+                                    }
+                                }
+                            }
+                        } else {
+                            const dispatchRes = dispatchCaption(processedChunk, { original: rawChunk, isEdited: dictChanged, isAi: false });
+                            if (dispatchRes && dispatchRes.action) {
+                                finalAction = dispatchRes.action;
+                            }
+                        }
 
                         logDiagnosticTelemetry({
 
-                            rawText: item.rawChunk,
+                            rawText: rawChunk,
 
                             dictText: processedChunk,
 
-                            dictChanged: item.dictChanged,
+                            dictChanged: dictChanged,
 
                             geminiStatus: `バッチ回復フォールバック: ${err.message}`,
 
@@ -9176,21 +9359,34 @@ ${existingKeys.slice(0, 100).join(', ')}
 
                             outputText: processedChunk,
 
+                            englishText: null,
+
                             isAiApplied: false,
 
-                            action: (dispatchRes && dispatchRes.action) ? dispatchRes.action : 'BROADCAST'
+                            action: finalAction
 
                         });
 
                     }
 
+                } finally {
+                    // Bug-03修正: 排他ロック解放（必ず実行）
+                    isBatchFlushing = false;
+
+                    // 処理中に蓄積された新規バッファがあれば自動再フラッシュ
+                    if (batchBuffer.length > 0 && !batchTimer) {
+                        batchTimer = setTimeout(() => {
+                            batchTimer = null;
+                            flushBatchBuffer();
+                        }, 500);
+                    }
                 }
 
 
 
                 // バッチ処理完了後、待機中のinterimTextをリセット
-
-                if (interimText && batchBuffer.length === 0) {
+                // Bug-17修正: 音声認識が実行中(isRecognizing)の時だけ「待機中」に更新。停止中は停止メッセージを保持
+                if (interimText && batchBuffer.length === 0 && isRecognizing) {
 
                     interimText.textContent = '（次の音声入力を待機中...）';
 
@@ -10042,7 +10238,7 @@ ${existingKeys.slice(0, 100).join(', ')}
 
         async function handleIncomingCaption(japaneseText, timestamp) {
 
-            const targetLang = targetLangSelect.value;
+            const targetLang = targetLangSelect ? targetLangSelect.value : 'ja';
 
             let translatedText = japaneseText;
 
@@ -10601,13 +10797,16 @@ ${existingKeys.slice(0, 100).join(', ')}
             const item = document.createElement('div');
             item.className = 'caption-card bg-slate-800/80 p-3.5 sm:p-4 rounded-xl border border-slate-700/60 shadow-md backdrop-blur-sm transition-all';
             
-            const isJapaneseMode = targetLangSelect.value === 'ja';
+            const isJapaneseMode = targetLangSelect ? (targetLangSelect.value === 'ja') : false;
             const displayedMainText = isJapaneseMode ? formatJapaneseWithBudouX(translatedText) : escapeHtml(translatedText);
             const displayedOrigText = !isJapaneseMode ? formatJapaneseWithBudouX(originalText) : '';
+            const langLabel = (targetLangSelect && targetLangSelect.selectedIndex >= 0 && targetLangSelect.options[targetLangSelect.selectedIndex]) 
+                ? targetLangSelect.options[targetLangSelect.selectedIndex].text 
+                : '言語';
 
             item.innerHTML = `
                 <div class="flex justify-between items-center text-[10px] text-slate-400 mb-1.5 border-b border-slate-700/40 pb-1">
-                    <span><i class="fa-solid fa-globe mr-1 text-indigo-400"></i> ${escapeHtml(targetLangSelect.options[targetLangSelect.selectedIndex].text)}</span>
+                    <span><i class="fa-solid fa-globe mr-1 text-indigo-400"></i> ${escapeHtml(langLabel)}</span>
                     <span class="font-mono">${escapeHtml(timestamp || '')}</span>
                 </div>
                 <div class="${currentSizeClass} font-semibold text-white leading-relaxed break-words">
@@ -10763,7 +10962,7 @@ ${existingKeys.slice(0, 100).join(', ')}
 
                 currentFontSizeIndex = (currentFontSizeIndex + 1) % fontClasses.length;
 
-                localStorage.setItem('lds_viewer_font_size', String(currentFontSizeIndex));
+                safeLocalStorageSet('lds_viewer_font_size', String(currentFontSizeIndex));
 
                 updateLabels();
 
