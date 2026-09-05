@@ -1103,36 +1103,30 @@
                         </span>
                     </div>
 
-                    <!-- 下段: 操作コントロールボタングループ（自動スクロール / スリープ防止 / 文字サイズ） -->
-                    <div class="flex items-center justify-between sm:justify-end gap-1.5 flex-wrap w-full">
-                        <!-- 自動スクロール切り替え -->
-                        <button id="autoScrollToggleBtn" class="flex-1 sm:flex-initial px-2 py-1 bg-indigo-800 hover:bg-indigo-700 text-indigo-200 rounded-lg text-[11px] sm:text-xs flex items-center justify-center transition-colors border border-indigo-600/60" aria-pressed="true">
-                            <i class="fa-solid fa-arrows-down-to-line mr-1"></i>
-                            <span id="autoScrollLabelText">自動スクロール: ON</span>
+                    <!-- 下段: 操作コントロールボタングループ（自動スクロール / スリープ防止 / 文字サイズ - 均等3分割グリッド） -->
+                    <div class="grid grid-cols-3 gap-1.5 w-full">
+                        <!-- 自動スクロール切り替え (左) -->
+                        <button id="autoScrollToggleBtn" class="w-full px-1.5 py-1 bg-indigo-800 hover:bg-indigo-700 text-indigo-200 rounded-lg text-[10px] sm:text-xs flex items-center justify-center transition-colors border border-indigo-600/60 truncate" aria-pressed="true">
+                            <i class="fa-solid fa-arrows-down-to-line mr-1 shrink-0"></i>
+                            <span id="autoScrollLabelText" class="truncate">自動スクロール: ON</span>
                         </button>
 
-                        <!-- 画面スリープ防止トグルボタン & 案内ポップアップ -->
-                        <div class="relative flex-1 sm:flex-initial">
+                        <!-- 画面スリープ防止トグルボタン & 案内ポップアップ (中央) -->
+                        <div class="relative w-full">
                             <div id="wakeLockTooltip" class="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2.5 py-1.5 bg-amber-500 text-slate-950 font-bold text-[10px] sm:text-[11px] rounded-lg shadow-xl flex items-center gap-1 z-30 transition-all duration-300 pointer-events-none animate-bounce whitespace-nowrap">
                                 <span id="wakeLockTooltipText">💡 タップで画面消灯を防止</span>
                                 <div class="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-amber-500"></div>
                             </div>
-                            <button id="wakeLockBtn" class="w-full px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-400 rounded-lg text-[11px] sm:text-xs flex items-center justify-center transition-colors border border-slate-700" aria-pressed="false">
-                                <i class="fa-solid fa-lightbulb text-slate-500 mr-1" id="wakeLockIcon"></i>
-                                <span id="wakeLockText">スリープ防止: OFF</span>
+                            <button id="wakeLockBtn" class="w-full px-1.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-400 rounded-lg text-[10px] sm:text-xs flex items-center justify-center transition-colors border border-slate-700 truncate" aria-pressed="false">
+                                <i class="fa-solid fa-lightbulb text-slate-500 mr-1 shrink-0" id="wakeLockIcon"></i>
+                                <span id="wakeLockText" class="truncate">スリープ防止: OFF</span>
                             </button>
                         </div>
 
-
-
-                        <!-- 文字サイズ切り替え -->
-
-                        <button id="fontSizeBtn" class="flex-1 sm:flex-initial px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-[11px] sm:text-xs flex items-center justify-center border border-slate-700">
-
-                            <span id="fontSizeBtnText">文字サイズ: 中</span>
-
+                        <!-- 文字サイズ切り替え (右) -->
+                        <button id="fontSizeBtn" class="w-full px-1.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-[10px] sm:text-xs flex items-center justify-center border border-slate-700 truncate">
+                            <span id="fontSizeBtnText" class="truncate">文字サイズ: 中</span>
                         </button>
-
                     </div>
 
                 </div>
