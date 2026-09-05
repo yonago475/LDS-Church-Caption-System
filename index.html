@@ -116,11 +116,20 @@
 
             </div>
 
-            <!-- Mode Indicator Badge -->
+            <div class="flex items-center gap-2">
 
-            <div id="modeBadge" class="text-xs px-3 py-1 rounded-full font-medium bg-indigo-800 text-indigo-100 border border-indigo-700">
+                <!-- Privacy Policy & Terms Button -->
+                <button id="privacyPolicyBtn" type="button" class="text-xs px-2.5 py-1 rounded-full bg-indigo-800/80 hover:bg-indigo-700 text-indigo-200 hover:text-white border border-indigo-700 transition-colors flex items-center gap-1.5 shadow-sm shrink-0" title="プライバシーポリシー・免責事項">
+                    <i class="fa-solid fa-shield-halved text-[11px] text-indigo-300"></i>
+                    <span id="privacyPolicyBtnText" class="text-[11px] font-medium">規約・免責</span>
+                </button>
 
-                初期化中...
+                <!-- Mode Indicator Badge -->
+                <div id="modeBadge" class="text-xs px-3 py-1 rounded-full font-medium bg-indigo-800 text-indigo-100 border border-indigo-700">
+
+                    初期化中...
+
+                </div>
 
             </div>
 
@@ -1151,20 +1160,59 @@
 
         </div>
 
-        <!-- 法的防御 & 免責事項フッター (守りの三柱) -->
-        <footer class="mt-8 pt-6 border-t border-slate-200/60 dark:border-slate-800/60 text-center text-slate-400 dark:text-slate-500 space-y-2 pb-6">
-            <p class="font-medium text-xs text-slate-500 dark:text-slate-400">
-                LDS Church Caption System — リアルタイム教会字幕配信システム (オープンソース)
-            </p>
-            <p class="max-w-2xl mx-auto text-[11px] leading-relaxed text-slate-400 dark:text-slate-500">
-                【免責事項】本システムは個人の教会員・開発者によって礼拝支援のために作成された非公式の独立支援ツールであり、末日聖徒イエス・キリスト教会の公式アプリケーションではありません。
-            </p>
-            <p class="max-w-2xl mx-auto text-[11px] leading-relaxed text-slate-400 dark:text-slate-500">
-                【プライバシー方針】音声データおよびAI補正データはリアルタイム字幕生成にのみ使用され、サーバー等への恒久保存やAIモデルの学習データとしての利用は一切行われません。
-            </p>
-        </footer>
-
     </main>
+
+    <!-- ==================== プライバシーポリシー & 免責事項 多言語モーダル ==================== -->
+    <div id="privacyModal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm transition-opacity" role="dialog" aria-modal="true" aria-labelledby="privacyModalTitle">
+        <div class="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 max-w-lg w-full max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            <!-- Modal Header -->
+            <div class="px-5 py-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-slate-50 dark:bg-slate-850">
+                <div class="flex items-center gap-2 text-indigo-600 dark:text-indigo-400">
+                    <i class="fa-solid fa-shield-halved text-base"></i>
+                    <h2 id="privacyModalTitle" class="text-sm sm:text-base font-bold text-slate-800 dark:text-white">利用規約 & プライバシーポリシー</h2>
+                </div>
+                <button id="closePrivacyModalBtn" type="button" class="w-8 h-8 rounded-full flex items-center justify-center text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-200/50 dark:hover:bg-slate-800 transition-colors" aria-label="閉じる">
+                    <i class="fa-solid fa-xmark text-sm"></i>
+                </button>
+            </div>
+
+            <!-- Modal Content -->
+            <div class="p-5 overflow-y-auto space-y-4 text-xs leading-relaxed text-slate-600 dark:text-slate-300">
+                <!-- 免責事項 -->
+                <div class="p-3.5 bg-amber-50 dark:bg-amber-950/30 rounded-xl border border-amber-200 dark:border-amber-900/50">
+                    <h3 id="disclaimerHeader" class="font-bold text-amber-900 dark:text-amber-300 mb-1 flex items-center gap-1.5">
+                        <i class="fa-solid fa-triangle-exclamation text-amber-600 dark:text-amber-400"></i>
+                        <span id="disclaimerHeaderText">【免責事項】非公式ツールについて</span>
+                    </h3>
+                    <p id="disclaimerBody" class="text-amber-800/90 dark:text-amber-200/90 text-[11px] leading-relaxed">
+                        本システムは個人の教会員・開発者によって礼拝支援のために作成された独立したオープンソースツールであり、末日聖徒イエス・キリスト教会の公式アプリケーションではありません。
+                    </p>
+                </div>
+
+                <!-- プライバシー方針 -->
+                <div class="p-3.5 bg-indigo-50 dark:bg-indigo-950/30 rounded-xl border border-indigo-200 dark:border-indigo-900/50">
+                    <h3 id="privacyHeader" class="font-bold text-indigo-950 dark:text-indigo-300 mb-1 flex items-center gap-1.5">
+                        <i class="fa-solid fa-lock text-indigo-600 dark:text-indigo-400"></i>
+                        <span id="privacyHeaderText">【プライバシー方針】データの保護</span>
+                    </h3>
+                    <p id="privacyBody" class="text-indigo-900/90 dark:text-indigo-200/90 text-[11px] leading-relaxed">
+                        音声認識およびAI補正データはリアルタイム字幕生成のみに使用され、サーバー等への恒久保存やAIモデルの学習データとしての利用は一切行われません。
+                    </p>
+                </div>
+
+                <p class="text-[10px] text-slate-400 dark:text-slate-500 text-center pt-1">
+                    LDS Church Caption System — Open Source Worship Support Tool
+                </p>
+            </div>
+
+            <!-- Modal Footer -->
+            <div class="px-5 py-3 border-t border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-850 flex justify-end">
+                <button id="closePrivacyModalFooterBtn" type="button" class="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold shadow-sm transition-colors">
+                    <span id="closePrivacyModalText">閉じる</span>
+                </button>
+            </div>
+        </div>
+    </div>
 
 
 
@@ -4210,7 +4258,14 @@ function isIncompletePhrase(text) {
                 newCaptionBadge: "🆕 New Caption ⬇",
                 prevCard: "Previous Card",
                 latestCard: "Latest Card",
-                wakeLockTooltip: "💡 Tap to keep screen on"
+                wakeLockTooltip: "💡 Tap to keep screen on",
+                policyBtn: "Terms & Privacy",
+                policyTitle: "Terms of Use & Privacy Policy",
+                disclaimerHeader: "Disclaimer",
+                disclaimerBody: "This system is an independent open-source tool created by an individual church member/developer to assist in worship, and is not an official application of The Church of Jesus Christ of Latter-day Saints.",
+                privacyHeader: "Privacy Policy",
+                privacyBody: "Speech recognition and AI subtitle data are used solely for real-time caption generation. No voice or text data is permanently stored on servers or used for AI model training.",
+                closeModal: "Close"
             },
             "ja": {
                 appTitle: "多言語字幕配信",
@@ -4240,7 +4295,14 @@ function isIncompletePhrase(text) {
                 newCaptionBadge: "🆕 新着字幕あり ⬇",
                 prevCard: "前のカードへ",
                 latestCard: "最新のカードへ",
-                wakeLockTooltip: "💡 タップで画面消灯を防止"
+                wakeLockTooltip: "💡 タップで画面消灯を防止",
+                policyBtn: "規約・免責",
+                policyTitle: "利用規約 & プライバシーポリシー",
+                disclaimerHeader: "【免責事項】非公式ツールについて",
+                disclaimerBody: "本システムは個人の教会員・開発者によって礼拝支援のために作成された独立したオープンソースツールであり、末日聖徒イエス・キリスト教会の公式アプリケーションではありません。",
+                privacyHeader: "【プライバシー方針】データの保護",
+                privacyBody: "音声認識およびAI補正データはリアルタイム字幕生成のみに使用され、サーバー等への恒久保存やAIモデルの学習データとしての利用は一切行われません。",
+                closeModal: "閉じる"
             },
             "tl": {
                 appTitle: "Multilingual Subtitle Streaming",
@@ -4270,7 +4332,14 @@ function isIncompletePhrase(text) {
                 newCaptionBadge: "🆕 Bagong Subtitle ⬇",
                 prevCard: "Nakaraang Card",
                 latestCard: "Pinakabagong Card",
-                wakeLockTooltip: "💡 I-tap para hindi mamatay ang screen"
+                wakeLockTooltip: "💡 I-tap para hindi mamatay ang screen",
+                policyBtn: "Mga Patakaran",
+                policyTitle: "Mga Tuntunin at Patakaran sa Pagkapribado",
+                disclaimerHeader: "[Pagtanggi] Malayang Tool",
+                disclaimerBody: "Ang sistemang ito ay isang malayang open-source tool na ginawa ng isang miyembro ng simbahan/developer upang tumulong sa pagsamba, at hindi opisyal na app ng Ang Simbahan ni Jesucristo ng mga Banal sa mga Huling Araw.",
+                privacyHeader: "[Patakaran sa Pagkapribado] Proteksyon ng Datos",
+                privacyBody: "Ang speech recognition at AI caption data ay ginagamit lamang para sa real-time na mga subtitle. Walang datos na iniimbak sa mga server o ginagamit para sanayin ang AI.",
+                closeModal: "Isara"
             },
             "zh-CN": {
                 appTitle: "多语言字幕直播",
@@ -4300,7 +4369,14 @@ function isIncompletePhrase(text) {
                 newCaptionBadge: "🆕 有新字幕 ⬇",
                 prevCard: "上一张卡片",
                 latestCard: "最新卡片",
-                wakeLockTooltip: "💡 点击防止屏幕熄灭"
+                wakeLockTooltip: "💡 点击防止屏幕熄灭",
+                policyBtn: "条款与隐私",
+                policyTitle: "使用条款与隐私政策",
+                disclaimerHeader: "【免责声明】非官方独立工具",
+                disclaimerBody: "本系统由教会成员/开发者个人为协助崇拜而创建的独立开源工具，并非耶稣基督后期圣徒教会的官方应用程序。",
+                privacyHeader: "【隐私政策】数据保护",
+                privacyBody: "语音识别及AI字幕数据仅用于实时字幕生成，绝不会在服务器上永久存储，亦不会用于AI模型训练。",
+                closeModal: "关闭"
             },
             "zh-TW": {
                 appTitle: "多語言字幕直播",
@@ -4330,7 +4406,14 @@ function isIncompletePhrase(text) {
                 newCaptionBadge: "🆕 有新字幕 ⬇",
                 prevCard: "上一張卡片",
                 latestCard: "最新卡片",
-                wakeLockTooltip: "💡 點擊防止螢幕熄滅"
+                wakeLockTooltip: "💡 點擊防止螢幕熄滅",
+                policyBtn: "條款與隱私",
+                policyTitle: "使用條款與隱私政策",
+                disclaimerHeader: "【免責聲明】非官方獨立工具",
+                disclaimerBody: "本系統由教會成員/開發者個人為協助崇拜而創建的獨立開源工具，並非耶穌基督後期聖徒教會的官方應用程式。",
+                privacyHeader: "【隱私政策】數據保護",
+                privacyBody: "語音識別及AI字幕數據僅用於即時字幕生成，絕不會在伺服器上永久存儲，亦不會用於AI模型訓練。",
+                closeModal: "關閉"
             },
             "pt": {
                 appTitle: "Transmissão de Legendas Multilíngues",
@@ -4360,7 +4443,14 @@ function isIncompletePhrase(text) {
                 newCaptionBadge: "🆕 Nova Legenda ⬇",
                 prevCard: "Cartão Anterior",
                 latestCard: "Último Cartão",
-                wakeLockTooltip: "💡 Toque para manter tela ligada"
+                wakeLockTooltip: "💡 Toque para manter tela ligada",
+                policyBtn: "Termos e Privacidade",
+                policyTitle: "Termos de Uso e Política de Privacidade",
+                disclaimerHeader: "[Isenção de Responsabilidade] Ferramenta Independente",
+                disclaimerBody: "Este sistema é uma ferramenta independente de código aberto criada por um membro/desenvolvedor para apoiar o culto, e não é um aplicativo oficial de A Igreja de Jesus Cristo dos Santos dos Últimos Dias.",
+                privacyHeader: "[Política de Privacidade] Proteção de Dados",
+                privacyBody: "Os dados de reconhecimento de voz e IA são usados exclusivamente para geração de legendas em tempo real. Nenhum dado é armazenado permanentemente ou usado para treinamento de IA.",
+                closeModal: "Fechar"
             },
             "es": {
                 appTitle: "Transmisión de Subtítulos Multilingües",
@@ -4390,7 +4480,14 @@ function isIncompletePhrase(text) {
                 newCaptionBadge: "🆕 Nuevo Subtítulo ⬇",
                 prevCard: "Tarjeta Anterior",
                 latestCard: "Última Tarjeta",
-                wakeLockTooltip: "💡 Toca para evitar que se apague"
+                wakeLockTooltip: "💡 Toca para evitar que se apague",
+                policyBtn: "Términos y Privacidad",
+                policyTitle: "Términos de Uso y Política de Privacidad",
+                disclaimerHeader: "[Descargo de Responsabilidad] Herramienta Independiente",
+                disclaimerBody: "Este sistema es una herramienta independiente de código abierto creada por un miembro/desarrollador para apoyar la adoración, y no es una aplicación oficial de La Iglesia de Jesucristo de los Santos de los Últimos Días.",
+                privacyHeader: "[Política de Privacidad] Protección de Datos",
+                privacyBody: "Los datos de reconocimiento de voz e IA se utilizan únicamente para la generación de subtítulos en tiempo real. Ningún dato se almacena permanentemente ni se utiliza para entrenar modelos de IA.",
+                closeModal: "Cerrar"
             },
             "ko": {
                 appTitle: "다국어 자막 스트리밍",
@@ -4420,7 +4517,14 @@ function isIncompletePhrase(text) {
                 newCaptionBadge: "🆕 새 자막 ⬇",
                 prevCard: "이전 카드",
                 latestCard: "최신 카드",
-                wakeLockTooltip: "💡 탭하여 화면 꺼짐 방지"
+                wakeLockTooltip: "💡 탭하여 화면 꺼짐 방지",
+                policyBtn: "약관 및 개인정보",
+                policyTitle: "이용 약관 및 개인정보 처리방침",
+                disclaimerHeader: "[면책 조항] 비공식 독립 도구",
+                disclaimerBody: "본 시스템은 예배를 돕기 위해 개인 교회 회원/개발자가 제작한 독립적인 오픈소스 도구이며, 예수 그리스도 후기 성도 교회의 공식 애플리케이션이 아닙니다.",
+                privacyHeader: "[개인정보 보호방침] 데이터 보호",
+                privacyBody: "음성 인식 및 AI 자막 보정 데이터는 실시간 자막 생성에만 사용되며, 서버에 영구 저장되거나 AI 모델 학습에 일절 사용되지 않습니다.",
+                closeModal: "닫기"
             }
         };
 
@@ -5040,6 +5144,43 @@ function isIncompletePhrase(text) {
 
             }
 
+            setupPrivacyModal();
+
+        }
+
+        // ==================== プライバシーポリシー & 免責事項 多言語モーダル制御 ====================
+        function setupPrivacyModal() {
+            const btn = document.getElementById('privacyPolicyBtn');
+            const modal = document.getElementById('privacyModal');
+            const closeBtn = document.getElementById('closePrivacyModalBtn');
+            const closeFooterBtn = document.getElementById('closePrivacyModalFooterBtn');
+            if (!modal) return;
+
+            function openModal() {
+                const currentLang = (!isHost && targetLangSelect) ? targetLangSelect.value : 'ja';
+                updateViewerUIStrings(currentLang);
+                modal.classList.remove('hidden');
+                document.body.classList.add('overflow-hidden');
+            }
+
+            function closeModal() {
+                modal.classList.add('hidden');
+                document.body.classList.remove('overflow-hidden');
+            }
+
+            if (btn) btn.addEventListener('click', openModal);
+            if (closeBtn) closeBtn.addEventListener('click', closeModal);
+            if (closeFooterBtn) closeFooterBtn.addEventListener('click', closeModal);
+
+            modal.addEventListener('click', function(e) {
+                if (e.target === modal) closeModal();
+            });
+
+            document.addEventListener('keydown', function(e) {
+                if (e.key === 'Escape' && !modal.classList.contains('hidden')) {
+                    closeModal();
+                }
+            });
         }
 
 
@@ -5182,8 +5323,36 @@ function isIncompletePhrase(text) {
 
                     `;
 
-                }
+            }
 
+            // プライバシーポリシー & 免責事項の多言語UI更新
+            const privacyPolicyBtnText = document.getElementById('privacyPolicyBtnText');
+            if (privacyPolicyBtnText && s.policyBtn) {
+                privacyPolicyBtnText.textContent = s.policyBtn;
+            }
+            const privacyModalTitle = document.getElementById('privacyModalTitle');
+            if (privacyModalTitle && s.policyTitle) {
+                privacyModalTitle.textContent = s.policyTitle;
+            }
+            const disclaimerHeaderText = document.getElementById('disclaimerHeaderText');
+            if (disclaimerHeaderText && s.disclaimerHeader) {
+                disclaimerHeaderText.textContent = s.disclaimerHeader;
+            }
+            const disclaimerBody = document.getElementById('disclaimerBody');
+            if (disclaimerBody && s.disclaimerBody) {
+                disclaimerBody.textContent = s.disclaimerBody;
+            }
+            const privacyHeaderText = document.getElementById('privacyHeaderText');
+            if (privacyHeaderText && s.privacyHeader) {
+                privacyHeaderText.textContent = s.privacyHeader;
+            }
+            const privacyBody = document.getElementById('privacyBody');
+            if (privacyBody && s.privacyBody) {
+                privacyBody.textContent = s.privacyBody;
+            }
+            const closePrivacyModalText = document.getElementById('closePrivacyModalText');
+            if (closePrivacyModalText && s.closeModal) {
+                closePrivacyModalText.textContent = s.closeModal;
             }
 
         }
