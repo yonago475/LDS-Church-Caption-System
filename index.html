@@ -1099,7 +1099,7 @@
                         </div>
 
                         <span class="text-[10px] sm:text-[11px] text-slate-400 px-1.5 py-0.5 rounded bg-slate-800/80 border border-slate-700/60 shrink-0">
-                            <i class="fa-solid fa-layer-group mr-1 text-slate-500"></i><span id="totalCardsLabel">カード</span>: <span id="totalCardsCount" class="font-mono text-indigo-300 font-bold">0</span> <span class="ml-1 text-[9px] px-1 py-0.5 rounded bg-indigo-900/60 text-indigo-300 font-mono border border-indigo-700/50">v2.5</span>
+                            <i class="fa-solid fa-layer-group mr-1 text-slate-500"></i><span id="totalCardsLabel">カード</span>: <span id="totalCardsCount" class="font-mono text-indigo-300 font-bold">0</span> <span class="ml-1 text-[9px] px-1 py-0.5 rounded bg-indigo-900/60 text-indigo-300 font-mono border border-indigo-700/50">v2.6</span>
                         </span>
                     </div>
 
@@ -9827,6 +9827,8 @@ ${existingKeys.slice(0, 100).join(', ')}
 
             let silenceCommitTimer = null;
 
+            let lastInterimCommitTime = 0;
+
             let currentUnhandledText = '';
 
             const committedChunkHistory = [];
@@ -9858,6 +9860,7 @@ ${existingKeys.slice(0, 100).join(', ')}
 
 
                     lastCommittedInterim = textToFlush;
+                    lastInterimCommitTime = Date.now();
 
                     const chunks = splitIntoSmartChunks(textToFlush);
 
@@ -9914,6 +9917,7 @@ ${existingKeys.slice(0, 100).join(', ')}
                 lastCommittedInterim = '';
 
                 currentUnhandledText = '';
+                lastInterimCommitTime = Date.now();
 
                 interimText.textContent = '🎤 音声を認識しています... マイクに向かって話してください';
 
@@ -10044,6 +10048,7 @@ ${existingKeys.slice(0, 100).join(', ')}
                         if (trimmedFinal && trimmedFinal.trim()) {
 
                             lastCommittedInterim = trimmedFinal;
+                            lastInterimCommitTime = Date.now();
 
                             const chunks = splitIntoSmartChunks(trimmedFinal);
 
@@ -10068,29 +10073,55 @@ ${existingKeys.slice(0, 100).join(', ')}
 
 
                 // 2. 未確定テキスト（interim）のリアルタイムプレビュー & 自然な息継ぎ（1.2秒）での確定
-
+                //    【Phase S】文末優先・6〜8秒の黄金バランス先行切り出し（息継ぎなし時のストリーミングテンポアップ）
                 if (interimTranscript) {
-
                     currentUnhandledText = interimTranscript.trim();
-
                     interimText.textContent = fixScriptureReferences(replaceChurchTerms(currentUnhandledText));
 
+                    // 息継ぎなし時の先行切り出し判定
+                    const now = Date.now();
+                    if (!lastInterimCommitTime) lastInterimCommitTime = now;
+                    const elapsedSinceCommit = now - lastInterimCommitTime;
 
+                    const uncommittedText = stripCommittedChunks(currentUnhandledText, committedChunkHistory);
 
-                    // 話者が息継ぎ・ポーズ（1.2秒）したら、未確定バッファを1文として確定し次へ切り替え（溜め込み防止）
+                    if (uncommittedText && uncommittedText.length >= 15) {
+                        const splitIdx = typeof findSmartSplitIndex === 'function' ? findSmartSplitIndex(uncommittedText, false) : -1;
+                        let candidateChunk = null;
 
-                    if (silenceCommitTimer) clearTimeout(silenceCommitTimer);
+                        // 【条件A】文末表現（〜です、〜ます、〜ました等）が完成しており、かつ6秒以上経過または25文字以上
+                        if (splitIdx > 0 && (elapsedSinceCommit >= 6000 || uncommittedText.length >= 25)) {
+                            candidateChunk = uncommittedText.substring(0, splitIdx).trim();
+                        }
+                        // 【条件B】文末のない長文が延々と続き、9秒以上経過かつ35文字以上の場合（安全フォールバック）
+                        else if (elapsedSinceCommit >= 9000 && uncommittedText.length >= 35) {
+                            const fallbackIdx = typeof findSmartSplitIndex === 'function' ? findSmartSplitIndex(uncommittedText, true) : -1;
+                            if (fallbackIdx > 0 && fallbackIdx < uncommittedText.length) {
+                                candidateChunk = uncommittedText.substring(0, fallbackIdx).trim();
+                            } else {
+                                // 読点や空白で安全切断
+                                const spaceIdx = uncommittedText.lastIndexOf(' ', 40);
+                                if (spaceIdx > 15) {
+                                    candidateChunk = uncommittedText.substring(0, spaceIdx).trim();
+                                }
+                            }
+                        }
 
-                    if (currentUnhandledText) {
-
-                        silenceCommitTimer = setTimeout(() => {
-
-                            flushUnhandledInterim();
-
-                        }, 1200);
-
+                        if (candidateChunk && candidateChunk.length > 0) {
+                            committedChunkHistory.push(candidateChunk);
+                            if (committedChunkHistory.length > 20) committedChunkHistory.shift();
+                            lastInterimCommitTime = now;
+                            handleRecognizedChunk(candidateChunk);
+                        }
                     }
 
+                    // 話者が息継ぎ・ポーズ（1.2秒）したら、未確定バッファを1文として確定し次へ切り替え（溜め込み防止）
+                    if (silenceCommitTimer) clearTimeout(silenceCommitTimer);
+                    if (currentUnhandledText) {
+                        silenceCommitTimer = setTimeout(() => {
+                            flushUnhandledInterim();
+                        }, 1200);
+                    }
                 }
 
             };
@@ -10114,6 +10145,7 @@ ${existingKeys.slice(0, 100).join(', ')}
                     lastCommittedInterim = '';
 
                     currentUnhandledText = '';
+                    lastInterimCommitTime = 0;
 
                     if (recognitionRestartTimer) clearTimeout(recognitionRestartTimer);
 
