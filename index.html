@@ -44,56 +44,52 @@
             scroll-behavior: auto !important;
         }
 
-        /* スマホViewerモード時：画面全体をスマホ画面（100dvh）に完全に固定し、枠の縦伸びを防止 */
-
+        /* スマホViewerモード時：ヘッダーを完全非表示にし、画面全体（100dvh）を字幕表示と操作ボタンに完全割り当て */
         /* 注意: 古いブラウザ向けフォールバック(vh)を先に、dvh対応ブラウザ向け(dvh)を後に記述 */
-
         body.viewer-mode-active {
-
             height: 100vh !important;
-
             height: 100dvh !important;
-
+            max-height: 100vh !important;
+            max-height: 100dvh !important;
+            display: flex !important;
+            flex-direction: column !important;
             overflow: hidden !important;
+            padding: 0 !important;
+            padding-bottom: env(safe-area-inset-bottom, 0px) !important;
+        }
 
+        /* 聴講者画面ではヘッダーを廃止し、表示領域を最大化 */
+        body.viewer-mode-active header {
+            display: none !important;
         }
 
         body.viewer-mode-active main {
-
-            height: calc(100vh - 3.8rem) !important;
-
-            height: calc(100dvh - 3.8rem) !important;
-
-            max-height: calc(100vh - 3.8rem) !important;
-
-            max-height: calc(100dvh - 3.8rem) !important;
-
+            flex: 1 1 0% !important;
+            height: 100% !important;
+            max-height: 100% !important;
             min-height: 0 !important;
-
-            padding: 0.5rem !important;
-
+            display: flex !important;
+            flex-direction: column !important;
             overflow: hidden !important;
-
+            padding: 0.375rem 0.5rem 0.5rem 0.5rem !important;
+            gap: 0.375rem !important;
         }
 
         body.viewer-mode-active #viewerSection {
-
+            flex: 1 1 0% !important;
             height: 100% !important;
-
             min-height: 0 !important;
-
+            display: flex !important;
+            flex-direction: column !important;
             overflow: hidden !important;
-
+            gap: 0.375rem !important;
         }
 
         body.viewer-mode-active #viewerCaptionFeed {
-
+            flex: 1 1 0% !important;
             min-height: 0 !important;
-
             overflow-y: auto !important;
-
             -webkit-overflow-scrolling: touch;
-
         }
 
     </style>
@@ -1086,21 +1082,24 @@
 
                 <div class="mt-2 pt-1.5 border-t border-slate-800 flex flex-col gap-1.5 text-xs text-slate-400 shrink-0">
 
-                    <!-- 上段: 接続ステータス & カード枚数カウンター -->
-
+                    <!-- 上段: 接続ステータス & カード枚数カウンター & 規約ボタン -->
                     <div class="flex justify-between items-center w-full">
-
-                        <div class="flex items-center space-x-2">
-
+                        <div class="flex items-center space-x-2 min-w-0">
                             <span id="peerConnectionStatus" class="w-2 h-2 rounded-full bg-amber-400 shrink-0"></span>
-
-                            <span id="peerStatusText" class="text-[11px] sm:text-xs truncate max-w-[200px]">接続中...</span>
-
+                            <span id="peerStatusText" class="text-[11px] sm:text-xs truncate max-w-[130px] sm:max-w-[200px]">接続中...</span>
                         </div>
 
-                        <span class="text-[10px] sm:text-[11px] text-slate-400 px-1.5 py-0.5 rounded bg-slate-800/80 border border-slate-700/60 shrink-0">
-                            <i class="fa-solid fa-layer-group mr-1 text-slate-500"></i><span id="totalCardsLabel">カード</span>: <span id="totalCardsCount" class="font-mono text-indigo-300 font-bold">0</span> <span class="ml-1 text-[9px] px-1 py-0.5 rounded bg-indigo-900/60 text-indigo-300 font-mono border border-indigo-700/50">v2.8</span>
-                        </span>
+                        <div class="flex items-center gap-1.5 shrink-0">
+                            <!-- プライバシーポリシー & 免責事項ボタン（目立たず邪魔にならない移設配置） -->
+                            <button id="viewerPrivacyBtn" type="button" class="text-[10px] text-slate-400 hover:text-slate-200 px-1.5 py-0.5 rounded bg-slate-800/80 hover:bg-slate-700 border border-slate-700/60 flex items-center gap-1 transition-colors cursor-pointer" title="プライバシーポリシー・免責事項" aria-label="利用規約とプライバシーポリシー">
+                                <i class="fa-solid fa-shield-halved text-[9px] text-indigo-400"></i>
+                                <span id="viewerPrivacyBtnText">規約</span>
+                            </button>
+
+                            <span class="text-[10px] sm:text-[11px] text-slate-400 px-1.5 py-0.5 rounded bg-slate-800/80 border border-slate-700/60 shrink-0">
+                                <i class="fa-solid fa-layer-group mr-1 text-slate-500"></i><span id="totalCardsLabel">カード</span>: <span id="totalCardsCount" class="font-mono text-indigo-300 font-bold">0</span> <span class="ml-1 text-[9px] px-1 py-0.5 rounded bg-indigo-900/60 text-indigo-300 font-mono border border-indigo-700/50">v2.9</span>
+                            </span>
+                        </div>
                     </div>
 
                     <!-- 下段: 操作コントロールボタングループ（自動スクロール / スリープ防止 / 文字サイズ - 均等3分割グリッド） -->
@@ -5232,6 +5231,7 @@ function isIncompletePhrase(text) {
         // ==================== プライバシーポリシー & 免責事項 多言語モーダル制御 ====================
         function setupPrivacyModal() {
             const btn = document.getElementById('privacyPolicyBtn');
+            const viewerBtn = document.getElementById('viewerPrivacyBtn');
             const modal = document.getElementById('privacyModal');
             const closeBtn = document.getElementById('closePrivacyModalBtn');
             const closeFooterBtn = document.getElementById('closePrivacyModalFooterBtn');
@@ -5250,6 +5250,7 @@ function isIncompletePhrase(text) {
             }
 
             if (btn) btn.addEventListener('click', openModal);
+            if (viewerBtn) viewerBtn.addEventListener('click', openModal);
             if (closeBtn) closeBtn.addEventListener('click', closeModal);
             if (closeFooterBtn) closeFooterBtn.addEventListener('click', closeModal);
 
@@ -5412,6 +5413,10 @@ function isIncompletePhrase(text) {
             const privacyPolicyBtnText = document.getElementById('privacyPolicyBtnText');
             if (privacyPolicyBtnText && s.policyBtn) {
                 privacyPolicyBtnText.textContent = s.policyBtn;
+            }
+            const viewerPrivacyBtnText = document.getElementById('viewerPrivacyBtnText');
+            if (viewerPrivacyBtnText && s.policyBtn) {
+                viewerPrivacyBtnText.textContent = s.policyBtn;
             }
             const privacyModalTitle = document.getElementById('privacyModalTitle');
             if (privacyModalTitle && s.policyTitle) {
