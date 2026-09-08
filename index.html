@@ -44,21 +44,32 @@
             scroll-behavior: auto !important;
         }
 
-        /* スマホViewerモード時：ヘッダーを完全非表示にし、画面全体（100dvh）を字幕表示と操作ボタンに完全割り当て */
-        /* 注意: 古いブラウザ向けフォールバック(vh)を先に、dvh対応ブラウザ向け(dvh)を後に記述 */
+        /* スマホViewerモード時：画面全体を端末の可視領域に絶対吸着固定し、見切れ・ハミ出しを100%防止 */
+        html.viewer-mode-active,
         body.viewer-mode-active {
-            height: 100vh !important;
+            position: fixed !important;
+            inset: 0 !important;
+            top: 0 !important;
+            left: 0 !important;
+            right: 0 !important;
+            bottom: 0 !important;
+            width: 100% !important;
+            height: 100% !important;
             height: 100dvh !important;
-            max-height: 100vh !important;
+            max-height: 100% !important;
             max-height: 100dvh !important;
+            min-height: 0 !important; /* Tailwind の min-h-screen (100vh) を完全無効化 */
+            margin: 0 !important;
+            padding: 0 !important;
+            padding-bottom: env(safe-area-inset-bottom, 0px) !important;
             display: flex !important;
             flex-direction: column !important;
             overflow: hidden !important;
-            padding: 0 !important;
-            padding-bottom: env(safe-area-inset-bottom, 0px) !important;
+            -webkit-user-select: none; /* スクロール時の意図しない文字選択メニューポップアップを防止 */
+            user-select: none;
         }
 
-        /* 聴講者画面ではヘッダーを廃止し、表示領域を最大化 */
+        /* 聴講者画面ではヘッダーを完全廃止し、表示領域を最大化 */
         body.viewer-mode-active header {
             display: none !important;
         }
@@ -73,16 +84,19 @@
             overflow: hidden !important;
             padding: 0.375rem 0.5rem 0.5rem 0.5rem !important;
             gap: 0.375rem !important;
+            box-sizing: border-box !important;
         }
 
         body.viewer-mode-active #viewerSection {
             flex: 1 1 0% !important;
             height: 100% !important;
+            max-height: 100% !important;
             min-height: 0 !important;
             display: flex !important;
             flex-direction: column !important;
             overflow: hidden !important;
             gap: 0.375rem !important;
+            box-sizing: border-box !important;
         }
 
         body.viewer-mode-active #viewerCaptionFeed {
@@ -90,6 +104,8 @@
             min-height: 0 !important;
             overflow-y: auto !important;
             -webkit-overflow-scrolling: touch;
+            user-select: text; /* 字幕テキスト自体は選択・コピー可能 */
+            -webkit-user-select: text;
         }
 
     </style>
@@ -1097,7 +1113,7 @@
                             </button>
 
                             <span class="text-[10px] sm:text-[11px] text-slate-400 px-1.5 py-0.5 rounded bg-slate-800/80 border border-slate-700/60 shrink-0">
-                                <i class="fa-solid fa-layer-group mr-1 text-slate-500"></i><span id="totalCardsLabel">カード</span>: <span id="totalCardsCount" class="font-mono text-indigo-300 font-bold">0</span> <span class="ml-1 text-[9px] px-1 py-0.5 rounded bg-indigo-900/60 text-indigo-300 font-mono border border-indigo-700/50">v2.9</span>
+                                <i class="fa-solid fa-layer-group mr-1 text-slate-500"></i><span id="totalCardsLabel">カード</span>: <span id="totalCardsCount" class="font-mono text-indigo-300 font-bold">0</span> <span class="ml-1 text-[9px] px-1 py-0.5 rounded bg-indigo-900/60 text-indigo-300 font-mono border border-indigo-700/50">v2.10</span>
                             </span>
                         </div>
                     </div>
@@ -5154,6 +5170,7 @@ function isIncompletePhrase(text) {
                 currentRoomId = roomId;
 
                 document.body.classList.add('viewer-mode-active');
+                document.documentElement.classList.add('viewer-mode-active');
 
                 hostSection.classList.add('hidden');
 
@@ -5187,6 +5204,7 @@ function isIncompletePhrase(text) {
                 isHost = true;
 
                 document.body.classList.remove('viewer-mode-active');
+                document.documentElement.classList.remove('viewer-mode-active');
 
                 viewerSection.classList.add('hidden');
 
