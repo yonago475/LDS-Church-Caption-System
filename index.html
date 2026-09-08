@@ -1460,9 +1460,10 @@
             "地の記念に": "血の記念に",
             "いつも御子を覚え": "いつも御子を覚え",
             "御子の御霊を受けられるように": "御子の御霊を受けられるように",
-            "祝し福し": "祝し福し",
-            "祝し福し聖めてください": "祝し福し、聖めてください",
-            "祝し聖めてください": "祝し聖めてください",
+            "祝し福し": "祝福し",
+            "祝し福し聖めてください": "祝福し、聖めてください",
+            "祝し聖めてください": "祝福し、聖めてください",
+            "このパンを祝福し聖めてください": "このパンを祝福し、聖めてください",
             "この水を祝福し聖めてください": "この水を祝福し、聖めてください",
 
             // --- ビジネス（支持・解任・召し） ---
@@ -1873,10 +1874,12 @@
             "ほうし": "奉仕",
 
             "警戒の賛美歌": "閉会の賛美歌",
-
             "かいかいのさんびか": "開会の賛美歌",
-
             "へいかいのさんびか": "閉会の賛美歌",
+            "せいさんのさんびか": "聖餐の賛美歌",
+            "清算の賛美歌": "聖餐の賛美歌",
+            "生産の賛美歌": "聖餐の賛美歌",
+            "ちゅうかんのさんびか": "中間賛美歌",
 
             "お話と明石": "お話と証",
 
@@ -3767,7 +3770,7 @@ function createSectionDetector() {
 
 const SECTION_HINTS = {
 
-    general: '【現在の場面】一般（説教・話・報告・ビジネス（召しの支持・解任）。文脈に基づいて自然に判断してください。支持＝「手を挙げてその意を表してください」）',
+    general: '【現在の場面】一般（説教・話・賛美歌の発表・報告・ビジネス（召しの支持・解任）。賛美歌発表時は番号と曲名を対照表に基づき正確に出力し、英語には英語番号 (English #XX) を付与。支持＝「手を挙げてその意を表してください」）',
 
     prayer: '【現在の場面】祈り（定型フレーズが中心。「皆→御名」「音痴/音質→天の御父」「手話→主は」の変換を積極的に適用。結びは「イエス・キリストの聖なる御名により、アーメン」）',
 
@@ -7239,15 +7242,223 @@ function isIncompletePhrase(text) {
 ・聖餐の祈り（Sacrament Prayers）の絶対的定型知識:
   聖餐の祈りは聖典（モロナイ書4〜5章、教義と聖約20:77, 79）に記された神聖かつ厳格な定型句です。話者が聖餐の祈りを捧げている場合、音声認識の途切れや誤認識（「おおかみよ」「温故」「祝し福し」「血の記念」等）を以下の聖典通りの完全な日本語および公式英語訳へ正確に補正してください。
   1. パンの祝福（Blessing on the Bread）:
-     【日本語全文】: 「永遠の父なる神よ、わたしたちは御子イエス・キリストの御名によってあなたに願い求めます。このパンを頂くすべての人々が、御子の体の記念にこれを頂けるように、また、進んで御子の御名を受け、いつも御子を覚え、御子が与えてくださった戒めを守ることを、永遠の父なる神よ、あなたに証明して、いつも御子の御霊を受けられるように、このパンを祝し福し、聖めてください。アーメン。」（※「祝し福し、聖めてください」または「祝し聖めてください」）
+     【日本語全文】: 「永遠の父なる神よ、わたしたちは御子イエス・キリストの御名によってあなたに願い求めます。このパンを頂くすべての人々が、御子の体の記念にこれを頂けるように、また、進んで御子の御名を受け、いつも御子を覚え、御子が与えてくださった戒めを守ることを、永遠の父なる神よ、あなたに証明して、いつも御子の御霊を受けられるように、このパンを祝福し、聖めてください。アーメン。」
      【公式英語訳】: "O God, the Eternal Father, we ask thee in the name of thy Son, Jesus Christ, to bless and sanctify this bread to the souls of all those who partake of it, that they may eat in remembrance of the body of thy Son, and witness unto thee, O God, the Eternal Father, that they are willing to take upon them the name of thy Son, and always remember him and keep his commandments which he has given them; that they may always have his Spirit to be with them. Amen."
   2. 水の祝福（Blessing on the Water）:
      【日本語全文】: 「永遠の父なる神よ、わたしたちは御子イエス・キリストの御名によってあなたに願い求めます。この水を頂くすべての人々が、この人々のために流された御子の血の記念にこれを頂けるように、また、いつも御子を覚えていることを、永遠の父なる神よ、あなたに証明して、御子の御霊を受けられるように、この水を祝福し、聖めてください。アーメン。」
      【公式英語訳】: "O God, the Eternal Father, we ask thee in the name of thy Son, Jesus Christ, to bless and sanctify this water to the souls of all those who partake of it, that they may do it in remembrance of the blood of thy Son, which was shed for them; that they may witness unto thee, O God, the Eternal Father, that they do always remember him, that they may have his Spirit to be with them. Amen."
 
+・賛美歌（Hymns）の日英完全対照知識ベース（日本語1番〜200番）:
+  聖餐会等で司会者（ビショップリック等）が開会・聖餐・中間・閉会の賛美歌を発表した際、音声認識の誤り（「神は要配信」等）を補正して日本語曲名を『』付きで正確に出力し、英語翻訳には教会の公式英語曲名および英語版賛美歌番号（English #XX）を必ず併記してください。
+  【出力形式の指定】:
+  - 日本語: 「開会（または聖餐・中間・閉会）の賛美歌は、賛美歌〔番号〕番『〔日本語曲名〕』です。」
+  - 英語: "Our [opening/sacrament/intermediate/closing] hymn is Hymn No. [日本語番号], '[英語曲名]' (English #[英語版番号])."
+    （※英語版番号が「子供の歌」の場合は (English CS #[番号])、「旧版」の場合は (English Hymnal) と表記）
+  【賛美歌1〜200番 日英対照リスト】:
+  1: 夜明けだ，朝明けだ = The Morning Breaks (#1)
+  2: 山の上に = High on the Mountain Top (#5)
+  3: 主のみたまは火のごと燃え = The Spirit of God (#2)
+  4: イスラエルの救い主 = Redeemer of Israel (#6)
+  5: いざ救いの日を楽しまん = Now Let Us Rejoice (#3)
+  6: 悩めるイスラエル = Israel, Israel, God Is Calling (#7)
+  7: 目覚めよ，起て = Awake and Arise (#8)
+  8: 来たれ，喜べや = Come, Rejoice (#9)
+  9: 何を天に見しか = What Was Witnessed in the Heavens? (#11)
+  10: 長き沈黙破りて出づ = An Angel from on High (#13)
+  11: 感謝を神に捧げん = We Thank Thee, O God, for a Prophet (#19)
+  12: 力の神よ = God of Power, God of Right (#20)
+  13: 来たれ，予言者より = Come, Listen to a Prophet’s Voice (#21)
+  14: わが予言者に祝福あれ = God Bless Our Prophet Dear (#24)
+  15: 悩める旅人 = A Poor Wayfaring Man of Grief (#29)
+  16: たたえよ，主の召したまいし = Praise to the Man (#27)
+  17: 恐れず来たれ，聖徒 = Come, Come, Ye Saints (#30)
+  18: 麗しき朝よ = Joseph Smith’s First Prayer (#26)
+  19: ああ，神いつまでも = O God, Our Help in Ages Past (#31)
+  20: 楽しき日は来て = The Happy Day at Last Has Come (#32)
+  21: 山の家 = Our Mountain Home So Dear (#33)
+  22: 高き山よ = O Ye Mountains High (#34)
+  23: 山の強さのため = For the Strength of the Hills (#35)
+  24: 国を造りたる = They, the Builders of the Nation (#36)
+  25: シオンの朝は輝き = Hail to the Brightness of Zion’s Glad Morning! (#42)
+  26: 山に囲まれて = Zion Stands with Hills Surrounded (#43)
+  27: み空に麗し = Beautiful Zion, Built Above (#44)
+  28: 明けゆく空 = The Day Dawn Is Breaking (#52)
+  29: 来ませ，王の王 = Come, O Thou King of Kings (#59)
+  30: リパブリック賛歌 = Battle Hymn of the Republic (#60)
+  31: 来たれ，主の子ら = Come, Ye Children of the Lord (#58)
+  32: 喜べ，主を = Rejoice, the Lord Is King! (#66)
+  33: 神に栄え = Glory to God on High (#67)
+  34: 神は造り主 = All Creatures of Our God and King (#62)
+  35: やさしき天の父よ = Kind and Heavenly Father (CS 4)
+  36: 神はわが砦 = A Mighty Fortress Is Our God (#68)
+  37: 造り主の主を = Praise to the Lord, the Almighty (#72)
+  38: たたえよ神を = Praise the Lord with Heart and Voice (#73)
+  39: 主をたたえん = The Joy and the Song (旧版)
+  40: 全能の父なる神よ = God of Our Fathers, Whose Almighty Hand (#78)
+  41: 導きたまえよ = Guide Us, O Thou Great Jehovah (#83)
+  42: いにしえの聖徒の = Faith of Our Fathers (#84)
+  43: 父なる神のもとに = God of Our Fathers, We Come unto Thee (#76)
+  44: わが主よ，わが神 = How Great Thou Art (#86)
+  45: 神は愛なり = God Is Love (#87)
+  46: 主のみ言葉は = How Firm a Foundation (#85)
+  47: 主は光 = The Lord Is My Light (#89)
+  48: 父よ，子らはうたう = Father, Thy Children to Thee Now Raise (#91)
+  49: 感謝の祈り = Prayer of Thanksgiving (#93)
+  50: 地は麗しく = For the Beauty of the Earth (#92)
+  51: 来たりてうたえ = Come, Ye Thankful People (#94)
+  52: 取り巻く闇の中を = Lead, Kindly Light (#97)
+  53: 絶えず頼り主求む = I Need Thee Every Hour (#98)
+  54: 主に近づかん = Nearer, Dear Savior, to Thee (#99)
+  55: 神よ，汝れに近寄らん = Nearer, My God, to Thee (#100)
+  56: 主よ，導きたまえや = Guide Me to Thee (#101)
+  57: 主イエスよ，愛もて = Jesus, Lover of My Soul (#102)
+  58: 尊き救い主 = Precious Savior, Dear Redeemer (#103)
+  59: 主よ，嵐すさび = Master, the Tempest Is Raging (#105)
+  60: 正義を守れと主に祈る = God Speed the Right (#106)
+  61: 主よ，荒海を導きたまえ = Jesus, Savior, Pilot Me (#104)
+  62: 主よ，祈り受けて = Lord, Accept Our True Devotion (#107)
+  63: 主はわが飼い手 = The Lord Is My Shepherd (#108)
+  64: 主よ，汝がみ手に = Rock of Ages (#111)
+  65: 飼い主はわれを = The Lord My Pasture Will Prepare (#109)
+  66: われに来よ = Come, Follow Me (#116)
+  67: 主に来たれ = Come unto Jesus (#117)
+  68: 来たれ，友よ = Come, We That Love the Lord (#119)
+  69: 試しは多くも = Though Deepening Trials (#122)
+  70: いともやさし = How Gentle God’s Commands (#125)
+  71: 高ぶりを慎み = Be Thou Humble (#130)
+  72: 救い主，われ信ず = I Believe in Christ (#134)
+  73: 贖いの主 = My Redeemer Lives (#135)
+  74: さらに聖くなお努めん = More Holiness Give Me (#131)
+  75: 主は生けりと知る = I Know That My Redeemer Lives (#136)
+  76: 天の御父 = Father in Heaven (#133)
+  77: 証 = Testimony (#137)
+  78: 部屋を出る前に = Did You Think to Pray? (#140)
+  79: ひそかな祈り = Secret Prayer (#144)
+  80: 主イエスよ，わが胸 = Jesus, the Very Thought of Thee (#141)
+  81: 祈りは楽しき = Sweet Hour of Prayer (#142)
+  82: みたまはわれに = Let the Holy Spirit Guide (#143)
+  83: 祈りは魂の = Prayer Is the Soul’s Sincere Desire (#145)
+  84: 賛歌を捧げん = Gently Raise the Sacred Strain (#146)
+  85: 神よ，また逢うまで = God Be with You Till We Meet Again (#152)
+  86: 草の露は，主の = As the Dew from Heaven Distilling (#149)
+  87: わが神，わが王 = Sweet Is the Work (#147)
+  88: わかれにまた = Sing We Now at Parting (#156)
+  89: み前にぬかずき = Before Thee, Lord, I Bow My Head (#158)
+  90: 陽は暮れゆきて = Softly Now the Light of Day (#160)
+  91: 心に平和と = Lord, Dismiss Us with Thy Blessing (#163)
+  92: 日は暮れ = Abide with Me! (#166)
+  93: わかれに願う = Lord, We Ask Thee Ere We Part (#153)
+  94: 主よ，われと共に = Abide with Me; ’Tis Eventide (#165)
+  95: 日は暮れゆき = Now the Day Is Over (#159)
+  96: 父なる神よ = God, Our Father, Hear Us Pray (#170)
+  97: われら祈りまつる = In Humility, Our Savior (#172)
+  98: 聖餐受くとき = While of These Emblems We Partake (#174)
+  99: 天にまします永遠なる父 = O God, the Eternal Father (#175)
+  100: ナザレ出しわが主よ = Jesus of Nazareth, Savior and King (#181)
+  101: たぐいなき愛を = ’Tis Sweet to Sing the Matchless Love (#176)
+  102: 主よ，裂きしパンと = O Lord of Hosts (#178)
+  103: 罪人のために = In Remembrance of Thy Suffering (#183)
+  104: 敬い崇め = Reverently and Meekly Now (#185)
+  105: 主の御名をたたえん = We’ll Sing All Hail to Jesus’ Name (#182)
+  106: カルバリに = Upon the Cross of Calvary (#184)
+  107: 神は世を愛し = God Loved Us, So He Sent His Son (#187)
+  108: 見よ，罪のために = Behold the Great Redeemer Die (#191)
+  109: 主イエスの愛に = I Stand All Amazed (#193)
+  110: 街を離れたる青き丘に = There Is a Green Hill Far Away (#194)
+  111: 十字架を覚え = In Memory of the Crucified (#190)
+  112: 高きに満ちたる = How Great the Wisdom and the Love (#195)
+  113: いやしく生まれ = Jesus, Once of Humble Birth (#196)
+  114: 主はよみがえりぬ = He Is Risen! (#199)
+  115: 主はよみがえりぬ（アレルヤ） = Christ the Lord Is Risen Today (#200)
+  116: もろびと，こぞりて = Joy to the World (#201)
+  117: 神の御子は今宵しも = Oh, Come, All Ye Faithful (#202)
+  118: 聖し，この夜 = Silent Night (#204)
+  119: み使い空に = Angels We Have Heard on High (#203)
+  120: 天を降りし神の御子 = Away in a Manger (#206)
+  121: 天なる神には = It Came upon the Midnight Clear (#207)
+  122: ああ，ベツレヘムよ = O Little Town of Bethlehem (#208)
+  123: 天には栄え = Hark! The Herald Angels Sing (#209)
+  124: 羊飼いらが = While Shepherds Watched Their Flocks (#211)
+  125: 奇しきあか星 = With Wondering Awe (#210)
+  126: 昔，ユダヤの野辺に = Far, Far Away on Judea’s Plains (#212)
+  127: 牧人，羊を = The First Noel (#213)
+  128: なつかしい鐘は鳴る = I Heard the Bells on Christmas Day (#214)
+  129: 若葉の春 = Verdant Spring and Rosy Summer (旧版)
+  130: 天の装いの子羊，見よ = Behold the Lamb of God (旧版)
+  131: やさしく交わらん = Let Us Treat Each Other Kindly (旧版)
+  132: 主のみ旨に従い行かん = My Jesus, As Thou Wilt! (旧版)
+  133: 日々によき種と = We Are Sowing (#216)
+  134: われ主を愛して = Lord, I Would Follow Thee (#220)
+  135: 来たれ，旅を共に続けん = Come, Let Us Anew (#217)
+  136: 羊を守れる羊飼いの愛 = Dear to the Heart of the Shepherd (#221)
+  137: 今日われ善きことせしか = Have I Done Any Good? (#223)
+  138: 主の恵み，人にも分かたん = Because I Have Been Given Much (#219)
+  139: 心に光あり = There Is Sunshine in My Soul Today (#227)
+  140: 親しく語り合わん = Let Us Oft Speak Kind Words (#232)
+  141: 心の中に光を持てば = You Can Make the Pathway Bright (#228)
+  142: 日の照る間に働け = Today, While the Sun Shines (#229)
+  143: 光を道にまけ = Scatter Sunshine (#230)
+  144: 愛の神，賛めよ = Praise God, from Whom All Blessings Flow (#242)
+  145: 陽の落ちぬ間に = I Have Work Enough to Do (#224)
+  146: 時を惜しみて = Improve the Shining Moments (#226)
+  147: 人の過ちを = Should You Feel Inclined to Censure (#235)
+  148: この家，父なる神に捧ぐ = This House We Dedicate to Thee (#245)
+  149: 神のみ業に進みて = Let Us All Press On (#243)
+  150: 悪を言うな = Nay, Speak No Ill (#233)
+  151: 正しかれ = Do What Is Right (#237)
+  152: 選べ，正義を = Choose the Right (#239)
+  153: み恵み数えあげ = Count Your Blessings (#241)
+  154: 来たれ，来たれ = Come Along, Come Along (#244)
+  155: 戦い進め = Onward, Christian Soldiers (#246)
+  156: 刈り手を待ちつつ = Waiting for the Reapers (旧版)
+  157: われらは天の王に = Called to Serve (#249)
+  158: いとまされる = We Love Thy House, O God (#247)
+  159: シオンのつわもの = Hope of Israel (#259)
+  160: 見よ，王の軍は = Behold! A Royal Army (#251)
+  161: 世はよく働く人を求む = Put Your Shoulder to the Wheel (#252)
+  162: 戦い止むまで = We Are All Enlisted (#250)
+  163: シオンの若者，真理を守り = True to the Faith (#254)
+  164: 力強き主よ = O Thou Rock of Our Salvation (#258)
+  165: 主の方には = Who’s on the Lord’s Side? (#260)
+  166: 天よりの声聞け = Hark, All Ye Nations! (#264)
+  167: 山のごとく強く = Carry On (#255)
+  168: 信仰もて行け = Go Forth with Faith (#263)
+  169: 時過ぎて = The Time Is Far Spent (#266)
+  170: 高き知恵もて = Come, All Whose Souls Are Lighted (#268)
+  171: エホバ，天地の主 = Jehovah, Lord of Heaven and Earth (#269)
+  172: み旨のまま行かん = I’ll Go Where You Want Me to Go (#270)
+  173: 高きに導く = Oh, Holy Words of Truth and Love (#271)
+  174: 真理，胸に照り = Truth Reflects upon Our Senses (#273)
+  175: 真理は何と言えば = Oh Say, What Is Truth? (#272)
+  176: 鉄の棒 = The Iron Rod (#274)
+  177: われみ言葉読む = As I Search the Holy Scriptures (#277)
+  178: 楽し安息の日 = Welcome, Welcome, Sabbath Morning (#280)
+  179: われら天にまた会うとき = Oh, What Songs of the Heart (#286)
+  180: 高きに栄えて = O My Father (#292)
+  181: 家庭の愛 = Love at Home (#294)
+  182: 主よ霊感もて = Help Me Teach with Inspiration (#281)
+  183: 起て，宮に入りて = Rise, Ye Saints, and Temples Enter (#287)
+  184: 母よ，われ美しき夢見ぬ = Oh, I Had Such a Pretty Dream, Mamma (旧版)
+  185: 神の聖徒の = In Our Lovely Deseret (#307)
+  186: 愛ある家は = Home Can Be a Heaven on Earth (#298)
+  187: 家族は永遠に = Families Can Be Together Forever (#300)
+  188: 光となるように = Jesus Wants Me for a Sunbeam (CS 285)
+  189: 神の子です = I Am a Child of God (#301)
+  190: お父さまは生きています = I Know My Father Lives (#302)
+  191: 神の光受け = The Light Divine (#305)
+  192: 共に愛し合え = Love One Another (#308)
+  193: 戒めを守る人を = Keep the Commandments (#303)
+  194: 光の中進もう = Teach Me to Walk in the Light (#304)
+  195: シオンの娘（女声用） = As Sisters in Zion (Women) (#309)
+  196: イスラエルの長老たちよ（男声用） = Ye Elders of Israel (Men) (#319)
+  197: み言葉により（男声用） = Ye Who Are Called to Labor (Men) (#321)
+  198: 心を抑えよ（男声用） = School Thy Feelings (Men’s Choir) (#336)
+  199: 神権持つ子らよ（男声用） = Come, All Ye Sons of God (Men) (#322)
+  200: 天父は灯台のごとく（男声聖歌隊用） = Brightly Beams Our Father’s Mercy (Men’s Choir) (#335)
+
 ・聖典・書名: モルモン書（モルモン賞/証→モルモン書）、第1/第2/第3/第4ニーファイ（第3ニーファイ）、ヤコブ書、エノス書、ジャロム書、オムナイ書、モーサヤ書、アルマ書、ヒラマン書、エテル書、モロナイ書、教義と聖約（協議と制約/教義と制約→教義と聖約）、高価な真珠、聖書、旧約聖書、新約聖書
 
-・聖典の事物・教え: 慈愛（地合い/試合→慈愛、キリストの純粋な愛）、聖霊（精霊/星稜→聖霊）、聖霊の賜物（精霊の賜物→聖霊の賜物）、神権（親権/真剣→神権）、神権の権能、按手（暗視/アッシュ/アンチ→按手）、信仰箇条（進行過剰/進行箇条→信仰箇条）、慈善（事前/自選→慈善）、徳高く（特高/得高く→徳高く）、神殿（新年→神殿）、神殿の儀式、教義（競技/協議→教義）、天の御父の御前（見舞いに戻る→御前に戻る）、昇栄/昇栄させる（証明させる→昇栄させる）、創造主（想像主→創造主）、生めよ増えよ地に満ちよ（地に道を→地に満ちよ）、家族—世界への宣言（家族の宣言）、鉄の棒、命の木、リアホナ、真鍮の版、金の版、知恵の言葉、安息日、聖餐（精算/生産/清算→聖餐）、賛美歌107番『神はわが岩』（神は要配信→神はわが岩）、バプテスマ（麦茶/バプテスト→バプテスマ）、救いの計画、証（明かし/赤潮→証）、信仰と証（進行と明石→信仰と証）、贖罪（食材/植栽→贖罪）、死の縄目を克服（死の眺め→死の縄目を克服/死の縄目）、ゲツセマネの園（ケツセマノ/決戦まで→ゲツセマネ）、仕える者（使える人→仕える者）、主に似た者（死に似たもの/主任に似たもの→主に似た者）、ありのままの御子にまみえる（うんこに見える/温故に見える/うんこ→御子にまみえる/御子）、柔和（入場/乳は→柔和）、無私の心（無視の心→無私の心）、主の御名（皆→御名）、天の御父（音質/音痴/音痴の計画/お父様→天の御父/天の御父の計画）、生ける預言者（行ける預言者→生ける預言者）、永遠の命、主は（手話→主は）、聖典を読む（晴天を読む→聖典を読む）、什分の一（1/10 / 10分の1 / 十分の一 / 十分の壱 / 十分の一献金 / 10分の1を納める→什分の一 / 什分の一の律法 / 什分の一献金。※漢数字「十分の一」ではなく必ず「什分の一」と表記）、日の栄え（日の境/広さ会→日の栄え、日の栄えの考え方、日の栄えの律法）、月の栄え（月の境→月の栄え）、星の栄え（星の境→星の栄え）、純潔の律法（準決の立法→純潔の律法）
+・聖典の事物・教え: 慈愛（地合い/試合→慈愛、キリストの純粋な愛）、聖霊（精霊/星稜→聖霊）、聖霊の賜物（精霊の賜物→聖霊の賜物）、神権（親権/真剣→神権）、神権の権能、按手（暗視/アッシュ/アンチ→按手）、信仰箇条（進行過剰/進行箇条→信仰箇条）、慈善（事前/自選→慈善）、徳高く（特高/得高く→徳高く）、神殿（新年→神殿）、神殿の儀式、教義（競技/協議→教義）、天の御父の御前（見舞いに戻る→御前に戻る）、昇栄/昇栄させる（証明させる→昇栄させる）、創造主（想像主→創造主）、生めよ増えよ地に満ちよ（地に道を→地に満ちよ）、家族—世界への宣言（家族の宣言）、鉄の棒、命の木、リアホナ、真鍮の版、金の版、知恵の言葉、安息日、聖餐（精算/生産/清算→聖餐）、賛美歌（神は要配信→神は世を愛し 等）、バプテスマ（麦茶/バプテスト→バプテスマ）、救いの計画、証（明かし/赤潮→証）、信仰と証（進行と明石→信仰と証）、贖罪（食材/植栽→贖罪）、死の縄目を克服（死の眺め→死の縄目を克服/死の縄目）、ゲツセマネの園（ケツセマノ/決戦まで→ゲツセマネ）、仕える者（使える人→仕える者）、主に似た者（死に似たもの/主任に似たもの→主に似た者）、ありのままの御子にまみえる（うんこに見える/温故に見える/うんこ→御子にまみえる/御子）、柔和（入場/乳は→柔和）、無私の心（無視の心→無私の心）、主の御名（皆→御名）、天の御父（音質/音痴/音痴の計画/お父様→天の御父/天の御父の計画）、生ける預言者（行ける預言者→生ける預言者）、永遠の命、主は（手話→主は）、聖典を読む（晴天を読む→聖典を読む）、什分の一（1/10 / 10分の1 / 十分の一 / 十分の壱 / 十分の一献金 / 10分の1を納める→什分の一 / 什分の一の律法 / 什分の一献金。※漢数字「十分の一」ではなく必ず「什分の一」と表記）、日の栄え（日の境/広さ会→日の栄え、日の栄えの考え方、日の栄えの律法）、月の栄え（月の境→月の栄え）、星の栄え（星の境→星の栄え）、純潔の律法（準決の立法→純潔の律法）
 
 ・組織・指導者: 総大会（総会→総大会）、大管長（大官庁→大管長）、管長、十二使徒定員会（店員会→定員会）、七十人定員会、ステーク会長、ステーク大会（スペック大会→ステーク大会）、ビショップ/ビショップリック（※話者が「ビショップ」「ビショップリック」と発言した場合は「監督」「監督会」に勝手に換言せずそのまま保持）、召し（飯/メシ/メッシュ/無視→教会の責任・任務としての「召し」）、FSY（青少年向け大会。FACE/fsi/返済→FSY）、宣教師、奉仕宣教師（ヤング奉仕宣教師、シニア奉仕宣教師、奉仕宣教師アドバイザー。本線教室/ヤング本線教室/その教師/あの教師→奉仕宣教師）、伝道手法（ストリーティング＝路上伝道。ストリーキング→ストリーティング / ハウス・ツー・ハウス＝戸別訪問。ハウスハウス→ハウス・ツー・ハウス）、伝道に出る（電動に出る→伝道に出る）、日曜学校（二中学校教師→日曜学校教師）、扶助協会、初等協会（プライマリー）、若い男性、若い女性、セミナリー、インスティテュート、ジョセフ・スミス、トーマス・S・モンソン大管長、ラッセル・M・ネルソン大管長、現在の大管長: ダリン・H・オークス大管長（President Dallin H. Oaks。ホークス大官庁/オークス大官庁/ダリンHを世代官庁→ダリン・H・オークス大管長）、ヘンリー・B・アイリング管長、デビッド・A・ベドナー長老
 
@@ -7331,7 +7542,7 @@ function isIncompletePhrase(text) {
 ===
 いつも御子の御霊を受けられるように このパンを祝し福し 聖めてください アーメン
 
-  出力: {"sentences": [{"ja": "永遠の父なる神よ、わたしたちは御子イエス・キリストの御名によってあなたに願い求めます。", "en": "O God, the Eternal Father, we ask thee in the name of thy Son, Jesus Christ,"}, {"ja": "このパンを頂くすべての人々が、御子の体の記念にこれを頂けるように、また、進んで御子の御名を受け、いつも御子を覚え、御子が与えてくださった戒めを守ることを、永遠の父なる神よ、あなたに証明して、いつも御子の御霊を受けられるように、このパンを祝し福し、聖めてください。アーメン。", "en": "to bless and sanctify this bread to the souls of all those who partake of it, that they may eat in remembrance of the body of thy Son, and witness unto thee, O God, the Eternal Father, that they are willing to take upon them the name of thy Son, and always remember him and keep his commandments which he has given them; that they may always have his Spirit to be with them. Amen."}]}
+  出力: {"sentences": [{"ja": "永遠の父なる神よ、わたしたちは御子イエス・キリストの御名によってあなたに願い求めます。", "en": "O God, the Eternal Father, we ask thee in the name of thy Son, Jesus Christ,"}, {"ja": "このパンを頂くすべての人々が、御子の体の記念にこれを頂けるように、また、進んで御子の御名を受け、いつも御子を覚え、御子が与えてくださった戒めを守ることを、永遠の父なる神よ、あなたに証明して、いつも御子の御霊を受けられるように、このパンを祝福し、聖めてください。アーメン。", "en": "to bless and sanctify this bread to the souls of all those who partake of it, that they may eat in remembrance of the body of thy Son, and witness unto thee, O God, the Eternal Father, that they are willing to take upon them the name of thy Son, and always remember him and keep his commandments which he has given them; that they may always have his Spirit to be with them. Amen."}]}
 
 
 
@@ -7358,6 +7569,18 @@ function isIncompletePhrase(text) {
   入力: こやま姉妹は初等協会会長から解任されました 彼女の奉仕に対して感謝してくださる方は手を挙げてその日を表してください
 
   出力: {"sentences": [{"ja": "こやま姉妹は初等協会会長から解任されました。", "en": "Sister Koyama has been released as Primary president."}, {"ja": "彼女の奉仕に対して感謝してくださる方は、手を挙げてその意を表してください。", "en": "Those who wish to express appreciation for her service, please manifest by the uplifted hand."}]}
+
+・例11（賛美歌の発表・日英対照補正）:
+
+  入力: 開会の賛美歌は 賛美歌5番 いざ救いの火を楽しまんです
+
+  出力: {"sentences": [{"ja": "開会の賛美歌は、賛美歌5番『いざ救いの日を楽しまん』です。", "en": "Our opening hymn is Hymn No. 5, 'Now Let Us Rejoice' (English #3)."}]}
+
+・例12（聖餐の賛美歌の発表・音声誤認救出）:
+
+  入力: 聖餐の賛美歌は 107番 神は要配信を歌います
+
+  出力: {"sentences": [{"ja": "聖餐の賛美歌は、賛美歌107番『神は世を愛し』を歌います。", "en": "Our sacrament hymn will be Hymn No. 107, 'God Loved Us, So He Sent His Son' (English #187)."}]}
 
 
 
