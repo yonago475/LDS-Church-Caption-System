@@ -1035,7 +1035,11 @@
                     <option value="ja">日本語 (補正済み原文)</option>
                 </select>
 
-                <span id="viewerSectionBadge" class="hidden text-[10px] px-2 py-0.5 rounded-full font-bold bg-slate-600 text-slate-200 transition-all shrink-0 whitespace-nowrap shadow-xs">🎤 一般</span>
+                <!-- プライバシーポリシー & 免責事項ボタン（上部言語バーの右端へ移設） -->
+                <button id="viewerPrivacyBtn" type="button" class="text-[10px] sm:text-xs text-slate-500 hover:text-indigo-600 px-2 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 border border-slate-200 flex items-center gap-1 transition-colors shrink-0 cursor-pointer shadow-xs" title="プライバシーポリシー・免責事項" aria-label="利用規約とプライバシーポリシー">
+                    <i class="fa-solid fa-shield-halved text-[9px] sm:text-[10px] text-indigo-500"></i>
+                    <span id="viewerPrivacyBtnText">規約</span>
+                </button>
             </div>
 
 
@@ -1106,14 +1110,11 @@
                         </div>
 
                         <div class="flex items-center gap-1.5 shrink-0">
-                            <!-- プライバシーポリシー & 免責事項ボタン（目立たず邪魔にならない移設配置） -->
-                            <button id="viewerPrivacyBtn" type="button" class="text-[10px] text-slate-400 hover:text-slate-200 px-1.5 py-0.5 rounded bg-slate-800/80 hover:bg-slate-700 border border-slate-700/60 flex items-center gap-1 transition-colors cursor-pointer" title="プライバシーポリシー・免責事項" aria-label="利用規約とプライバシーポリシー">
-                                <i class="fa-solid fa-shield-halved text-[9px] text-indigo-400"></i>
-                                <span id="viewerPrivacyBtnText">規約</span>
-                            </button>
+                            <!-- 場面自動判定バッジ（下部ステータスバーへ移設） -->
+                            <span id="viewerSectionBadge" class="hidden text-[10px] px-2 py-0.5 rounded-full font-bold bg-slate-700 text-slate-200 border border-slate-600/60 transition-all shrink-0 whitespace-nowrap shadow-xs">🎤 一般</span>
 
                             <span class="text-[10px] sm:text-[11px] text-slate-400 px-1.5 py-0.5 rounded bg-slate-800/80 border border-slate-700/60 shrink-0">
-                                <i class="fa-solid fa-layer-group mr-1 text-slate-500"></i><span id="totalCardsLabel">カード</span>: <span id="totalCardsCount" class="font-mono text-indigo-300 font-bold">0</span> <span class="ml-1 text-[9px] px-1 py-0.5 rounded bg-indigo-900/60 text-indigo-300 font-mono border border-indigo-700/50">v2.10</span>
+                                <i class="fa-solid fa-layer-group mr-1 text-slate-500"></i><span id="totalCardsLabel">カード</span>: <span id="totalCardsCount" class="font-mono text-indigo-300 font-bold">0</span> <span class="ml-1 text-[9px] px-1 py-0.5 rounded bg-indigo-900/60 text-indigo-300 font-mono border border-indigo-700/50">v2.11</span>
                             </span>
                         </div>
                     </div>
