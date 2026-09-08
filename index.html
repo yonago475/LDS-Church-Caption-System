@@ -755,6 +755,96 @@
 
 
 
+                <!-- 日本語文字起こしログ（補正後） (左側 2カラム) -->
+                <div class="lg:col-span-2 bg-white rounded-2xl p-6 shadow-sm border border-slate-200 flex flex-col h-[520px]">
+
+                    <div class="flex justify-between items-center mb-4">
+
+                        <h3 class="text-base font-bold text-slate-900">
+
+                            <i class="fa-solid fa-list-check text-indigo-600 mr-2"></i>日本語文字起こしログ（補正後）
+
+                        </h3>
+
+                        <div class="flex items-center space-x-2">
+
+                            <button id="downloadTranscriptBtn" class="inline-flex items-center px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-semibold text-xs rounded-lg transition-colors border border-emerald-200" title="文字起こしログを保存">
+
+                                <i class="fa-solid fa-download mr-1"></i> ログ保存
+
+                            </button>
+
+                            <button id="downloadDiagnosticBtn" class="inline-flex items-center px-2.5 py-1 bg-sky-50 hover:bg-sky-100 text-sky-700 font-semibold text-xs rounded-lg transition-colors border border-sky-200" title="API応答時間・エラー等の稼働テレメトリ診断ログを保存">
+
+                                <i class="fa-solid fa-chart-line mr-1"></i> 診断ログ
+
+                            </button>
+
+                            <button id="analyzeDictBtn" class="inline-flex items-center px-2.5 py-1 bg-purple-50 hover:bg-purple-100 text-purple-700 font-semibold text-xs rounded-lg transition-colors border border-purple-200" title="手動修正ログからAIが辞書候補を提案">
+
+                                <i class="fa-solid fa-wand-magic-sparkles mr-1"></i> 辞書候補AI分析
+
+                            </button>
+
+                            <span class="text-xs text-slate-400">配信中のログ</span>
+
+                        </div>
+
+                    </div>
+
+
+
+                    <!-- 辞書候補AI分析 結果パネル -->
+
+                    <div id="dictAnalysisPanel" class="hidden mb-3 p-3 bg-purple-50 border border-purple-200 rounded-xl space-y-2 max-h-60 overflow-y-auto">
+
+                        <div class="flex items-center justify-between">
+
+                            <h4 class="text-xs font-bold text-purple-900 flex items-center gap-1.5">
+
+                                <i class="fa-solid fa-wand-magic-sparkles text-purple-600"></i>
+
+                                AI辞書候補分析結果
+
+                            </h4>
+
+                            <div class="flex gap-1.5">
+
+                                <button id="dictAnalysisAddAllBtn" class="px-2 py-0.5 bg-purple-600 hover:bg-purple-500 text-white font-semibold text-[10px] rounded-md transition-colors">
+
+                                    <i class="fa-solid fa-check-double mr-0.5"></i> 全て辞書に追加
+
+                                </button>
+
+                                <button id="dictAnalysisCloseBtn" class="px-2 py-0.5 bg-slate-200 hover:bg-slate-300 text-slate-600 font-semibold text-[10px] rounded-md transition-colors">
+
+                                    閉じる
+
+                                </button>
+
+                            </div>
+
+                        </div>
+
+                        <div id="dictAnalysisResults" class="space-y-1.5">
+
+                        </div>
+
+                    </div>
+
+
+
+                    <div id="hostTranscriptLog" class="flex-1 overflow-y-auto caption-scroll bg-slate-50 rounded-xl p-4 space-y-3 border border-slate-200" aria-live="polite" aria-atomic="false">
+
+                        <p class="text-xs text-slate-400 text-center italic my-auto">ここに発話された内容が正しい単語に置換されて記録されます...</p>
+
+                    </div>
+
+                </div>
+
+
+
+                <!-- 教会用語カスタム辞書 (右側 1カラム) -->
                 <div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-200 flex flex-col">
 
                     <div class="flex items-center justify-between mb-3">
@@ -910,94 +1000,6 @@
                     <div class="flex-1 overflow-y-auto max-h-60 pr-1 space-y-1.5 border-t border-slate-100 pt-3" id="dictList">
 
                         <!-- Items injected dynamically -->
-
-                    </div>
-
-                </div>
-
-
-
-                <div class="lg:col-span-2 bg-white rounded-2xl p-6 shadow-sm border border-slate-200 flex flex-col h-[520px]">
-
-                    <div class="flex justify-between items-center mb-4">
-
-                        <h3 class="text-base font-bold text-slate-900">
-
-                            <i class="fa-solid fa-list-check text-indigo-600 mr-2"></i>日本語文字起こしログ（補正後）
-
-                        </h3>
-
-                        <div class="flex items-center space-x-2">
-
-                            <button id="downloadTranscriptBtn" class="inline-flex items-center px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-semibold text-xs rounded-lg transition-colors border border-emerald-200" title="文字起こしログを保存">
-
-                                <i class="fa-solid fa-download mr-1"></i> ログ保存
-
-                            </button>
-
-                            <button id="downloadDiagnosticBtn" class="inline-flex items-center px-2.5 py-1 bg-sky-50 hover:bg-sky-100 text-sky-700 font-semibold text-xs rounded-lg transition-colors border border-sky-200" title="API応答時間・エラー等の稼働テレメトリ診断ログを保存">
-
-                                <i class="fa-solid fa-chart-line mr-1"></i> 診断ログ
-
-                            </button>
-
-                            <button id="analyzeDictBtn" class="inline-flex items-center px-2.5 py-1 bg-purple-50 hover:bg-purple-100 text-purple-700 font-semibold text-xs rounded-lg transition-colors border border-purple-200" title="手動修正ログからAIが辞書候補を提案">
-
-                                <i class="fa-solid fa-wand-magic-sparkles mr-1"></i> 辞書候補AI分析
-
-                            </button>
-
-                            <span class="text-xs text-slate-400">配信中のログ</span>
-
-                        </div>
-
-                    </div>
-
-
-
-                    <!-- 辞書候補AI分析 結果パネル -->
-
-                    <div id="dictAnalysisPanel" class="hidden mb-3 p-3 bg-purple-50 border border-purple-200 rounded-xl space-y-2 max-h-60 overflow-y-auto">
-
-                        <div class="flex items-center justify-between">
-
-                            <h4 class="text-xs font-bold text-purple-900 flex items-center gap-1.5">
-
-                                <i class="fa-solid fa-wand-magic-sparkles text-purple-600"></i>
-
-                                AI辞書候補分析結果
-
-                            </h4>
-
-                            <div class="flex gap-1.5">
-
-                                <button id="dictAnalysisAddAllBtn" class="px-2 py-0.5 bg-purple-600 hover:bg-purple-500 text-white font-semibold text-[10px] rounded-md transition-colors">
-
-                                    <i class="fa-solid fa-check-double mr-0.5"></i> 全て辞書に追加
-
-                                </button>
-
-                                <button id="dictAnalysisCloseBtn" class="px-2 py-0.5 bg-slate-200 hover:bg-slate-300 text-slate-600 font-semibold text-[10px] rounded-md transition-colors">
-
-                                    閉じる
-
-                                </button>
-
-                            </div>
-
-                        </div>
-
-                        <div id="dictAnalysisResults" class="space-y-1.5">
-
-                        </div>
-
-                    </div>
-
-
-
-                    <div id="hostTranscriptLog" class="flex-1 overflow-y-auto caption-scroll bg-slate-50 rounded-xl p-4 space-y-3 border border-slate-200" aria-live="polite" aria-atomic="false">
-
-                        <p class="text-xs text-slate-400 text-center italic my-auto">ここに発話された内容が正しい単語に置換されて記録されます...</p>
 
                     </div>
 
@@ -1194,7 +1196,7 @@
                 </div>
 
                 <p class="text-[10px] text-slate-400 dark:text-slate-500 text-center pt-1">
-                    LDS Church Caption System — Open Source Worship Support Tool
+                    Yonago Ward Caption System — Open Source Worship Support Tool
                 </p>
             </div>
 
@@ -1443,40 +1445,55 @@
 
 
 
+            // --- 聖餐の祈り（パンと水の祝福） ---
+            "おおかみよ": "永遠の父なる神よ",
+            "永遠の父なる神様": "永遠の父なる神よ",
+            "御子(おんこ)": "御子",
+            "温故イエス": "御子イエス",
+            "おんこイエス": "御子イエス",
+            "温故": "御子",
+            "御子の皆によって": "御子の御名によって",
+            "皆によってあなたに願い求めます": "御名によってあなたに願い求めます",
+            "このパンをいただく": "このパンを頂く",
+            "御子の体の記念": "御子の体の記念",
+            "御子の血の記念": "御子の血の記念",
+            "地の記念に": "血の記念に",
+            "いつも御子を覚え": "いつも御子を覚え",
+            "御子の御霊を受けられるように": "御子の御霊を受けられるように",
+            "祝し福し": "祝し福し",
+            "祝し福し聖めてください": "祝し福し、聖めてください",
+            "祝し聖めてください": "祝し聖めてください",
+            "この水を祝福し聖めてください": "この水を祝福し、聖めてください",
+
             // --- ビジネス（支持・解任・召し） ---
-
             "感謝の会員": "感謝の解任",
-
             "感謝の会員といたします": "感謝の解任といたします",
-
             "かんしゃのかいにん": "感謝の解任",
-
             "メス 予定日 いたします": "召す提議をいたします",
-
             "メス 予定日": "召す提議を",
-
             "めすていぎ": "召す提議",
-
             "この定義に賛成": "この提議に賛成",
-
             "この定義に": "この提議に",
-
             "ていぎに賛成": "提議に賛成",
-
             "ていぎ": "提議",
-
             "定義に賛成": "提議に賛成",
-
             "その日を表してください": "その意を表してください",
-
             "その日を表して": "その意を表して",
-
+            "その日を表して下さい": "その意を表してください",
             "その意を表してください": "その意を表してください",
-
+            "その意を表して下さい": "その意を表してください",
             "そのいをつたえて": "その意を表して",
-
+            "手を挙げてその日を表して": "手を挙げてその意を表して",
+            "手を挙げてその日を表してください": "手を挙げてその意を表してください",
+            "手を挙げてその意を表して": "手を挙げてその意を表して",
+            "手を挙げてその意を表してください": "手を挙げてその意を表してください",
+            "反対の方がいればその日を表して": "反対の方がいればその意を表して",
+            "反対の方がいればその日を表してください": "反対の方がいればその意を表してください",
+            "反対の方がいればその意を表して": "反対の方がいればその意を表して",
+            "反対の方がいればその意を表してください": "反対の方がいればその意を表してください",
+            "感謝してくださる方は手を挙げて": "感謝してくださる方は、手を挙げて",
+            "支持してくださる方は手を挙げて": "支持してくださる方は、手を挙げて",
             "アッシュ 任命": "按手 任命",
-
             "アッシュ任命": "按手任命",
 
             "あんしゅにんめい": "按手任命",
@@ -3668,7 +3685,7 @@ function createSectionDetector() {
 
         // 聖餐の祈り（最優先判定: 非常に定型的なフレーズ）
 
-        if (/おおかみよ|パンを祝福|御子の体の記念|水を祝福|いつも御子を覚え|御子の御霊を受けられる/.test(text)) {
+        if (/おおかみよ|パンを祝福|御子の体の記念|水を祝福|いつも御子を覚え|御子の御霊を受けられる|このパンを頂く|この水を頂く|御子の血の記念|祝し(聖めて|福し)/.test(text)) {
 
             if (sectionChangeTimer) { clearTimeout(sectionChangeTimer); sectionChangeTimer = null; }
 
@@ -3750,11 +3767,11 @@ function createSectionDetector() {
 
 const SECTION_HINTS = {
 
-    general: '【現在の場面】一般（説教・話・報告。文脈に基づいて自然に判断してください）',
+    general: '【現在の場面】一般（説教・話・報告・ビジネス（召しの支持・解任）。文脈に基づいて自然に判断してください。支持＝「手を挙げてその意を表してください」）',
 
     prayer: '【現在の場面】祈り（定型フレーズが中心。「皆→御名」「音痴/音質→天の御父」「手話→主は」の変換を積極的に適用。結びは「イエス・キリストの聖なる御名により、アーメン」）',
 
-    sacrament_prayer: '【現在の場面】聖餐の祈り（非常に定型的。「御子の体/血の記念に」「いつも御子を覚え」「御子の御霊を受けられるように」等の正確な再現を最優先）',
+    sacrament_prayer: '【現在の場面】聖餐の祈り（聖典モロナイ4〜5章の厳格な定型句。「永遠の父なる神よ、わたしたちは御子イエス・キリストの御名によって…」「パン: 御子の体の記念 / 水: 御子の血の記念」「いつも御子を覚え」「御子の御霊を受けられるように」等の聖典完全再現を最優先）',
 
     testimony: '【現在の場面】証（個人の信仰告白。「〜であると証します」「〜を知っています」「〜に感謝します」のパターンが頻出。証＝testimony）'
 
@@ -7184,7 +7201,7 @@ function isIncompletePhrase(text) {
 
 ・この音声は「100%末日聖徒イエス・キリスト教会の集会・説教・祈り」の中で話されています。
 
-・一般的な日常会話やビジネス会話ではなく、信仰・聖典・キリストの教えに関する発話であることを前提に解釈してください。
+・一般的な日常会話や営利企業のビジネス会話ではなく、信仰・聖典・キリストの教えに関する発話であることを前提に解釈してください。ただし、教会集会において言及される「ビジネス（Ward Business / Church Business）」は商談や商売ではなく、「役職・召しの提議・支持（sustaining）・解任（releasing）および感謝の表明手続き（教会の神聖な務め）」を指します。
 
 ・音声認識による同音異義語や聞き間違い（例: 精算/生産→聖餐、明かし/赤潮→証、手話→主は、食材→贖罪、晴天→聖典、電動→伝道、使える→仕える、音痴→天の御父等）は、前後の文脈に合わせて【教会用語へ積極的に補正・変換】してください。
 
@@ -7192,7 +7209,15 @@ function isIncompletePhrase(text) {
 
 ・【ディテール完全保持・要約の禁止】: 話者が口にした語彙、修飾語、並列表現（例: 「導き、慰め、嘆きを聞き、恐れを取り除き、涙を拭ってくださいます」等）は、絶対に要約したり削ぎ落としたりせず、話者の熱量と言葉遣いを100%忠実に字幕として残してください。AIの役目は要約ではなく「文字起こしの誤字脱字・教会用語・文末敬語の正確な校正」です。
 
-・【教会固有の呼称の維持・「召し」の解釈】: 「ビショップ」「ビショップリック」などの呼称は日本の教会の慣用通り発言通りそのまま維持し、「監督」「監督会」に勝手に意訳・換言しないでください。また、教会内の役職・責任・任命を表す文脈での「めし（飯/メシ/メッシュ/無視）」は、食事の「飯」や「聖餐」ではなく教会の「召し（calling）」として正確に解釈してください。
+・【教会固有の呼称の維持・「召し」と「ビジネス（支持・解任）」の解釈】:
+  - 「ビショップ」「ビショップリック」などの呼称は日本の教会の慣用通り発言通りそのまま維持し、「監督」「監督会」に勝手に意訳・換言しないでください。
+  - 教会内の役職・責任・任命を表す文脈での「めし（飯/メシ/メッシュ/無視）」は、食事の「飯」や「聖餐」ではなく教会の「召し（calling）」として正確に解釈してください。
+  - 聖餐会で行われる「召しの支持・解任手続き」を「ビジネス（Ward Business）」と呼びます。以下の定型句と補正知識を厳格に保持してください:
+    1. 支持の定型句: 「〔姓名〕は〔役職名〕として召されました。〔彼または彼女〕を支持してくださる方は、手を挙げてその意を表してください。反対の方がいれば、その意を表してください。」
+       ※英語: "[Name] has been called as [calling]. Those who can sustain [him/her], please manifest by the uplifted hand. Those opposed, if any, may manifest."
+    2. 解任の定型句: 「〔姓名〕は〔役職名〕から解任されました。〔彼または彼女〕の奉仕に対して感謝してくださる方は、手を挙げてその意を表してください。」
+       ※英語: "[Name] has been released as [calling]. Those who wish to express appreciation for [his/her] service, please manifest by the uplifted hand."
+    3. 音声誤認識の救出: 「その日を表して」「この定義に賛成」「メス予定日」「感謝の会員」等は、文脈から必ず「手を挙げてその意を表してください」「この提議に賛成」「召す提議」「感謝の解任」として補正してください。
 
 ・【宣教師プログラムと伝道手法の知識ルール】:
   1. 奉仕宣教師（Service Missionary）: 教会には専任宣教師（ティーチング宣教師）と並び、自宅から通い地域社会や教会施設で奉仕する「奉仕宣教師」の制度があります。若い年代の「ヤング奉仕宣教師（Young Service Missionary）」と、年齢の高い「シニア奉仕宣教師（Senior Service Missionary）」がいます。彼らは社会福祉協議会、NPO、地域施設でのボランティア、動画編集、ITサポート、美化活動等を通してキリストの愛を分かち合います。これを指導・支援する責任として「奉仕宣教師アドバイザー」がいます。
@@ -7210,6 +7235,15 @@ function isIncompletePhrase(text) {
 
 
 【教会用語・固有名詞の変換知識ベース】
+
+・聖餐の祈り（Sacrament Prayers）の絶対的定型知識:
+  聖餐の祈りは聖典（モロナイ書4〜5章、教義と聖約20:77, 79）に記された神聖かつ厳格な定型句です。話者が聖餐の祈りを捧げている場合、音声認識の途切れや誤認識（「おおかみよ」「温故」「祝し福し」「血の記念」等）を以下の聖典通りの完全な日本語および公式英語訳へ正確に補正してください。
+  1. パンの祝福（Blessing on the Bread）:
+     【日本語全文】: 「永遠の父なる神よ、わたしたちは御子イエス・キリストの御名によってあなたに願い求めます。このパンを頂くすべての人々が、御子の体の記念にこれを頂けるように、また、進んで御子の御名を受け、いつも御子を覚え、御子が与えてくださった戒めを守ることを、永遠の父なる神よ、あなたに証明して、いつも御子の御霊を受けられるように、このパンを祝し福し、聖めてください。アーメン。」（※「祝し福し、聖めてください」または「祝し聖めてください」）
+     【公式英語訳】: "O God, the Eternal Father, we ask thee in the name of thy Son, Jesus Christ, to bless and sanctify this bread to the souls of all those who partake of it, that they may eat in remembrance of the body of thy Son, and witness unto thee, O God, the Eternal Father, that they are willing to take upon them the name of thy Son, and always remember him and keep his commandments which he has given them; that they may always have his Spirit to be with them. Amen."
+  2. 水の祝福（Blessing on the Water）:
+     【日本語全文】: 「永遠の父なる神よ、わたしたちは御子イエス・キリストの御名によってあなたに願い求めます。この水を頂くすべての人々が、この人々のために流された御子の血の記念にこれを頂けるように、また、いつも御子を覚えていることを、永遠の父なる神よ、あなたに証明して、御子の御霊を受けられるように、この水を祝福し、聖めてください。アーメン。」
+     【公式英語訳】: "O God, the Eternal Father, we ask thee in the name of thy Son, Jesus Christ, to bless and sanctify this water to the souls of all those who partake of it, that they may do it in remembrance of the blood of thy Son, which was shed for them; that they may witness unto thee, O God, the Eternal Father, that they do always remember him, that they may have his Spirit to be with them. Amen."
 
 ・聖典・書名: モルモン書（モルモン賞/証→モルモン書）、第1/第2/第3/第4ニーファイ（第3ニーファイ）、ヤコブ書、エノス書、ジャロム書、オムナイ書、モーサヤ書、アルマ書、ヒラマン書、エテル書、モロナイ書、教義と聖約（協議と制約/教義と制約→教義と聖約）、高価な真珠、聖書、旧約聖書、新約聖書
 
@@ -7289,6 +7323,44 @@ function isIncompletePhrase(text) {
 
 
 
+・例7（聖餐の祈り: パンの祝福の途切れ・音声認識誤りの補正）:
+
+  入力: 永遠の父なる神よ 私たちは温故 イエス キリストの皆によってあなたに願い求めます
+===
+このパンを頂くすべての人々が 御子の体の記念にこれを頂けるように
+===
+いつも御子の御霊を受けられるように このパンを祝し福し 聖めてください アーメン
+
+  出力: {"sentences": [{"ja": "永遠の父なる神よ、わたしたちは御子イエス・キリストの御名によってあなたに願い求めます。", "en": "O God, the Eternal Father, we ask thee in the name of thy Son, Jesus Christ,"}, {"ja": "このパンを頂くすべての人々が、御子の体の記念にこれを頂けるように、また、進んで御子の御名を受け、いつも御子を覚え、御子が与えてくださった戒めを守ることを、永遠の父なる神よ、あなたに証明して、いつも御子の御霊を受けられるように、このパンを祝し福し、聖めてください。アーメン。", "en": "to bless and sanctify this bread to the souls of all those who partake of it, that they may eat in remembrance of the body of thy Son, and witness unto thee, O God, the Eternal Father, that they are willing to take upon them the name of thy Son, and always remember him and keep his commandments which he has given them; that they may always have his Spirit to be with them. Amen."}]}
+
+
+
+・例8（聖餐の祈り: 水の祝福の補正）:
+
+  入力: 永遠の父なる神よ 私たちは御子イエスキリストの皆によってあなたに願い求めます この水を頂くすべての人々が この人々のために流された御子の地の記念にこれを頂けるように
+===
+いつも御子を覚えていることを 永遠の父なる神よあなたに証明して 御子の御霊を受けられるように この水を祝福し 聖めてください アーメン
+
+  出力: {"sentences": [{"ja": "永遠の父なる神よ、わたしたちは御子イエス・キリストの御名によってあなたに願い求めます。", "en": "O God, the Eternal Father, we ask thee in the name of thy Son, Jesus Christ,"}, {"ja": "この水を頂くすべての人々が、この人々のために流された御子の血の記念にこれを頂けるように、また、いつも御子を覚えていることを、永遠の父なる神よ、あなたに証明して、御子の御霊を受けられるように、この水を祝福し、聖めてください。アーメン。", "en": "to bless and sanctify this water to the souls of all those who partake of it, that they may do it in remembrance of the blood of thy Son, which was shed for them; that they may witness unto thee, O God, the Eternal Father, that they do always remember him, that they may have his Spirit to be with them. Amen."}]}
+
+
+
+・例9（ビジネス: 召しの提議・支持）:
+
+  入力: やなせ兄弟は日曜学校教師として召されました 彼を支持してくださる方は手を挙げてその日を表してください 反対の方がいればその意を表してください
+
+  出力: {"sentences": [{"ja": "やなせ兄弟は日曜学校教師として召されました。", "en": "Brother Yanase has been called as Sunday School teacher."}, {"ja": "彼を支持してくださる方は、手を挙げてその意を表してください。反対の方がいれば、その意を表してください。", "en": "Those who can sustain him, please manifest by the uplifted hand. Those opposed, if any, may manifest."}]}
+
+
+
+・例10（ビジネス: 感謝の解任）:
+
+  入力: こやま姉妹は初等協会会長から解任されました 彼女の奉仕に対して感謝してくださる方は手を挙げてその日を表してください
+
+  出力: {"sentences": [{"ja": "こやま姉妹は初等協会会長から解任されました。", "en": "Sister Koyama has been released as Primary president."}, {"ja": "彼女の奉仕に対して感謝してくださる方は、手を挙げてその意を表してください。", "en": "Those who wish to express appreciation for her service, please manifest by the uplifted hand."}]}
+
+
+
 【厳格な出力ルール】
 
 1. 【文の自然な完結と捏造厳禁（最重要）】: "sentences" の各要素は、話者が口にした言葉に基づき自然に意味が通る1文にしてください。特に、話者が述語を言っていない「〜と」「〜を」「〜皆さんと」のような助詞止めの未完文節に対し、架空の感謝文（例: 『〜心から感謝いたします』等）や述語を勝手に創作して文を完結させることを【厳禁】とします。未完の文節は、前後の文に自然に結合・吸収してください。
@@ -7305,7 +7377,7 @@ function isIncompletePhrase(text) {
 
 7. JSON構文崩れを防ぐため、英語訳内の引用符にはダブルクォート（"）を使わずシングルクォート（'）を使ってください。
 
-8. 英語の教会用語: 聖餐=Sacrament, 贖罪=Atonement, 証=testimony, バプテスマ=baptism, 天の御父=Heavenly Father, 御名=name, 聖典=scriptures, 安息日=Sabbath day, 神殿=temple, 伝道=missionary work, 改宗=conversion, 聖約=covenant, 教義=doctrine, 総大会=general conference, 大管長=President, 監督=bishop, 定員会=quorum, ステーク=stake, ワード=ward, 扶助協会=Relief Society, 初等協会=Primary, セミナリー=seminary, 柔和=meekness, 贖い=redemption, 昇栄=exaltation, 御霊=the Spirit, 聖霊=the Holy Ghost, モルモン書=the Book of Mormon, 教義と聖約=the Doctrine and Covenants, 高価な真珠=the Pearl of Great Price, 知恵の言葉=the Word of Wisdom, 救いの計画=the plan of salvation, 鉄の棒=the iron rod, 命の木=the tree of life, リアホナ=the Liahona, ゲツセマネ=Gethsemane, 主=the Lord, キリスト=Christ, 宣教師=missionary/missionaries, 奉仕宣教師=service missionary/service missionaries, 奉仕宣教師アドバイザー=service missionary advisor, 路上伝道/ストリーティング=streeting, 戸別訪問/ハウス・ツー・ハウス=house-to-house tracting, 信仰箇条=the Articles of Faith, 什分の一=tithing, 什分の一の律法=the law of tithing, 什分の一献金=tithing/tithes, 日の栄え=celestial, 日の栄えの王国=the celestial kingdom, 日の栄えの考え方=a celestial mindset, 月の栄え=terrestrial, 星の栄え=telestial, 純潔の律法=the law of chastity
+8. 英語の教会用語: 聖餐=Sacrament, 贖罪=Atonement, 証=testimony, バプテスマ=baptism, 天の御父=Heavenly Father, 御名=name, 聖典=scriptures, 安息日=Sabbath day, 神殿=temple, 伝道=missionary work, 改宗=conversion, 聖約=covenant, 教義=doctrine, 総大会=general conference, 大管長=President, 監督=bishop, 定員会=quorum, ステーク=stake, ワード=ward, 扶助協会=Relief Society, 初等協会=Primary, セミナリー=seminary, 柔和=meekness, 贖い=redemption, 昇栄=exaltation, 御霊=the Spirit, 聖霊=the Holy Ghost, モルモン書=the Book of Mormon, 教義と聖約=the Doctrine and Covenants, 高価な真珠=the Pearl of Great Price, 知恵の言葉=the Word of Wisdom, 救いの計画=the plan of salvation, 鉄の棒=the iron rod, 命の木=the tree of life, リアホナ=the Liahona, ゲツセマネ=Gethsemane, 主=the Lord, キリスト=Christ, 宣教師=missionary/missionaries, 奉仕宣教師=service missionary/service missionaries, 奉仕宣教師アドバイザー=service missionary advisor, 路上伝道/ストリーティング=streeting, 戸別訪問/ハウス・ツー・ハウス=house-to-house tracting, 信仰箇条=the Articles of Faith, 什分の一=tithing, 什分の一の律法=the law of tithing, 什分の一献金=tithing/tithes, 日の栄え=celestial, 日の栄えの王国=the celestial kingdom, 日の栄えの考え方=a celestial mindset, 月の栄え=terrestrial, 星の栄え=telestial, 純潔の律法=the law of chastity, 支持/支持する=sustain, 解任/解任された=release / has been released, 召された=has been called, 手を挙げてその意を表す=manifest by the uplifted hand (signify by the uplifted hand), 反対の方=those opposed, ビジネス(教会の務め)=ward business / church business, 提議=proposal / propose, 感謝の意を表す=express appreciation
 
 
 
