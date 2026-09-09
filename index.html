@@ -3832,35 +3832,81 @@ function extractJsonFromAiResponse(raw) {
 
             if (parsed && typeof parsed === 'object') {
 
-                // バッチ形式: {"sentences": [{ja, en}, ...]}
+                // バッチ形式: {"sentences": [{ja, en, ...}, ...]}
 
                 if (Array.isArray(parsed.sentences) && parsed.sentences.length > 0 && parsed.sentences[0].ja) {
 
                     return {
 
-                        sentences: parsed.sentences.map(s => ({
+                        sentences: parsed.sentences.map(s => {
 
-                            ja: s.ja ? String(s.ja).trim() : '',
+                            const item = {
 
-                            en: (s.en && String(s.en).trim()) ? String(s.en).trim() : null
+                                ja: s.ja ? String(s.ja).trim() : '',
 
-                        })).filter(s => !!s.ja)
+                                en: (s.en && String(s.en).trim()) ? String(s.en).trim() : null
+
+                            };
+
+                            if (s.translations && typeof s.translations === 'object') {
+
+                                item.translations = s.translations;
+
+                            }
+
+                            ['tl', 'zh', 'zh-CN', 'zh-TW', 'es', 'pt', 'ko', 'vi'].forEach(lang => {
+
+                                if (s[lang] && String(s[lang]).trim()) {
+
+                                    if (!item.translations) item.translations = {};
+
+                                    item.translations[lang] = String(s[lang]).trim();
+
+                                }
+
+                            });
+
+                            return item;
+
+                        }).filter(s => !!s.ja)
 
                     };
 
                 }
 
+
+
                 // 旧形式: {"ja": "...", "en": "..."}（後方互換）
 
                 if (parsed.ja) {
 
-                    return {
+                    const item = {
 
                         ja: String(parsed.ja).trim(),
 
                         en: (parsed.en && String(parsed.en).trim()) ? String(parsed.en).trim() : null
 
                     };
+
+                    if (parsed.translations && typeof parsed.translations === 'object') {
+
+                        item.translations = parsed.translations;
+
+                    }
+
+                    ['tl', 'zh', 'zh-CN', 'zh-TW', 'es', 'pt', 'ko', 'vi'].forEach(lang => {
+
+                        if (parsed[lang] && String(parsed[lang]).trim()) {
+
+                            if (!item.translations) item.translations = {};
+
+                            item.translations[lang] = String(parsed[lang]).trim();
+
+                        }
+
+                    });
+
+                    return item;
 
                 }
 
@@ -3880,28 +3926,53 @@ function extractJsonFromAiResponse(raw) {
 
         const sentences = [];
 
-        // 各 {ja, en} ブロックを正規表現で抽出
-
-        const blockRegex = /\{\s*"ja"\s*:\s*"((?:[^"\\]|\\.)*)"\s*(?:,\s*"en"\s*:\s*"((?:[^"\\]|\\.)*)")?\s*\}/g;
+        // 各文ブロックを抽出（ja, en, tl 等）
+        const blockRegex = /\{[^{}]*"ja"\s*:\s*"((?:[^"\\]|\\.)*)"[^{}]*\}/g;
 
         let match;
 
         while ((match = blockRegex.exec(cleaned)) !== null) {
 
-            let ja = null, en = null;
+            const blockStr = match[0];
+            let parsedBlock = null;
+            try {
+                const b = JSON.parse(blockStr);
+                if (b && b.ja) parsedBlock = b;
+            } catch (e) {}
 
-            try { ja = JSON.parse(`"${match[1]}"`); } catch (e) { ja = match[1]; }
-
-            if (match[2]) {
-
-                try { en = JSON.parse(`"${match[2]}"`); } catch (e) { en = match[2]; }
-
-            }
-
-            if (ja && ja.trim()) {
-
-                sentences.push({ ja: ja.trim(), en: en ? en.trim() : null });
-
+            if (parsedBlock) {
+                const item = {
+                    ja: String(parsedBlock.ja).trim(),
+                    en: (parsedBlock.en && String(parsedBlock.en).trim()) ? String(parsedBlock.en).trim() : null
+                };
+                if (parsedBlock.translations && typeof parsedBlock.translations === 'object') {
+                    item.translations = parsedBlock.translations;
+                }
+                ['tl', 'zh', 'zh-CN', 'zh-TW', 'es', 'pt', 'ko', 'vi'].forEach(lang => {
+                    if (parsedBlock[lang] && String(parsedBlock[lang]).trim()) {
+                        if (!item.translations) item.translations = {};
+                        item.translations[lang] = String(parsedBlock[lang]).trim();
+                    }
+                });
+                sentences.push(item);
+            } else {
+                let ja = null, en = null, tl = null;
+                try { ja = JSON.parse(`"${match[1]}"`); } catch (e) { ja = match[1]; }
+                const enMatch = blockStr.match(/"en"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+                if (enMatch) {
+                    try { en = JSON.parse(`"${enMatch[1]}"`); } catch (e) { en = enMatch[1]; }
+                }
+                const tlMatch = blockStr.match(/"tl"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+                if (tlMatch) {
+                    try { tl = JSON.parse(`"${tlMatch[1]}"`); } catch (e) { tl = tlMatch[1]; }
+                }
+                if (ja && ja.trim()) {
+                    const resItem = { ja: ja.trim(), en: en ? en.trim() : null };
+                    if (tl && tl.trim()) {
+                        resItem.translations = { tl: tl.trim() };
+                    }
+                    sentences.push(resItem);
+                }
             }
 
         }
@@ -4005,9 +4076,23 @@ function extractJsonFromAiResponse(raw) {
 
 
 
+    // "tl": "..." のマッチ
+    let tl = null;
+    const tlMatch = cleaned.match(/"tl"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+
+    if (tlMatch) {
+        try {
+            tl = JSON.parse(`"${tlMatch[1]}"`);
+        } catch (e) {
+            tl = tlMatch[1];
+        }
+    }
+
     if (ja) {
 
-        return { ja: ja.trim(), en: en ? en.trim() : null };
+        const item = { ja: ja.trim(), en: en ? en.trim() : null };
+        if (tl && tl.trim()) item.translations = { tl: tl.trim() };
+        return item;
 
     }
 
@@ -5010,6 +5095,21 @@ function isIncompletePhrase(text) {
 
         let currentManualEnglishText = null;
 
+        let currentManualTranslations = null;
+
+        // 接続中ビューワーの言語設定トラッカー (conn -> lang)
+        const viewerLanguages = new Map();
+
+        function getActiveViewerLanguages() {
+            const activeLangs = new Set();
+            for (const [conn, lang] of viewerLanguages.entries()) {
+                if (conn && conn.open && lang && lang !== 'ja' && lang !== 'en') {
+                    activeLangs.add(lang);
+                }
+            }
+            return Array.from(activeLangs);
+        }
+
 
 
         const audioDeviceSelect = document.getElementById('audioDeviceSelect');
@@ -5532,6 +5632,15 @@ function isIncompletePhrase(text) {
 
                 updateViewerUIStrings(newLang);
 
+                // ホストへ言語選択変更を通知（オンデマンド他言語翻訳を自動起動）
+                if (hostConnection && hostConnection.open) {
+                    try {
+                        hostConnection.send({ type: 'lang_select', lang: newLang });
+                    } catch (e) {
+                        console.warn('Failed to send lang_select to host:', e);
+                    }
+                }
+
             });
 
         }
@@ -5795,6 +5904,8 @@ function isIncompletePhrase(text) {
 
             const englishText = (meta && meta.englishText) ? meta.englishText : null;
 
+            const translations = (meta && meta.translations) ? meta.translations : null;
+
             broadcastToViewers({
 
                 type: 'caption',
@@ -5806,6 +5917,8 @@ function isIncompletePhrase(text) {
                 timestamp: timeStr,
 
                 englishText: englishText,
+
+                translations: translations,
 
                 sectionType: currentSectionType
 
@@ -5980,8 +6093,9 @@ function isIncompletePhrase(text) {
                     const isHumanEdited = currentManualInitialText && (normalizeCaption(text) !== normalizeCaption(currentManualInitialText));
                     const isManuallyEdited = currentManualOriginalRaw && (normalizeCaption(text) !== normalizeCaption(currentManualOriginalRaw));
 
-                    // ユーザーが手動編集していなければ、Geminiが生成した公式教会用語英訳をそのまま直通配信
+                    // ユーザーが手動編集していなければ、Geminiが生成した公式教会用語英訳・他言語訳をそのまま直通配信
                     const finalEnglishText = isHumanEdited ? null : currentManualEnglishText;
+                    const finalTranslations = isHumanEdited ? null : currentManualTranslations;
 
                     // Bug-05修正: 手動配信ボタン押下は force: true で重複チェックをバイパス
                     dispatchCaption(corrected, {
@@ -5991,6 +6105,8 @@ function isIncompletePhrase(text) {
                         isEdited: isManuallyEdited,
 
                         englishText: finalEnglishText,
+
+                        translations: finalTranslations,
 
                         force: true
 
@@ -6012,6 +6128,8 @@ function isIncompletePhrase(text) {
 
                     currentManualEnglishText = nextItem.englishText || null;
 
+                    currentManualTranslations = nextItem.translations || null;
+
                 } else {
 
                     manualCaptionInput.value = '';
@@ -6021,6 +6139,8 @@ function isIncompletePhrase(text) {
                     currentManualInitialText = ''; // Bug-04修正: 初期テキストクリア
 
                     currentManualEnglishText = null;
+
+                    currentManualTranslations = null;
 
                 }
 
@@ -6112,6 +6232,8 @@ function isIncompletePhrase(text) {
 
                         currentManualEnglishText = nextItem.englishText || null;
 
+                        currentManualTranslations = nextItem.translations || null;
+
                     } else {
 
                         manualCaptionInput.value = '';
@@ -6121,6 +6243,8 @@ function isIncompletePhrase(text) {
                         currentManualInitialText = ''; // Bug-04修正: 初期テキストクリア
 
                         currentManualEnglishText = null;
+
+                        currentManualTranslations = null;
 
                     }
 
@@ -7967,11 +8091,21 @@ const validModels = models
 
                 userPrompt += `【今回の発話（校正対象）】\n${batchInput}`;
 
+                // 聴講者の選択言語に応じたオンデマンド他言語翻訳指示（タガログ語等）
+                const activeExtraLangs = isTest ? [] : getActiveViewerLanguages();
+                if (activeExtraLangs.length > 0) {
+                    userPrompt += `\n\n【多言語オンデマンド翻訳指示】\n現在、以下の言語の聴講者が礼拝堂で参加しています: ${activeExtraLangs.join(', ')}。\n各文のJSONオブジェクトに該当言語のキーを追加し、末日聖徒イエス・キリスト教会の公式聖典・用語集を用いて格調高い翻訳を出力してください。`;
+                    if (activeExtraLangs.includes('tl')) {
+                        userPrompt += `\n・タガログ語 (tl): 末日聖徒イエス・キリスト教会の公式用語（聖餐=Banal na Hapunan, モルモン書=Aklat ni Mormon, 証=patotoo, 祈りの結び=Sa pangalan ni Jesucristo, Amen., 天の御父=Ama sa Langit, 贖罪=Pagbabayad-sala）を用いて自然なタガログ語訳を出力し、各文に "tl" キーで含めてください。`;
+                    }
+                    userPrompt += `\n出力形式例: {"sentences": [{"ja": "...", "en": "..."${activeExtraLangs.map(l => `, "${l}": "..."`).join('')}}]}`;
+                }
 
 
-                // maxOutputTokens をバッチサイズに応じて調整
 
-                const maxTokens = Math.min(1000 + (items.length - 1) * 500, 4000);
+                // maxOutputTokens をバッチサイズおよび追加言語数に応じて調整
+
+                const maxTokens = Math.min(1000 + (items.length - 1) * 500 + (activeExtraLangs.length * 500), 4000);
 
 
 
@@ -8170,6 +8304,8 @@ const validModels = models
 
                                 let curEn = cur.en ? cur.en.trim() : null;
 
+                                let curTranslations = (cur.translations && typeof cur.translations === 'object') ? cur.translations : null;
+
 
 
                                 if (pendingFragment) {
@@ -8177,6 +8313,16 @@ const validModels = models
                                     curJa = pendingFragment.ja + (curJa.startsWith('、') ? '' : '') + curJa;
 
                                     curEn = pendingFragment.en ? (pendingFragment.en + ' ' + (curEn || '')) : curEn;
+
+                                    if (pendingFragment.translations && curTranslations) {
+                                        const mergedTrans = { ...curTranslations };
+                                        Object.keys(pendingFragment.translations).forEach(k => {
+                                            mergedTrans[k] = (pendingFragment.translations[k] + ' ' + (mergedTrans[k] || '')).trim();
+                                        });
+                                        curTranslations = mergedTrans;
+                                    } else if (pendingFragment.translations) {
+                                        curTranslations = pendingFragment.translations;
+                                    }
 
                                     pendingFragment = null;
 
@@ -8194,11 +8340,11 @@ const validModels = models
 
                                 if (isFragment && s < aiSentences.length - 1) {
 
-                                    pendingFragment = { ja: curJa.replace(/[、，,]$/, '、'), en: curEn };
+                                    pendingFragment = { ja: curJa.replace(/[、，,]$/, '、'), en: curEn, translations: curTranslations };
 
                                 } else {
 
-                                    mergedSentences.push({ ja: curJa, en: curEn || null });
+                                    mergedSentences.push({ ja: curJa, en: curEn || null, translations: curTranslations });
 
                                 }
 
@@ -8214,9 +8360,16 @@ const validModels = models
 
                                     if (pendingFragment.en) last.en = (last.en ? (last.en + ' ') : '') + pendingFragment.en;
 
+                                    if (pendingFragment.translations) {
+                                        last.translations = last.translations || {};
+                                        Object.keys(pendingFragment.translations).forEach(k => {
+                                            last.translations[k] = (last.translations[k] ? (last.translations[k] + ' ') : '') + pendingFragment.translations[k];
+                                        });
+                                    }
+
                                 } else {
 
-                                    mergedSentences.push({ ja: pendingFragment.ja, en: pendingFragment.en || null });
+                                    mergedSentences.push({ ja: pendingFragment.ja, en: pendingFragment.en || null, translations: pendingFragment.translations || null });
 
                                 }
 
@@ -8239,6 +8392,8 @@ const validModels = models
                                 const jaText = fixScriptureReferences((aiItem.ja || '').trim());
 
                                 const enText = aiItem.en ? aiItem.en.trim() : null;
+
+                                const trans = aiItem.translations || null;
 
                                 if (!isTest) {
 
@@ -8269,6 +8424,8 @@ const validModels = models
                                     ja: jaText,
 
                                     en: enText,
+
+                                    translations: trans,
 
                                     isAiSuccess: true,
 
@@ -9417,18 +9574,68 @@ ${existingKeys.slice(0, 100).join(', ')}
 
 
 
-        // ==================== 接続者数カウンターの更新 ====================
+        // ==================== 接続者数カウンターの更新 & 言語別内訳 ====================
 
         function updateViewerCount() {
 
-            const activeCount = peerConnections.filter(c => c.open).length;
+            const activeConnections = peerConnections.filter(c => c && c.open);
+            const activeCount = activeConnections.length;
+
+            // 言語別人数の集計
+            const langCounts = {};
+            activeConnections.forEach(c => {
+                const lang = viewerLanguages.get(c) || 'en';
+                langCounts[lang] = (langCounts[lang] || 0) + 1;
+            });
+
+            const langParts = Object.entries(langCounts)
+                .map(([l, cnt]) => `${l.toUpperCase()}:${cnt}`);
+            const breakdownStr = langParts.length > 0 ? ` (${langParts.join(', ')})` : '';
 
             if (viewerCountDisplay) {
-
-                viewerCountDisplay.textContent = activeCount;
-
+                viewerCountDisplay.textContent = `${activeCount}${breakdownStr}`;
             }
 
+            // オンデマンド他言語（タガログ語等）翻訳アクティブバッジの更新
+            const activeExtra = getActiveViewerLanguages();
+            const aiStatusText = document.getElementById('aiStatsStatusText');
+            const aiFooter = document.getElementById('aiStatsStatusFooter');
+            if (activeExtra.includes('tl') && aiStatusText && aiFooter) {
+                aiStatusText.innerHTML = `<i class="fa-solid fa-earth-asia text-amber-400 mr-1"></i> 🇵🇭 タガログ語聴講者参加中: 教会公式用語AI翻訳を同時仕込み中`;
+                aiFooter.classList.remove('hidden');
+            }
+        }
+
+        function attachHostConnectionListeners(conn) {
+            // Bug-01修正: ハンドシェイク完了(open)前にpushすると、broadcastToViewersの
+            // conn.openフィルターで永久除外されるRace Conditionが発生するため、
+            // openイベント完了後に初めて配列に追加する
+            conn.on('open', function() {
+                if (!peerConnections.includes(conn)) {
+                    peerConnections.push(conn);
+                }
+                updateViewerCount();
+            });
+
+            conn.on('data', function(msg) {
+                if (msg && msg.type === 'lang_select' && msg.lang) {
+                    viewerLanguages.set(conn, msg.lang);
+                    updateViewerCount();
+                }
+            });
+
+            conn.on('close', function() {
+                peerConnections = peerConnections.filter(c => c !== conn);
+                viewerLanguages.delete(conn);
+                updateViewerCount();
+            });
+
+            conn.on('error', function(err) {
+                console.warn('Host-side connection error:', err);
+                peerConnections = peerConnections.filter(c => c !== conn);
+                viewerLanguages.delete(conn);
+                updateViewerCount();
+            });
         }
 
 
@@ -9468,44 +9675,7 @@ ${existingKeys.slice(0, 100).join(', ')}
 
 
 
-            peer.on('connection', function(conn) {
-
-                // Bug-01修正: ハンドシェイク完了(open)前にpushすると、broadcastToViewersの
-                // conn.openフィルターで永久除外されるRace Conditionが発生するため、
-                // openイベント完了後に初めて配列に追加する
-                conn.on('open', function() {
-
-                    if (!peerConnections.includes(conn)) {
-                        peerConnections.push(conn);
-                    }
-
-                    updateViewerCount();
-
-                });
-
-
-
-                conn.on('close', function() {
-
-                    peerConnections = peerConnections.filter(c => c !== conn);
-
-                    updateViewerCount();
-
-                });
-
-
-
-                conn.on('error', function(err) {
-
-                    console.warn('Host-side connection error:', err);
-
-                    peerConnections = peerConnections.filter(c => c !== conn);
-
-                    updateViewerCount();
-
-                });
-
-            });
+            peer.on('connection', attachHostConnectionListeners);
 
 
 
@@ -9545,38 +9715,7 @@ ${existingKeys.slice(0, 100).join(', ')}
 
                     });
 
-                    peer.on('connection', function(conn) {
-
-                        // Bug-01修正: open完了後に追加（Race Condition対策）
-                        conn.on('open', function() {
-
-                            if (!peerConnections.includes(conn)) {
-                                peerConnections.push(conn);
-                            }
-
-                            updateViewerCount();
-
-                        });
-
-                        conn.on('close', function() {
-
-                            peerConnections = peerConnections.filter(c => c !== conn);
-
-                            updateViewerCount();
-
-                        });
-
-                        conn.on('error', function(err) {
-
-                            console.warn('Host-side connection error (fallback):', err);
-
-                            peerConnections = peerConnections.filter(c => c !== conn);
-
-                            updateViewerCount();
-
-                        });
-
-                    });
+                    peer.on('connection', attachHostConnectionListeners);
 
                     peer.on('disconnected', function() { peer.reconnect(); });
 
@@ -9964,6 +10103,8 @@ ${existingKeys.slice(0, 100).join(', ')}
 
                         const englishText = result.en || null;
 
+                        const translations = result.translations || null;
+
                         const isAi = isGeminiAiEnabled && !!geminiApiKey && !!result.isAiSuccess && (processedChunk !== rawChunk);
 
                         const isEdited = processedChunk !== rawChunk;
@@ -10030,11 +10171,13 @@ ${existingKeys.slice(0, 100).join(', ')}
 
                                         currentManualEnglishText = englishText;
 
+                                        currentManualTranslations = translations;
+
                                         manualCaptionInput.scrollTop = manualCaptionInput.scrollHeight;
 
                                     } else {
 
-                                        manualPendingQueue.push({ text: processedChunk, original: rawChunk, isAi: isAi, englishText: englishText });
+                                        manualPendingQueue.push({ text: processedChunk, original: rawChunk, isAi: isAi, englishText: englishText, translations: translations });
 
                                         updateManualQueueUI();
 
@@ -10046,7 +10189,7 @@ ${existingKeys.slice(0, 100).join(', ')}
 
                         } else {
 
-                            const dispatchRes = dispatchCaption(processedChunk, { original: rawChunk, isEdited: isEdited, isAi: isAi, englishText: englishText });
+                            const dispatchRes = dispatchCaption(processedChunk, { original: rawChunk, isEdited: isEdited, isAi: isAi, englishText: englishText, translations: translations });
 
                             if (dispatchRes && dispatchRes.action) {
 
@@ -10967,7 +11110,12 @@ ${existingKeys.slice(0, 100).join(', ')}
 
                 const s = VIEWER_UI_STRINGS[lang] || VIEWER_UI_STRINGS['en'];
 
-
+                // ホストへ自身の選択言語を通知（オンデマンド他言語翻訳トリガー）
+                try {
+                    hostConnection.send({ type: 'lang_select', lang: lang });
+                } catch (e) {
+                    console.warn('Failed to send initial lang_select to host:', e);
+                }
 
                 peerConnectionStatus.className = 'w-2 h-2 rounded-full bg-emerald-400';
 
@@ -11011,16 +11159,26 @@ ${existingKeys.slice(0, 100).join(', ')}
 
                     viewerCaptionQueue = viewerCaptionQueue.then(async () => {
 
-                        // 英語選択時かつGemini翻訳済みの場合は直接表示（API呼び出しスキップ）
-
                         const targetLang = targetLangSelect ? targetLangSelect.value : 'en';
 
-                        if (targetLang === 'en' && data.englishText) {
+                        // 1. ホスト側Geminiが既に当該言語（英語・タガログ語等）を高精度翻訳済みの場合は即座に表示（外部翻訳APIを完全バイパス・遅延0ms）
+                        const directTranslation = (targetLang === 'en' && data.englishText)
+                            ? data.englishText
+                            : (data.translations && data.translations[targetLang])
+                                ? data.translations[targetLang]
+                                : null;
 
-                            appendViewerCaption(data.englishText, data.text, data.timestamp);
+                        if (directTranslation) {
+
+                            appendViewerCaption(directTranslation, data.text, data.timestamp);
+
+                        } else if (targetLang === 'ja') {
+
+                            appendViewerCaption(data.text, '', data.timestamp);
 
                         } else {
 
+                            // フォールバック: スマホ側の機械翻訳(gtx) + ローカル教会用語置換
                             await handleIncomingCaption(data.text, data.timestamp);
 
                         }
