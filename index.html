@@ -525,7 +525,25 @@
 
                         </div>
 
-
+                        <!-- 話者の言語（入力音声認識）ワンタップ切替スイッチ -->
+                        <div class="bg-indigo-50/70 p-2.5 rounded-xl border border-indigo-200/80 mb-3 flex items-center justify-between flex-wrap gap-2">
+                            <div class="flex items-center space-x-1.5 pl-1">
+                                <i class="fa-solid fa-microphone-lines text-indigo-600 text-sm"></i>
+                                <span class="text-xs font-bold text-indigo-950">話者の言語:</span>
+                                <span id="currentInputLangBadge" class="text-[10px] px-2 py-0.5 rounded-full font-bold bg-indigo-600 text-white">🇯🇵 日本語</span>
+                            </div>
+                            <div class="flex space-x-1.5">
+                                <button id="inputLangJaBtn" type="button" class="px-2.5 py-1.5 rounded-lg text-xs font-bold bg-indigo-600 text-white shadow-xs transition-all flex items-center gap-1 cursor-pointer">
+                                    🇯🇵 日本語 (通常)
+                                </button>
+                                <button id="inputLangEnBtn" type="button" class="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 shadow-xs transition-all flex items-center gap-1 cursor-pointer">
+                                    🇺🇸 英語 (宣教師等)
+                                </button>
+                                <button id="inputLangTlBtn" type="button" class="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 shadow-xs transition-all flex items-center gap-1 cursor-pointer">
+                                    🇵🇭 タガログ語
+                                </button>
+                            </div>
+                        </div>
 
                         <!-- Main Action Buttons -->
 
@@ -4839,6 +4857,14 @@ function isIncompletePhrase(text) {
 
         let recognition = null;
 
+        // 話者の入力言語設定 ('ja', 'en', 'tl')
+        let currentInputLanguage = safeLocalStorageGet('lds_input_lang', 'ja');
+        const INPUT_LANG_CONFIG = {
+            ja: { langCode: 'ja-JP', label: '🇯🇵 日本語', name: '日本語' },
+            en: { langCode: 'en-US', label: '🇺🇸 英語', name: '英語' },
+            tl: { langCode: 'fil-PH', label: '🇵🇭 タガログ語', name: 'タガログ語' }
+        };
+
         let currentFontSizeIndex = parseInt(safeLocalStorageGet('lds_viewer_font_size', '1'), 10);
 
         const fontClasses = ["text-base", "text-xl", "text-3xl", "text-5xl"];
@@ -5097,6 +5123,8 @@ function isIncompletePhrase(text) {
 
         let currentManualTranslations = null;
 
+        let currentManualSourceLang = 'ja';
+
         // 接続中ビューワーの言語設定トラッカー (conn -> lang)
         const viewerLanguages = new Map();
 
@@ -5210,7 +5238,52 @@ function isIncompletePhrase(text) {
 
         let viewerCardCount = 0;
 
+        const currentInputLangBadge = document.getElementById('currentInputLangBadge');
+        const inputLangJaBtn = document.getElementById('inputLangJaBtn');
+        const inputLangEnBtn = document.getElementById('inputLangEnBtn');
+        const inputLangTlBtn = document.getElementById('inputLangTlBtn');
 
+        function setInputLanguage(lang) {
+            if (!INPUT_LANG_CONFIG[lang]) lang = 'ja';
+            currentInputLanguage = lang;
+            safeLocalStorageSet('lds_input_lang', lang);
+
+            const btns = [
+                { el: inputLangJaBtn, code: 'ja' },
+                { el: inputLangEnBtn, code: 'en' },
+                { el: inputLangTlBtn, code: 'tl' }
+            ];
+            btns.forEach(({ el, code }) => {
+                if (!el) return;
+                if (code === lang) {
+                    el.className = 'px-2.5 py-1.5 rounded-lg text-xs font-bold bg-indigo-600 text-white shadow-xs transition-all flex items-center gap-1 cursor-pointer';
+                } else {
+                    el.className = 'px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 shadow-xs transition-all flex items-center gap-1 cursor-pointer';
+                }
+            });
+
+            if (currentInputLangBadge) {
+                currentInputLangBadge.textContent = INPUT_LANG_CONFIG[lang].label;
+            }
+
+            if (recognition) {
+                recognition.lang = INPUT_LANG_CONFIG[lang].langCode;
+                if (isRecognizing) {
+                    if (recognitionRestartTimer) clearTimeout(recognitionRestartTimer);
+                    try { recognition.stop(); } catch(e) { console.warn('recognition stop on lang change:', e); }
+                    setTimeout(() => {
+                        if (isRecognizing) safeStartRecognition();
+                    }, 300);
+                }
+            }
+        }
+
+        function setupInputLanguageControls() {
+            if (inputLangJaBtn) inputLangJaBtn.onclick = () => setInputLanguage('ja');
+            if (inputLangEnBtn) inputLangEnBtn.onclick = () => setInputLanguage('en');
+            if (inputLangTlBtn) inputLangTlBtn.onclick = () => setInputLanguage('tl');
+            setInputLanguage(currentInputLanguage);
+        }
 
         // ==================== 初期化 ====================
 
@@ -5243,6 +5316,8 @@ function isIncompletePhrase(text) {
             setupHostLogDelegation();
 
             setupManualBroadcastControls();
+
+            setupInputLanguageControls();
 
 
 
@@ -5906,6 +5981,10 @@ function isIncompletePhrase(text) {
 
             const translations = (meta && meta.translations) ? meta.translations : null;
 
+            const sourceLang = (meta && meta.sourceLang) ? meta.sourceLang : (currentInputLanguage || 'ja');
+
+            const originalText = (meta && meta.original) ? meta.original : null;
+
             broadcastToViewers({
 
                 type: 'caption',
@@ -5920,7 +5999,11 @@ function isIncompletePhrase(text) {
 
                 translations: translations,
 
-                sectionType: currentSectionType
+                sectionType: currentSectionType,
+
+                sourceLang: sourceLang,
+
+                originalText: originalText
 
             });
 
@@ -6108,6 +6191,8 @@ function isIncompletePhrase(text) {
 
                         translations: finalTranslations,
 
+                        sourceLang: currentManualSourceLang || 'ja',
+
                         force: true
 
                     });
@@ -6130,6 +6215,8 @@ function isIncompletePhrase(text) {
 
                     currentManualTranslations = nextItem.translations || null;
 
+                    currentManualSourceLang = nextItem.sourceLang || 'ja';
+
                 } else {
 
                     manualCaptionInput.value = '';
@@ -6141,6 +6228,8 @@ function isIncompletePhrase(text) {
                     currentManualEnglishText = null;
 
                     currentManualTranslations = null;
+
+                    currentManualSourceLang = 'ja';
 
                 }
 
@@ -7891,9 +7980,10 @@ const validModels = models
 
 
 
-            // 全アイテムが8文字未満の短文のみの場合はスキップ
-
-            const longItems = items.filter(item => item.preCorrected.replace(/[\s\u3000、。！？]+/g, '').length >= 8);
+            // 全アイテムが短文（日本語<8文字、英字/タガログ語<12文字）のみの場合はスキップ
+            const inputLang = currentInputLanguage || 'ja';
+            const minLen = (inputLang === 'en' || inputLang === 'tl') ? 12 : 8;
+            const longItems = items.filter(item => item.preCorrected.replace(/[\s\u3000、。！？.,!?]+/g, '').length >= minLen);
 
             if (longItems.length === 0 && !isTest) {
 
@@ -8069,11 +8159,26 @@ const validModels = models
 
             try {
 
+                // 話者の入力言語に応じたプロンプト指示
+                const currentLang = currentInputLanguage || 'ja';
+                let langInstruction = '';
+                if (currentLang === 'en') {
+                    langInstruction = `【話者の発話言語】英語（宣教師または英語圏ゲストによるスピーチ・証・メッセージ・祈り）\n` +
+                        `・入力テキストは英語の音声認識結果です。\n` +
+                        `・末日聖徒イエス・キリスト教会の日本の公式聖典・用語（Atonement➔贖罪, Sacrament➔聖餐, Scriptures➔聖句, Testimony➔証, Heavenly Father➔天の御父, Lord Jesus Christ➔主イエス・キリスト, Book of Mormon➔モルモン書 等）を用いて、格調高く温かい【日本語訳（ja）】を生成してください。\n` +
+                        `・原文の英語も言い淀みや句読点を自然に整えて【英語原文（en）】に含めてください。\n\n`;
+                } else if (currentLang === 'tl') {
+                    langInstruction = `【話者の発話言語】タガログ語（フィリピン出身会員による証・スピーチ・メッセージ）\n` +
+                        `・入力テキストはタガログ語の音声認識結果です。\n` +
+                        `・教会の公式用語（Banal na Hapunan➔聖餐, patotoo➔証, Ama sa Langit➔天の御父, Pagbabayad-sala➔贖罪 等）を用いて、自然で格調高い【日本語訳（ja）】および【公式英訳（en）】を生成してください。\n` +
+                        `・原文のタガログ語も【tl】に含めてください。\n\n`;
+                }
+
                 // 直前の会話文脈 + 場面ヒントをプロンプトに付与
 
                 const sectionHint = SECTION_HINTS[currentSectionType] || SECTION_HINTS.general;
 
-                let userPrompt = sectionHint + '\n\n';
+                let userPrompt = langInstruction + sectionHint + '\n\n';
 
                 const validContext = isTest ? [] : recentContextHistory.filter(c => c && c.trim());
 
@@ -9885,7 +9990,7 @@ ${existingKeys.slice(0, 100).join(', ')}
 
             recognition.interimResults = true;
 
-            recognition.lang = 'ja-JP';
+            recognition.lang = (INPUT_LANG_CONFIG[currentInputLanguage] && INPUT_LANG_CONFIG[currentInputLanguage].langCode) || 'ja-JP';
 
 
 
@@ -9905,13 +10010,34 @@ ${existingKeys.slice(0, 100).join(', ')}
 
             let incompleteHoldTimer = null; // 未完フレーズ孤立防止タイマー（最大7秒待機）
 
+            const recentBatchInputHistory = []; // 直近バッチ投入履歴（1ミリ秒二重投入防止用）
 
 
-            // バッチバッファにアイテムを追加（辞書プレパス済み & 未完フレーズ自動結合）
+
+            // バッチバッファにアイテムを追加（辞書プレパス済み & 未完フレーズ自動結合 & 1ミリ秒重複投入ガード）
 
             function addToBatchBuffer(rawChunk) {
 
                 if (!rawChunk || !rawChunk.trim()) return;
+
+                const trimmedRaw = rawChunk.trim();
+                const normChunk = normalizeCaption(trimmedRaw);
+                const now = Date.now();
+
+                // 【Bug修正: 1ミリ秒重複・連続投入ガード (#15/#16対策)】
+                // 直前3.5秒以内に同一テキストがバッファ投入されていた場合は即座に遮断
+                while (recentBatchInputHistory.length > 0 && (now - recentBatchInputHistory[0].time > 3500)) {
+                    recentBatchInputHistory.shift();
+                }
+                if (recentBatchInputHistory.some(item => item.norm === normChunk)) {
+                    console.warn('[重複ガード作動] 1ミリ秒重複二重投入をブロック:', trimmedRaw);
+                    return;
+                }
+                if (batchBuffer.length > 0 && normalizeCaption(batchBuffer[batchBuffer.length - 1].rawChunk) === normChunk) {
+                    console.warn('[重複ガード作動] バッチ末尾重複をブロック:', trimmedRaw);
+                    return;
+                }
+                recentBatchInputHistory.push({ norm: normChunk, time: now });
 
                 // 未完保留タイマーが動いていれば解除（後続の音声が届いたため）
                 if (incompleteHoldTimer) {
@@ -10173,11 +10299,13 @@ ${existingKeys.slice(0, 100).join(', ')}
 
                                         currentManualTranslations = translations;
 
+                                        currentManualSourceLang = currentInputLanguage || 'ja';
+
                                         manualCaptionInput.scrollTop = manualCaptionInput.scrollHeight;
 
                                     } else {
 
-                                        manualPendingQueue.push({ text: processedChunk, original: rawChunk, isAi: isAi, englishText: englishText, translations: translations });
+                                        manualPendingQueue.push({ text: processedChunk, original: rawChunk, isAi: isAi, englishText: englishText, translations: translations, sourceLang: currentInputLanguage || 'ja' });
 
                                         updateManualQueueUI();
 
@@ -10189,7 +10317,7 @@ ${existingKeys.slice(0, 100).join(', ')}
 
                         } else {
 
-                            const dispatchRes = dispatchCaption(processedChunk, { original: rawChunk, isEdited: isEdited, isAi: isAi, englishText: englishText, translations: translations });
+                            const dispatchRes = dispatchCaption(processedChunk, { original: rawChunk, isEdited: isEdited, isAi: isAi, englishText: englishText, translations: translations, sourceLang: currentInputLanguage || 'ja' });
 
                             if (dispatchRes && dispatchRes.action) {
 
@@ -11160,6 +11288,8 @@ ${existingKeys.slice(0, 100).join(', ')}
                     viewerCaptionQueue = viewerCaptionQueue.then(async () => {
 
                         const targetLang = targetLangSelect ? targetLangSelect.value : 'en';
+                        const sourceLang = data.sourceLang || 'ja';
+                        const originalSpeechText = data.originalText || (sourceLang === 'en' ? data.englishText : data.text);
 
                         // 1. ホスト側Geminiが既に当該言語（英語・タガログ語等）を高精度翻訳済みの場合は即座に表示（外部翻訳APIを完全バイパス・遅延0ms）
                         const directTranslation = (targetLang === 'en' && data.englishText)
@@ -11168,19 +11298,20 @@ ${existingKeys.slice(0, 100).join(', ')}
                                 ? data.translations[targetLang]
                                 : null;
 
-                        if (directTranslation) {
-
-                            appendViewerCaption(directTranslation, data.text, data.timestamp);
-
-                        } else if (targetLang === 'ja') {
-
-                            appendViewerCaption(data.text, '', data.timestamp);
-
+                        if (targetLang === 'ja') {
+                            // 日本語モード:
+                            // 話者が英語やタガログ語の場合、data.text（日本語訳）をメイン、originalSpeechText（英語等原文）をサブに併記
+                            // 話者が日本語の場合、data.text（日本語）のみをメイン表示（サブなし）
+                            const subText = (sourceLang !== 'ja') ? originalSpeechText : '';
+                            appendViewerCaption(data.text, subText, data.timestamp, sourceLang);
+                        } else if (directTranslation) {
+                            // 英語・タガログ語など高精度直通翻訳が存在する場合:
+                            // ターゲット言語と話者言語が異なる場合、話者の原文をサブ表示
+                            const subText = (targetLang !== sourceLang) ? originalSpeechText : '';
+                            appendViewerCaption(directTranslation, subText, data.timestamp, sourceLang);
                         } else {
-
                             // フォールバック: スマホ側の機械翻訳(gtx) + ローカル教会用語置換
                             await handleIncomingCaption(data.text, data.timestamp);
-
                         }
 
                     }).catch(err => {
@@ -11812,7 +11943,7 @@ ${existingKeys.slice(0, 100).join(', ')}
 
         // ==================== Viewer 字幕表示 ====================
 
-        function appendViewerCaption(translatedText, originalText, timestamp) {
+        function appendViewerCaption(translatedText, originalText, timestamp, sourceLang = 'ja') {
             const placeholder = document.getElementById('captionPlaceholder');
             if (placeholder) {
                 placeholder.remove();
@@ -11836,7 +11967,14 @@ ${existingKeys.slice(0, 100).join(', ')}
             
             const isJapaneseMode = targetLangSelect ? (targetLangSelect.value === 'ja') : false;
             const displayedMainText = isJapaneseMode ? formatJapaneseWithBudouX(translatedText) : escapeHtml(translatedText);
-            const displayedOrigText = !isJapaneseMode ? formatJapaneseWithBudouX(originalText) : '';
+            
+            // サブ原文（バイリンガル表示用）:
+            // originalText が存在し、かつメインテキストと同一でなければ小さく併記
+            let displayedOrigText = '';
+            if (originalText && originalText.trim() && normalizeCaption(originalText) !== normalizeCaption(translatedText)) {
+                displayedOrigText = (sourceLang === 'ja') ? formatJapaneseWithBudouX(originalText) : escapeHtml(originalText);
+            }
+
             const langLabel = (targetLangSelect && targetLangSelect.selectedIndex >= 0 && targetLangSelect.options[targetLangSelect.selectedIndex]) 
                 ? targetLangSelect.options[targetLangSelect.selectedIndex].text 
                 : '言語';
@@ -11849,7 +11987,7 @@ ${existingKeys.slice(0, 100).join(', ')}
                 <div class="${currentSizeClass} font-semibold text-white leading-relaxed break-words">
                     ${displayedMainText}
                 </div>
-                ${!isJapaneseMode ? `<div class="text-[11px] sm:text-xs text-slate-400 mt-2 italic font-normal break-words">${displayedOrigText}</div>` : ''}
+                ${displayedOrigText ? `<div class="text-[11px] sm:text-xs text-slate-400 mt-2 italic font-normal break-words">${displayedOrigText}</div>` : ''}
             `;
 
             // カード追加前のスクロール位置、または現在オートスクロール進行中であるかを判定
