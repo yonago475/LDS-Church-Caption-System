@@ -1035,7 +1035,25 @@
 
         <div id="viewerSection" class="hidden flex-col gap-2 sm:gap-4 flex-1 min-h-0 h-full overflow-hidden">
 
-
+            <!-- LINE等のアプリ内ブラウザ警告 & 脱出案内バナー -->
+            <div id="inAppBrowserWarning" class="hidden bg-gradient-to-r from-amber-500 to-amber-600 text-white p-3 rounded-xl shadow-md border border-amber-400 shrink-0 space-y-1.5 animate-fadeIn">
+                <div class="flex items-start justify-between gap-2">
+                    <div class="flex items-center gap-1.5 font-bold text-xs text-amber-950">
+                        <i class="fa-solid fa-triangle-exclamation text-amber-900 text-sm"></i>
+                        <span>LINE等のアプリ内ブラウザを検出</span>
+                    </div>
+                    <button id="closeInAppWarningBtn" type="button" class="text-amber-900 hover:text-white text-xs font-bold px-1.5 py-0.5 rounded" aria-label="閉じる">✕</button>
+                </div>
+                <p class="text-[11px] leading-snug text-amber-950 font-medium">
+                    LINE内ではリアルタイム字幕通信がブロックされるためホストに繋がりません。<br>
+                    画面右下の <strong>【︙】</strong> または <strong>【共有アイコン】</strong> をタップし、<strong>「Safariで開く」</strong> または <strong>「他のブラウザで開く」</strong> を選択してください。
+                </p>
+                <div class="pt-0.5 flex gap-2">
+                    <a id="escapeInAppBtn" href="#" class="inline-flex items-center justify-center px-2.5 py-1 bg-white text-amber-900 font-bold text-[11px] rounded-lg shadow-xs hover:bg-amber-50 transition-colors">
+                        <i class="fa-solid fa-arrow-up-right-from-square mr-1 text-amber-600"></i> ブラウザで開き直す
+                    </a>
+                </div>
+            </div>
 
             <!-- Language & View Settings Controls -->
             <div class="bg-white rounded-xl px-2.5 py-1.5 sm:px-3.5 sm:py-2 shadow-sm border border-slate-200 flex items-center justify-between gap-2 shrink-0">
@@ -4754,7 +4772,7 @@ function isIncompletePhrase(text) {
 
 
 
-        // WebRTC ICE サーバー設定（NAT越え接続信頼性向上のため複数STUNサーバー＋TURNリレーを設定）
+        // WebRTC ICE サーバー設定（NAT越え接続信頼性向上のため複数STUNサーバー＋多重TURNリレーを設定）
 
         const PEER_CONFIG = {
 
@@ -4772,9 +4790,11 @@ function isIncompletePhrase(text) {
 
                     { urls: 'stun:stun4.l.google.com:19302' },
 
+                    { urls: 'stun:stun.cloudflare.com:3478' },
+
                     { urls: 'stun:stun.services.mozilla.com' },
 
-                    // 無料TURNリレーサーバー（Symmetric NAT越え用、モバイル回線でも中継接続可能に）
+                    // 無料TURNリレーサーバー（教会の厳しいWi-Fi・Symmetric NAT越え用、ポート443 HTTPS偽装 & TCP中継）
 
                     {
 
@@ -4804,9 +4824,21 @@ function isIncompletePhrase(text) {
 
                         credential: 'openrelayproject'
 
+                    },
+
+                    {
+
+                        urls: 'turns:openrelay.metered.ca:443?transport=tcp',
+
+                        username: 'openrelayproject',
+
+                        credential: 'openrelayproject'
+
                     }
 
-                ]
+                ],
+
+                iceCandidatePoolSize: 10
 
             }
 
@@ -5351,6 +5383,39 @@ function isIncompletePhrase(text) {
 
 
 
+        function checkInAppBrowser() {
+            const ua = navigator.userAgent || '';
+            const isLine = /Line\//i.test(ua);
+            const isInApp = isLine || /FBAN|FBAV|Instagram|Twitter|MicroMessenger/i.test(ua);
+            const warningBox = document.getElementById('inAppBrowserWarning');
+            const escapeBtn = document.getElementById('escapeInAppBtn');
+            const closeBtn = document.getElementById('closeInAppWarningBtn');
+
+            if (!isInApp || !warningBox) return;
+
+            // アプリ内ブラウザを検出した場合、脱出バナーを表示
+            warningBox.classList.remove('hidden');
+
+            let targetUrl = window.location.href;
+            if (!targetUrl.includes('openExternalBrowser')) {
+                targetUrl += (targetUrl.includes('?') ? '&' : '?') + 'openExternalBrowser=1';
+            }
+
+            if (escapeBtn) {
+                if (/Android/i.test(ua)) {
+                    escapeBtn.href = `intent://${window.location.host}${window.location.pathname}${window.location.search}#Intent;scheme=https;package=com.android.chrome;end`;
+                } else {
+                    escapeBtn.href = targetUrl;
+                }
+            }
+
+            if (closeBtn) {
+                closeBtn.onclick = () => {
+                    warningBox.classList.add('hidden');
+                };
+            }
+        }
+
         function checkMode() {
 
             const urlParams = new URLSearchParams(window.location.search);
@@ -5393,6 +5458,7 @@ function isIncompletePhrase(text) {
                 setupFontSizeButton();
 
                 setupCardNavigation();
+                checkInAppBrowser();
                 initPeerViewer(roomId);
 
             } else {
@@ -9747,8 +9813,15 @@ ${existingKeys.slice(0, 100).join(', ')}
 
         // ==================== Peer ID 固定化 & PeerJS Host ====================
         const DEFAULT_ROOM_ID = 'lds-yonago';
+        let hostPeerRetryTimer = null;
+        let hostPeerRetryCount = 0;
 
         function initPeerHost(customPeerId) {
+            if (hostPeerRetryTimer) {
+                clearTimeout(hostPeerRetryTimer);
+                hostPeerRetryTimer = null;
+            }
+
             if (peer && !peer.destroyed) {
                 try {
                     peer.destroy();
@@ -9766,87 +9839,59 @@ ${existingKeys.slice(0, 100).join(', ')}
 
             peer = new Peer(savedPeerId, PEER_CONFIG);
 
-
-
             peer.on('open', function(id) {
-
+                hostPeerRetryCount = 0;
                 safeLocalStorageSet('lds_caption_peer_id', id);
-
-                roomIdDisplay.textContent = id;
-
+                if (roomIdDisplay) {
+                    roomIdDisplay.textContent = id;
+                    roomIdDisplay.className = "bg-slate-100 text-slate-800 px-3 py-1 rounded text-xs font-mono select-all font-bold block truncate";
+                }
                 generateQRCode(id);
-
             });
-
-
 
             peer.on('connection', attachHostConnectionListeners);
 
-
-
             peer.on('disconnected', function() {
-
                 console.warn('Host Peer disconnected from signaling server. Reconnecting...');
-
-                peer.reconnect();
-
+                if (peer && !peer.destroyed) {
+                    peer.reconnect();
+                }
             });
-
-
 
             peer.on('error', function(err) {
-
                 console.error('PeerJS Host Error:', err);
 
-
-
                 if (err.type === 'unavailable-id') {
+                    // 【重要改善】勝手にランダムIDに変えて部屋番号を捨てるのを完全廃止！
+                    // 直前のリロード等による残存セッション解放を待ち、元の固定ID（lds-yonago等）を死守して再試行
+                    hostPeerRetryCount++;
+                    const retryDelaySec = Math.min(3 + hostPeerRetryCount * 2, 10);
+                    console.warn(`[PeerJS] ルームID「${savedPeerId}」は現在一時的に使用中です（直前の接続解放待ち）。${retryDelaySec}秒後に再試行します...`);
 
-                    console.warn('Saved Peer ID is unavailable. Generating a new one...');
+                    if (roomIdDisplay) {
+                        roomIdDisplay.textContent = `⏳ ID解放待ち... (${retryDelaySec}秒後に再接続)`;
+                        roomIdDisplay.className = "bg-amber-100 text-amber-900 border border-amber-300 px-3 py-1 rounded text-xs font-mono select-all font-bold block truncate animate-pulse";
+                    }
 
-                    safeLocalStorageRemove('lds_caption_peer_id');
+                    if (peer && !peer.destroyed) {
+                        try { peer.destroy(); } catch(e){}
+                    }
 
-                    peer.destroy();
-
-                    peer = new Peer(PEER_CONFIG);
-
-                    peer.on('open', function(id) {
-
-                        safeLocalStorageSet('lds_caption_peer_id', id);
-
-                        roomIdDisplay.textContent = id;
-
-                        generateQRCode(id);
-
-                    });
-
-                    peer.on('connection', attachHostConnectionListeners);
-
-                    peer.on('disconnected', function() { peer.reconnect(); });
-
-                    peer.on('error', function(e) { console.error('PeerJS Host Fallback Error:', e); });
-
+                    hostPeerRetryTimer = setTimeout(() => {
+                        initPeerHost(savedPeerId);
+                    }, retryDelaySec * 1000);
                 }
-
             });
-
         }
 
-
-
         function generateQRCode(peerId) {
-
             qrcodeContainer.innerHTML = '';
-
             let baseUrl = window.location.href.split('?')[0];
-
             if (baseUrl.startsWith('file://')) {
-
                 baseUrl = 'https://yonago475.github.io/LDS-Church-Caption-System/';
-
             }
-
-            const viewerUrl = `${baseUrl}?room=${peerId}`;
+            // LINEや外部アプリのQRリーダーでスキャンされた際にも、自動的に外部標準ブラウザ（Safari/Chrome）で開くよう指示
+            const viewerUrl = `${baseUrl}?room=${encodeURIComponent(peerId)}&openExternalBrowser=1`;
 
 
 
@@ -11368,7 +11413,27 @@ ${existingKeys.slice(0, 100).join(', ')}
 
             peerStatusText.textContent = `${s.peerReconnecting} (${reconnectAttemptCount} / ${delaySec}s)`;
 
-
+            // 未接続が長引いた場合（2回目以降の再試行時）、画面に分かりやすいトラブルシューティングヒントを表示
+            const placeholder = document.getElementById('captionPlaceholder');
+            const hasCards = viewerCaptionFeed && viewerCaptionFeed.querySelector('.caption-card');
+            if (placeholder && !hasCards && reconnectAttemptCount >= 2) {
+                placeholder.innerHTML = `
+                    <i class="fa-solid fa-tower-broadcast text-3xl mb-3 block text-amber-400 animate-pulse"></i>
+                    <div class="text-sm font-bold text-amber-200 mb-1">ホスト（配信PC）に接続中...</div>
+                    <div class="text-xs text-slate-400 mb-3">${escapeHtml(s.peerReconnecting || '再接続試行中')} (${reconnectAttemptCount}回目)</div>
+                    <div class="text-xs text-slate-300 bg-slate-800/90 p-3.5 rounded-xl border border-amber-500/40 text-left space-y-2 max-w-sm mx-auto shadow-md">
+                        <div class="font-bold text-amber-300 flex items-center gap-1.5 text-xs">
+                            <i class="fa-solid fa-circle-question"></i>
+                            <span>繋がらない場合のチェックポイント</span>
+                        </div>
+                        <ul class="list-disc list-inside text-[11px] text-slate-300 space-y-1 pl-1">
+                            <li>ホストPC側で画面が開かれ、ルームIDが「<span class="font-mono text-amber-300 font-bold">${escapeHtml(currentRoomId || '')}</span>」になっているかご確認ください。</li>
+                            <li>LINE内で開いている場合は、右下の【︙】から「Safariで開く / 他のブラウザで開く」をお選びください。</li>
+                            <li>教会のWi-Fiをご利用の場合、一時的にWi-Fiをオフ（モバイル4G/5G通信）に切り替えると改善することがあります。</li>
+                        </ul>
+                    </div>
+                `;
+            }
 
             if (viewerReconnectTimer) clearTimeout(viewerReconnectTimer);
 
