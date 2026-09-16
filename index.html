@@ -10170,8 +10170,9 @@ ${existingKeys.slice(0, 100).join(', ')}
                     noiseSuppression: false,
                     autoGainControl: true
                 };
-                if (selectedAudioDeviceId) {
-                    audioConstraints.deviceId = { ideal: selectedAudioDeviceId };
+                const selectedDeviceId = (audioDeviceSelect && audioDeviceSelect.value) ? audioDeviceSelect.value : null;
+                if (selectedDeviceId) {
+                    audioConstraints.deviceId = { ideal: selectedDeviceId };
                 }
 
                 liveMediaStream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints });
