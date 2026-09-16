@@ -4917,6 +4917,9 @@ function isIncompletePhrase(text) {
         let liveScriptProcessor = null;
         let isLiveTranscribing = false;
         let liveInputAccumulator = '';
+        let liveSilenceTimer = null;
+        let handleRecognizedChunk = null;
+        let triggerBatchFlush = null;
 
         // Gemini 3.5 Transcribe Live 用カスタム語彙（Speech Biasing / 150語）
         const CHURCH_CUSTOM_VOCABULARY = [
@@ -10121,13 +10124,26 @@ ${existingKeys.slice(0, 100).join(', ')}
                 interimText.textContent = cleaned;
             }
 
+            // 安全に handleRecognizedChunk を呼ぶヘルパー
+            const dispatchSentence = (s) => {
+                if (!s || !s.trim()) return;
+                console.log('[Gemini 3.5 Live] Dispatching sentence:', s);
+                if (typeof handleRecognizedChunk === 'function') {
+                    handleRecognizedChunk(s);
+                } else if (typeof window.handleRecognizedChunk === 'function') {
+                    window.handleRecognizedChunk(s);
+                } else {
+                    console.warn('[Gemini 3.5 Live] handleRecognizedChunk is not yet ready');
+                }
+            };
+
             // 1. 句点（。！？）で文を切り出して即座に自律確定
             const parts = cleaned.split(/(?<=[。！？])/);
             if (parts.length > 1) {
                 for (let i = 0; i < parts.length - 1; i++) {
                     const sentence = parts[i].trim();
                     if (sentence) {
-                        handleRecognizedChunk(sentence);
+                        dispatchSentence(sentence);
                     }
                 }
                 liveInputAccumulator = parts[parts.length - 1].trim();
@@ -10138,18 +10154,31 @@ ${existingKeys.slice(0, 100).join(', ')}
                     const splitIdx = 15 + splitMatch;
                     const sentence = cleaned.slice(0, splitIdx + 1).trim();
                     if (sentence) {
-                        handleRecognizedChunk(sentence);
+                        dispatchSentence(sentence);
                     }
                     liveInputAccumulator = cleaned.slice(splitIdx + 1).trim();
                 } else if (cleaned.length >= 40) {
                     // 40文字を超えたら強制分割
                     const sentence = cleaned.slice(0, 30).trim();
                     if (sentence) {
-                        handleRecognizedChunk(sentence);
+                        dispatchSentence(sentence);
                     }
                     liveInputAccumulator = cleaned.slice(30).trim();
                 }
             }
+
+            // 3. 話者の息継ぎ・無音（1.2秒）による自律確定タイマー
+            if (liveSilenceTimer) clearTimeout(liveSilenceTimer);
+            liveSilenceTimer = setTimeout(() => {
+                if (liveInputAccumulator && liveInputAccumulator.trim()) {
+                    const sentence = cleanLiveTranscribeJapanese(liveInputAccumulator);
+                    if (sentence && sentence.length >= 2) {
+                        dispatchSentence(sentence);
+                    }
+                    liveInputAccumulator = '';
+                    if (interimText) interimText.textContent = '（次の音声入力を待機中...）';
+                }
+            }, 1200);
         }
 
         // Gemini 3.5 Transcribe Live 起動
@@ -10318,13 +10347,29 @@ ${existingKeys.slice(0, 100).join(', ')}
         function stopGeminiLiveTranscribe() {
             isLiveTranscribing = false;
 
+            if (liveSilenceTimer) {
+                clearTimeout(liveSilenceTimer);
+                liveSilenceTimer = null;
+            }
+
             // 残余テキストがあればフラッシュ
             if (liveInputAccumulator && liveInputAccumulator.trim()) {
                 const remaining = cleanLiveTranscribeJapanese(liveInputAccumulator);
                 if (remaining) {
-                    handleRecognizedChunk(remaining);
+                    if (typeof handleRecognizedChunk === 'function') {
+                        handleRecognizedChunk(remaining);
+                    } else if (typeof window.handleRecognizedChunk === 'function') {
+                        window.handleRecognizedChunk(remaining);
+                    }
                 }
                 liveInputAccumulator = '';
+            }
+
+            // バッチバッファに溜まっている文を強制フラッシュして即座にログに出力
+            if (typeof triggerBatchFlush === 'function') {
+                triggerBatchFlush(true);
+            } else if (typeof window.triggerBatchFlush === 'function') {
+                window.triggerBatchFlush(true);
             }
 
             if (liveScriptProcessor) {
@@ -10838,15 +10883,14 @@ ${existingKeys.slice(0, 100).join(', ')}
 
 
 
-            // handleRecognizedChunk: バッチバッファへの橋渡し
-
-            function handleRecognizedChunk(rawChunk) {
-
+            // handleRecognizedChunk: バッチバッファへの橋渡し（Live認識から呼べるようグローバル代入）
+            handleRecognizedChunk = function(rawChunk) {
                 if (!rawChunk || !rawChunk.trim()) return;
-
                 addToBatchBuffer(rawChunk);
-
-            }
+            };
+            window.handleRecognizedChunk = handleRecognizedChunk;
+            triggerBatchFlush = flushBatchBuffer;
+            window.triggerBatchFlush = flushBatchBuffer;
 
 
 
