@@ -11740,7 +11740,8 @@ ${existingKeys.slice(0, 100).join(', ')}
 
                         const targetLang = targetLangSelect ? targetLangSelect.value : 'en';
                         const sourceLang = data.sourceLang || 'ja';
-                        const originalSpeechText = data.originalText || (sourceLang === 'en' ? data.englishText : data.text);
+                        // 日本語話者の場合は、生音声RAWではなく「AI文脈補正後の日本語(data.text)」をサブテキストとして採用
+                        const refinedSubText = (sourceLang === 'ja') ? (data.text || data.originalText) : (data.originalText || data.text);
 
                         // 1. ホスト側Geminiが既に当該言語（英語・タガログ語等）を高精度翻訳済みの場合は即座に表示（外部翻訳APIを完全バイパス・遅延0ms）
                         const directTranslation = (targetLang === 'en' && data.englishText)
@@ -11751,14 +11752,14 @@ ${existingKeys.slice(0, 100).join(', ')}
 
                         if (targetLang === 'ja') {
                             // 日本語モード:
-                            // 話者が英語やタガログ語の場合、data.text（日本語訳）をメイン、originalSpeechText（英語等原文）をサブに併記
+                            // 話者が英語やタガログ語の場合、data.text（日本語訳）をメイン、refinedSubText（英語等原文）をサブに併記
                             // 話者が日本語の場合、data.text（日本語）のみをメイン表示（サブなし）
-                            const subText = (sourceLang !== 'ja') ? originalSpeechText : '';
+                            const subText = (sourceLang !== 'ja') ? refinedSubText : '';
                             appendViewerCaption(data.text, subText, data.timestamp, sourceLang);
                         } else if (directTranslation) {
                             // 英語・タガログ語など高精度直通翻訳が存在する場合:
-                            // ターゲット言語と話者言語が異なる場合、話者の原文をサブ表示
-                            const subText = (targetLang !== sourceLang) ? originalSpeechText : '';
+                            // ターゲット言語と話者言語が異なる場合、AI文脈補正後の日本語(refinedSubText)をサブ表示
+                            const subText = (targetLang !== sourceLang) ? refinedSubText : '';
                             appendViewerCaption(directTranslation, subText, data.timestamp, sourceLang);
                         } else {
                             // フォールバック: スマホ側の機械翻訳(gtx) + ローカル教会用語置換
