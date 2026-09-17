@@ -8014,14 +8014,15 @@ const validModels = models
                         .map(m => m.name.replace(/^models\//, ''))
                         .filter(m => m.toLowerCase().startsWith('gemini') && !m.toLowerCase().includes('gemma') && !m.toLowerCase().includes('latest') && !m.toLowerCase().includes('2.5-flash-lite') && !m.toLowerCase().includes('omni') && !m.toLowerCase().includes('tts') && !m.toLowerCase().includes('image'));
 
-                    // 実在するFlashモデルの中から優先順位をつけて選択（gemini-3.1-flash-lite, 3-flash-preview, 2.5-flashを最優先。提供終了の2.5-flash-liteは完全排除）
-                    const preferred = validModels.find(m => m.includes('3.1-flash-lite')) ||
-                                      validModels.find(m => m === 'gemini-3-flash-preview') ||
-                                      validModels.find(m => m === 'gemini-2.5-flash') ||
-                                      validModels.find(m => m.includes('3-flash')) ||
+                    // 実在するFlashモデルの中から優先順位をつけて選択（最高精度・安定運用の gemini-2.5-flash を最優先）
+                    const preferred = validModels.find(m => m === 'gemini-2.5-flash') ||
                                       validModels.find(m => m.includes('2.5-flash') && !m.includes('2.5-flash-lite')) ||
+                                      validModels.find(m => m === 'gemini-2.0-flash') ||
                                       validModels.find(m => m.includes('2.0-flash')) ||
+                                      validModels.find(m => m === 'gemini-1.5-flash') ||
                                       validModels.find(m => m.includes('1.5-flash')) ||
+                                      validModels.find(m => m.includes('3-flash')) ||
+                                      validModels.find(m => m.includes('3.1-flash-lite')) ||
                                       validModels.find(m => m.includes('flash')) ||
                                       validModels[0];
 
@@ -8240,8 +8241,8 @@ const validModels = models
 
 
 
-            // 全体タイムアウト（接続テスト時は45秒、本番バッチは最大30秒）
-            const overallTimeoutMs = isTest ? 45000 : Math.min(15000 + (items.length - 1) * 2000, 30000);
+            // 全体タイムアウト（接続テスト時は45秒、本番バッチは最大35秒。15秒での誤タイムアウトを防止）
+            const overallTimeoutMs = isTest ? 45000 : Math.min(20000 + (items.length - 1) * 3000, 35000);
             const overallController = new AbortController();
             const overallTimeoutId = setTimeout(() => {
                 overallController.abort(new Error(`通信タイムアウト (${overallTimeoutMs / 1000}秒)`));
@@ -8259,13 +8260,13 @@ const validModels = models
                 return lower.startsWith('gemini') && lower.includes('flash') && !lower.includes('latest') && !lower.includes('2.5-flash-lite') && !lower.includes('omni') && !lower.includes('tts') && !lower.includes('image');
             });
 
-            // 実在するFlashモデルのみを優先度順に整理（架空モデルの無駄撃ちを完全防止）
+            // 実在するFlashモデルのみを優先度順に整理（最高精度・公式安定稼働の gemini-2.5-flash を最優先）
             const priorityOrder = [
-                'gemini-3.1-flash-lite',
-                'gemini-3-flash-preview',
                 'gemini-2.5-flash',
                 'gemini-2.0-flash',
-                'gemini-1.5-flash'
+                'gemini-1.5-flash',
+                'gemini-3-flash-preview',
+                'gemini-3.1-flash-lite'
             ];
 
             let candidateModels = [];
@@ -8361,9 +8362,9 @@ const validModels = models
                     const modelName = candidateModels[i];
                     let modelSuccess = false;
 
-                    // モデル単位の個別タイムアウト（テスト時は15秒、本番時は10秒）
+                    // モデル単位の個別タイムアウト（テスト時は15秒、本番時は18秒）
                     const modelController = new AbortController();
-                    const perModelTimeoutMs = isTest ? 15000 : 10000;
+                    const perModelTimeoutMs = isTest ? 15000 : 18000;
                     const modelTimeoutId = setTimeout(() => {
                         modelController.abort(new Error(`モデル ${modelName} タイムアウト`));
                     }, perModelTimeoutMs);
@@ -8793,23 +8794,36 @@ const validModels = models
 
             const fallbackStatus = lastDetailError || '辞書フォールバック';
 
-            const fallbackSentences = items.map(item => {
-
+            // 全失敗時（タイムアウト等）: 英語を諦めずに高速フォールバック翻訳（translateText）で救出
+            const fallbackSentences = await Promise.all(items.map(async item => {
                 if (!isTest) {
-
                     aiStats.dictFallbacks++;
-
                     recentContextHistory.push(item.preCorrected);
-
                     if (recentContextHistory.length > 3) recentContextHistory.shift();
-
                     detectSectionSync(item.preCorrected);
-
                 }
 
-                return { ja: item.preCorrected, en: null, isAiSuccess: false, status: fallbackStatus, model: successfulModel || '-', latency: Math.round(performance.now() - startTime), preCorrected: item.preCorrected, dictChanged: item.dictChanged, rawChunk: item.rawChunk };
+                let fallbackEn = null;
+                try {
+                    if (typeof translateText === 'function') {
+                        fallbackEn = await translateText(item.preCorrected, 'en');
+                    }
+                } catch (te) {
+                    console.warn('Fallback translation error:', te);
+                }
 
-            });
+                return {
+                    ja: item.preCorrected,
+                    en: fallbackEn,
+                    isAiSuccess: false,
+                    status: fallbackStatus,
+                    model: successfulModel || '-',
+                    latency: Math.round(performance.now() - startTime),
+                    preCorrected: item.preCorrected,
+                    dictChanged: item.dictChanged,
+                    rawChunk: item.rawChunk
+                };
+            }));
 
             return { sentences: fallbackSentences };
 
