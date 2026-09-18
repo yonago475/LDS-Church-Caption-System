@@ -9917,7 +9917,10 @@ ${existingKeys.slice(0, 100).join(', ')}
 
             let savedPeerId = customPeerId || safeLocalStorageGet('lds_caption_peer_id');
 
-            if (!savedPeerId || !savedPeerId.trim()) {
+            // 過去の古いランダムUUID（例: 7c87d719-0462-40ea-a3d3-eeccb683755c 等の8-4-4-4-12形式）が残っている場合や、未設定の場合は、
+            // 教会公式の固定ルームID「lds-yonago」へ強制的に自動マイグレーションして永続固定
+            const isLegacyUuid = savedPeerId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(savedPeerId.trim());
+            if (!savedPeerId || !savedPeerId.trim() || isLegacyUuid) {
                 savedPeerId = DEFAULT_ROOM_ID;
                 safeLocalStorageSet('lds_caption_peer_id', savedPeerId);
             }
