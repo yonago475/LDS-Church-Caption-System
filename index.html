@@ -4920,6 +4920,10 @@ function isIncompletePhrase(text) {
         let liveSilenceTimer = null;
         let handleRecognizedChunk = null;
         let triggerBatchFlush = null;
+        let liveKeepAliveInterval = null; // 3分沈黙監視タイマー
+        let lastLiveSpeechTimestamp = Date.now(); // 最終発話検知時刻
+        let isRefreshingLiveWs = false; // 再接続中フラグ（onclose暴発防止）
+        let liveAmenReconnectTimeout = null; // アーメン検知後の遅延再接続タイマー
 
         // Gemini 3.5 Transcribe Live 用カスタム語彙（Speech Biasing / 150語）
         const CHURCH_CUSTOM_VOCABULARY = [
@@ -5008,7 +5012,35 @@ function isIncompletePhrase(text) {
 
         let telemetryCounter = 0;
 
+        // Live API セッション再接続・キープアライブの追跡統計
+        const liveReconnectEvents = [];
+        let liveReconnectStats = {
+            amenCount: 0,
+            silenceCount: 0,
+            unexpectedCount: 0,
+            totalMs: 0
+        };
 
+        function logLiveReconnectEvent(reason, latencyMs, success, errorMsg) {
+            const now = new Date();
+            const timeStr = now.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) + '.' + String(now.getMilliseconds()).padStart(3, '0');
+            const eventObj = {
+                time: timeStr,
+                timestamp: now.getTime(),
+                reason: reason, // 'AMEN', 'SILENCE_KEEPALIVE', 'UNEXPECTED_CLOSE'
+                latencyMs: latencyMs,
+                success: success,
+                errorMsg: errorMsg || null
+            };
+            liveReconnectEvents.push(eventObj);
+            if (success) {
+                if (reason === 'AMEN') liveReconnectStats.amenCount++;
+                else if (reason === 'SILENCE_KEEPALIVE') liveReconnectStats.silenceCount++;
+                else liveReconnectStats.unexpectedCount++;
+                liveReconnectStats.totalMs += latencyMs;
+            }
+            console.log(`[Gemini 3.5 Live] 🔄 再接続イベント記録 [${reason}]: ${success ? '成功' : '失敗'} (${latencyMs}ms)`);
+        }
 
         function logDiagnosticTelemetry(data) {
 
@@ -6647,35 +6679,34 @@ function isIncompletePhrase(text) {
                     const elapsedMins = aiStats.sessionStartTime ? Math.max(1, Math.round((Date.now() - aiStats.sessionStartTime) / 60000)) : 1;
 
                     const avgLatency = aiStats.latencyHistory.length > 0 ? Math.round(aiStats.latencyHistory.reduce((a, b) => a + b, 0) / aiStats.latencyHistory.length) : 0;
-
-
+                    const totalReconnects = liveReconnectStats.amenCount + liveReconnectStats.silenceCount + liveReconnectStats.unexpectedCount;
+                    const avgReconnectMs = totalReconnects > 0 ? Math.round(liveReconnectStats.totalMs / totalReconnects) : 0;
 
                     let diagText = `==================================================\n` +
-
                         `末日聖徒イエス・キリスト教会 字幕システム 診断テレメトリログ\n` +
-
                         `エクスポート日時: ${now.toLocaleString('ja-JP')}\n` +
-
                         `==================================================\n` +
-
                         `【システム稼働サマリー】\n` +
-
                         `・総処理チャンク数: ${diagnosticTelemetryLogs.length} 件\n` +
-
                         `・AI文脈補正成功: ${aiStats.aiCorrected} 件\n` +
-
                         `・辞書フォールバック: ${aiStats.dictFallbacks} 件\n` +
-
                         `・平均AI応答速度: ${avgLatency} ms\n` +
-
                         `・APIレート制限(429)検知: ${aiStats.rateLimitedCount || 0} 回\n` +
-
                         `・タイムアウト/エラー: ${aiStats.aiTimeouts} / ${aiStats.aiErrors} 件\n` +
-
+                        `・Live API 再接続回数: 計 ${totalReconnects} 回 (アーメン計画: ${liveReconnectStats.amenCount}回, 沈黙予防: ${liveReconnectStats.silenceCount}回, 突発復旧: ${liveReconnectStats.unexpectedCount}回)\n` +
+                        `・Live セッション切替平均速度: ${avgReconnectMs} ms\n` +
                         `・セッション稼働時間: 約 ${elapsedMins} 分\n` +
-
                         `==================================================\n` +
-
+                        `【Live API セッション再接続・キープアライブ履歴】\n` +
+                        (liveReconnectEvents.length === 0
+                            ? `・再接続イベントなし（初期セッションのまま安定継続稼働）\n\n`
+                            : liveReconnectEvents.map(e => {
+                                const reasonDesc = e.reason === 'AMEN' ? 'アーメン検知による計画的再接続' :
+                                                   (e.reason === 'SILENCE_KEEPALIVE' ? '沈黙3分経過による予防的キープアライブ' : '突発切断による自動復旧');
+                                return `[${e.time}] 理由: ${e.reason}（${reasonDesc}）\n` +
+                                       `  └─ 結果: ${e.success ? `✅ 成功 (${e.latencyMs}ms)` : `❌ 失敗 (${e.errorMsg || '接続エラー'})`}\n`;
+                              }).join('') + '\n') +
+                        `==================================================\n` +
                         `【ミリ秒単位の詳細処理トレース】\n\n`;
 
 
@@ -10133,6 +10164,14 @@ ${existingKeys.slice(0, 100).join(', ')}
         // 届いたリアルタイム文字起こしテキストの文分割 & 既存パイプライン（handleRecognizedChunk）への注入
         function handleLiveTranscribeChunk(text) {
             if (!text) return;
+
+            lastLiveSpeechTimestamp = Date.now(); // 発話があったので最終発話検知時刻を更新
+            // もしアーメン後の再接続待機中であれば、話が続いているので一旦キャンセル
+            if (liveAmenReconnectTimeout) {
+                clearTimeout(liveAmenReconnectTimeout);
+                liveAmenReconnectTimeout = null;
+            }
+
             liveInputAccumulator += text;
             const cleaned = cleanLiveTranscribeJapanese(liveInputAccumulator);
 
@@ -10151,6 +10190,20 @@ ${existingKeys.slice(0, 100).join(', ')}
                     window.handleRecognizedChunk(s);
                 } else {
                     console.warn('[Gemini 3.5 Live] handleRecognizedChunk is not yet ready');
+                }
+
+                // ✝️ アーメン検知ロジック（祈りや証、お話の結び）
+                // 文末が「アーメン」「アーメン。」「アーメン！」「amen.」等で終わるか、単独で発話された場合
+                const isAmen = /(アーメン|あーめん|amen)[。！？\.\!\?\s]*$/i.test(s.trim()) ||
+                               /(^|[\s、,])(アーメン|あーめん|amen)([。！？\.\!\?\s]|$)/i.test(s.trim());
+                if (isAmen && isLiveTranscribing && !isRefreshingLiveWs) {
+                    console.log('[Gemini 3.5 Live] ✝️ アーメンを検知しました。話者交代の沈黙（1.5秒後）にセッションをシームレス再接続します。');
+                    if (liveAmenReconnectTimeout) clearTimeout(liveAmenReconnectTimeout);
+                    liveAmenReconnectTimeout = setTimeout(() => {
+                        if (isLiveTranscribing && !isRefreshingLiveWs) {
+                            refreshGeminiLiveSession('AMEN');
+                        }
+                    }, 1500);
                 }
             };
 
@@ -10198,6 +10251,153 @@ ${existingKeys.slice(0, 100).join(', ')}
             }, 1200);
         }
 
+        // Gemini 3.5 Transcribe Live WebSocket 接続確立 & イベントバインドヘルパー
+        async function createLiveWebSocket() {
+            if (!geminiApiKey) throw new Error('APIキーが未設定です');
+            const wsUrl = `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1alpha.GenerativeService.BidiGenerateContent?key=${encodeURIComponent(geminiApiKey.trim())}`;
+            const ws = new WebSocket(wsUrl);
+
+            await new Promise((resolve, reject) => {
+                const timeoutId = setTimeout(() => {
+                    try { ws.close(); } catch(e){}
+                    reject(new Error('Gemini Live 接続タイムアウト (10秒)'));
+                }, 10000);
+
+                ws.onopen = () => {
+                    clearTimeout(timeoutId);
+                    console.log('[Gemini 3.5 Live] WebSocket connected. Sending Setup...');
+                    const langCode = currentInputLanguage === 'en' ? 'en-US' : (currentInputLanguage === 'tl' ? 'fil-PH' : 'ja-JP');
+                    const setupMessage = {
+                        setup: {
+                            model: 'models/gemini-3.5-transcribe-live',
+                            generationConfig: {
+                                responseModalities: ["TEXT"]
+                            },
+                            inputAudioTranscription: {
+                                languageCodes: [langCode],
+                                customVocabulary: CHURCH_CUSTOM_VOCABULARY
+                            }
+                        }
+                    };
+                    ws.send(JSON.stringify(setupMessage));
+                    resolve();
+                };
+
+                ws.onerror = (err) => {
+                    clearTimeout(timeoutId);
+                    reject(new Error('WebSocket 通信エラー'));
+                };
+            });
+
+            ws.onmessage = async (event) => {
+                let data = null;
+                if (event.data instanceof Blob) {
+                    try { data = JSON.parse(await event.data.text()); } catch(e){}
+                } else {
+                    try { data = JSON.parse(event.data); } catch(e){}
+                }
+                if (!data) return;
+
+                if (data.setupComplete) {
+                    console.log('[Gemini 3.5 Live] Setup complete! Ready for audio.');
+                    if (interimText && (!interimText.textContent || interimText.textContent.includes('接続中') || interimText.textContent.includes('リフレッシュ'))) {
+                        interimText.textContent = '⚡ 音声認識中 (話してください)...';
+                    }
+                    return;
+                }
+
+                const sc = data.serverContent || data;
+                const it = sc.inputTranscription || sc.inputAudioTranscription || sc.input_transcription || sc.input_audio_transcription;
+                if (it && typeof it.text === 'string' && it.text) {
+                    handleLiveTranscribeChunk(it.text);
+                }
+            };
+
+            ws.onclose = (event) => {
+                console.warn(`[Gemini 3.5 Live] WebSocket closed: ${event.code}`);
+                // 計画的リフレッシュ中の切断イベントは無視
+                if (isRefreshingLiveWs) return;
+
+                // 意図しない突発切断が発生した場合、マイクが稼働中なら1秒後に自律復旧
+                if (isLiveTranscribing) {
+                    console.warn('[Gemini 3.5 Live] ⚠️ 予期せぬ切断を検知しました。1秒後に自動復旧を試行します...');
+                    setTimeout(() => {
+                        if (isLiveTranscribing && !isRefreshingLiveWs) {
+                            refreshGeminiLiveSession('UNEXPECTED_CLOSE');
+                        }
+                    }, 1000);
+                }
+            };
+
+            return ws;
+        }
+
+        // Gemini 3.5 Transcribe Live セッションのシームレス再接続（リフレッシュ）
+        async function refreshGeminiLiveSession(reason) {
+            if (!isLiveTranscribing || isRefreshingLiveWs) return;
+            isRefreshingLiveWs = true;
+            const startTime = Date.now();
+            console.log(`[Gemini 3.5 Live] 🔄 セッション再接続開始 [理由: ${reason}]...`);
+
+            // 一時的に残余バッファをフラッシュ
+            if (liveInputAccumulator && liveInputAccumulator.trim()) {
+                const remaining = cleanLiveTranscribeJapanese(liveInputAccumulator);
+                if (remaining && typeof handleRecognizedChunk === 'function') {
+                    handleRecognizedChunk(remaining);
+                }
+                liveInputAccumulator = '';
+            }
+
+            const oldWs = liveWs;
+            try {
+                // 新しいWebSocket接続を確立（マイクやAudioContextは一切止めずに継続）
+                const newWs = await createLiveWebSocket();
+                liveWs = newWs;
+
+                // 古いWebSocketを安全に切断（oncloseコールバックを解除して突発検知を抑制）
+                if (oldWs) {
+                    try {
+                        oldWs.onclose = null;
+                        oldWs.onerror = null;
+                        oldWs.close();
+                    } catch (e) {
+                        console.warn('[Gemini 3.5 Live] Old WS close warning:', e);
+                    }
+                }
+
+                const latencyMs = Date.now() - startTime;
+                lastLiveSpeechTimestamp = Date.now();
+                isRefreshingLiveWs = false;
+                logLiveReconnectEvent(reason, latencyMs, true);
+                console.log(`[Gemini 3.5 Live] ✅ セッション再接続完了 [理由: ${reason}] (${latencyMs}ms)`);
+
+                // 画面上のステータスに短時間だけシームレス再接続完了を表示
+                if (speechStatus) {
+                    const prevStatusText = speechStatus.textContent;
+                    speechStatus.textContent = `⚡ Live接続リフレッシュ完了 (${latencyMs}ms)`;
+                    setTimeout(() => {
+                        if (isLiveTranscribing && speechStatus.textContent.includes('リフレッシュ完了')) {
+                            speechStatus.textContent = prevStatusText || 'Gemini 3.5 Live 認識中';
+                        }
+                    }, 2000);
+                }
+            } catch (err) {
+                const latencyMs = Date.now() - startTime;
+                isRefreshingLiveWs = false;
+                logLiveReconnectEvent(reason, latencyMs, false, err.message);
+                console.error(`[Gemini 3.5 Live] ❌ セッション再接続失敗 [理由: ${reason}] (${latencyMs}ms):`, err);
+
+                // 失敗した場合は3秒後に再試行
+                if (isLiveTranscribing) {
+                    setTimeout(() => {
+                        if (isLiveTranscribing && !isRefreshingLiveWs) {
+                            refreshGeminiLiveSession('RETRY_AFTER_FAILURE');
+                        }
+                    }, 3000);
+                }
+            }
+        }
+
         // Gemini 3.5 Transcribe Live 起動
         async function startGeminiLiveTranscribe() {
             if (!geminiApiKey) {
@@ -10207,7 +10407,9 @@ ${existingKeys.slice(0, 100).join(', ')}
 
             try {
                 isLiveTranscribing = true;
+                isRefreshingLiveWs = false;
                 liveInputAccumulator = '';
+                lastLiveSpeechTimestamp = Date.now();
                 if (interimText) interimText.textContent = '⚡ Gemini 3.5 Transcribe Live 接続中...';
 
                 // 1. マイク音声取得
@@ -10233,75 +10435,21 @@ ${existingKeys.slice(0, 100).join(', ')}
                 gainNode.gain.value = 1.8; // 生音増幅
                 sourceNode.connect(gainNode);
 
-                // 2. WebSocket 接続
-                const wsUrl = `wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1alpha.GenerativeService.BidiGenerateContent?key=${encodeURIComponent(geminiApiKey.trim())}`;
-                liveWs = new WebSocket(wsUrl);
+                // 2. WebSocket 接続確立
+                liveWs = await createLiveWebSocket();
 
-                await new Promise((resolve, reject) => {
-                    const timeoutId = setTimeout(() => {
-                        reject(new Error('Gemini Live 接続タイムアウト (10秒)'));
-                    }, 10000);
-
-                    liveWs.onopen = () => {
-                        clearTimeout(timeoutId);
-                        console.log('[Gemini 3.5 Live] WebSocket connected. Sending Setup...');
-                        
-                        const langCode = currentInputLanguage === 'en' ? 'en-US' : (currentInputLanguage === 'tl' ? 'fil-PH' : 'ja-JP');
-                        const setupMessage = {
-                            setup: {
-                                model: 'models/gemini-3.5-transcribe-live',
-                                generationConfig: {
-                                    responseModalities: ["TEXT"]
-                                },
-                                inputAudioTranscription: {
-                                    languageCodes: [langCode],
-                                    customVocabulary: CHURCH_CUSTOM_VOCABULARY
-                                }
-                            }
-                        };
-                        liveWs.send(JSON.stringify(setupMessage));
-                        resolve();
-                    };
-
-                    liveWs.onerror = (err) => {
-                        clearTimeout(timeoutId);
-                        reject(new Error('WebSocket 通信エラー'));
-                    };
-                });
-
-                liveWs.onmessage = async (event) => {
-                    let data = null;
-                    if (event.data instanceof Blob) {
-                        try { data = JSON.parse(await event.data.text()); } catch(e){}
-                    } else {
-                        try { data = JSON.parse(event.data); } catch(e){}
+                // 3. 聖餐配布などの長い沈黙（10〜15分）対策: 3分（180秒）沈黙監視タイマー（キープアライブ）
+                if (liveKeepAliveInterval) clearInterval(liveKeepAliveInterval);
+                liveKeepAliveInterval = setInterval(() => {
+                    if (!isLiveTranscribing || isRefreshingLiveWs) return;
+                    const silentMs = Date.now() - lastLiveSpeechTimestamp;
+                    if (silentMs >= 180000) {
+                        console.log(`[Gemini 3.5 Live] ⏱️ 沈黙が ${Math.round(silentMs / 1000)} 秒継続中。予防的キープアライブ再接続を実行します。`);
+                        refreshGeminiLiveSession('SILENCE_KEEPALIVE');
                     }
-                    if (!data) return;
+                }, 30000); // 30秒ごとにチェック
 
-                    if (data.setupComplete) {
-                        console.log('[Gemini 3.5 Live] Setup complete! Ready for audio.');
-                        if (interimText) interimText.textContent = '⚡ 音声認識中 (話してください)...';
-                        return;
-                    }
-
-                    const sc = data.serverContent || data;
-                    const it = sc.inputTranscription || sc.inputAudioTranscription || sc.input_transcription || sc.input_audio_transcription;
-                    if (it && typeof it.text === 'string' && it.text) {
-                        handleLiveTranscribeChunk(it.text);
-                    }
-                };
-
-                liveWs.onclose = (event) => {
-                    console.warn(`[Gemini 3.5 Live] WebSocket closed: ${event.code}`);
-                    if (isLiveTranscribing) {
-                        stopGeminiLiveTranscribe();
-                        if (isRecognizing && toggleRecognitionBtn) {
-                            toggleRecognitionBtn.click();
-                        }
-                    }
-                };
-
-                // 3. リアルタイム音声送信
+                // 4. リアルタイム音声送信
                 const CHUNK_SIZE = 2048;
                 let silenceDurationMs = 0;
                 const SILENCE_THRESHOLD = 0.18;
@@ -10309,7 +10457,7 @@ ${existingKeys.slice(0, 100).join(', ')}
 
                 liveScriptProcessor = liveAudioContext.createScriptProcessor(CHUNK_SIZE, 1, 1);
                 liveScriptProcessor.onaudioprocess = (event) => {
-                    if (!isLiveTranscribing || !liveWs || liveWs.readyState !== WebSocket.OPEN) return;
+                    if (!isLiveTranscribing || isRefreshingLiveWs || !liveWs || liveWs.readyState !== WebSocket.OPEN) return;
                     const inputFloat32 = event.inputBuffer.getChannelData(0);
 
                     let maxAmp = 0;
@@ -10321,6 +10469,7 @@ ${existingKeys.slice(0, 100).join(', ')}
                     const chunkDurationMs = (inputFloat32.length / liveAudioContext.sampleRate) * 1000;
                     if (maxAmp >= SILENCE_THRESHOLD) {
                         silenceDurationMs = 0;
+                        lastLiveSpeechTimestamp = Date.now(); // 有意な音声を検知したら沈黙タイマーをリセット
                     } else {
                         silenceDurationMs += chunkDurationMs;
                     }
@@ -10338,14 +10487,18 @@ ${existingKeys.slice(0, 100).join(', ')}
                     }
 
                     const base64 = arrayBufferToBase64(pcm16.buffer);
-                    liveWs.send(JSON.stringify({
-                        realtimeInput: {
-                            audio: {
-                                mimeType: 'audio/pcm;rate=16000',
-                                data: base64
+                    try {
+                        liveWs.send(JSON.stringify({
+                            realtimeInput: {
+                                audio: {
+                                    mimeType: 'audio/pcm;rate=16000',
+                                    data: base64
+                                }
                             }
-                        }
-                    }));
+                        }));
+                    } catch (sendErr) {
+                        console.warn('[Gemini 3.5 Live] Audio send error:', sendErr);
+                    }
                 };
 
                 gainNode.connect(liveScriptProcessor);
@@ -10363,7 +10516,16 @@ ${existingKeys.slice(0, 100).join(', ')}
         // Gemini 3.5 Transcribe Live 停止
         function stopGeminiLiveTranscribe() {
             isLiveTranscribing = false;
+            isRefreshingLiveWs = false;
 
+            if (liveKeepAliveInterval) {
+                clearInterval(liveKeepAliveInterval);
+                liveKeepAliveInterval = null;
+            }
+            if (liveAmenReconnectTimeout) {
+                clearTimeout(liveAmenReconnectTimeout);
+                liveAmenReconnectTimeout = null;
+            }
             if (liveSilenceTimer) {
                 clearTimeout(liveSilenceTimer);
                 liveSilenceTimer = null;
@@ -10402,7 +10564,11 @@ ${existingKeys.slice(0, 100).join(', ')}
                 liveAudioContext = null;
             }
             if (liveWs) {
-                try { liveWs.close(); } catch(e){}
+                try {
+                    liveWs.onclose = null;
+                    liveWs.onerror = null;
+                    liveWs.close();
+                } catch(e){}
                 liveWs = null;
             }
         }
