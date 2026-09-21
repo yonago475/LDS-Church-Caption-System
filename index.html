@@ -10589,95 +10589,67 @@ ${existingKeys.slice(0, 100).join(', ')}
 
 
 
-            // バッチバッファにアイテムを追加（辞書プレパス済み & 未完フレーズ自動結合 & 1ミリ秒重複投入ガード）
-
+            // バッチバッファにアイテムを追加（辞書プレパス済み ＆ 遅延0ms即時配信 ＆ 裏側AIバッチ蓄積）
             function addToBatchBuffer(rawChunk) {
-
                 if (!rawChunk || !rawChunk.trim()) return;
 
                 const trimmedRaw = rawChunk.trim();
                 const normChunk = normalizeCaption(trimmedRaw);
                 const now = Date.now();
 
-                // 【Bug修正: 1ミリ秒重複・連続投入ガード (#15/#16対策)】
-                // 直前3.5秒以内に同一テキストがバッファ投入されていた場合は即座に遮断
-                while (recentBatchInputHistory.length > 0 && (now - recentBatchInputHistory[0].time > 3500)) {
-                    recentBatchInputHistory.shift();
-                }
-                if (recentBatchInputHistory.some(item => item.norm === normChunk)) {
-                    console.warn('[重複ガード作動] 1ミリ秒重複二重投入をブロック:', trimmedRaw);
-                    return;
-                }
-                if (batchBuffer.length > 0 && normalizeCaption(batchBuffer[batchBuffer.length - 1].rawChunk) === normChunk) {
-                    console.warn('[重複ガード作動] バッチ末尾重複をブロック:', trimmedRaw);
-                    return;
-                }
-                recentBatchInputHistory.push({ norm: normChunk, time: now });
-
-                // 未完保留タイマーが動いていれば解除（後続の音声が届いたため）
+                // 未完保留タイマーが動いていれば解除
                 if (incompleteHoldTimer) {
                     clearTimeout(incompleteHoldTimer);
                     incompleteHoldTimer = null;
                 }
 
-                // 【未完フレーズ次文自動結合】
-                // バッファ内に前の未完フレーズが存在する場合、今回のテキストをその末尾に合体（マージ）
-                if (batchBuffer.length > 0) {
-                    const lastItem = batchBuffer[batchBuffer.length - 1];
-                    if (isIncompletePhrase(lastItem.rawChunk)) {
-                        const mergedRaw = lastItem.rawChunk + ' ' + rawChunk.trim();
-                        const preCorrected = fixScriptureReferences(replaceChurchTerms(mergedRaw));
-                        lastItem.rawChunk = mergedRaw;
-                        lastItem.preCorrected = preCorrected;
-                        lastItem.dictChanged = (preCorrected !== mergedRaw);
-                        showProvisionalCaption(preCorrected, mergedRaw, lastItem.provisionalId);
+                // 重複投入ガード
+                while (recentBatchInputHistory.length > 0 && (now - recentBatchInputHistory[0].time > 3500)) {
+                    recentBatchInputHistory.shift();
+                }
+                if (recentBatchInputHistory.some(item => item.norm === normChunk)) return;
+                recentBatchInputHistory.push({ norm: normChunk, time: now });
 
-                        if (!batchTimer) {
-                            batchTimer = setTimeout(() => {
-                                batchTimer = null;
-                                flushBatchBuffer();
-                            }, BATCH_INTERVAL_MS);
-                        }
-                        return;
-                    }
+                // 第1段: ローカル辞書＋聖典補正（即時 0ms）
+                const preCorrected = fixScriptureReferences(replaceChurchTerms(trimmedRaw));
+                const dictChanged = (preCorrected !== trimmedRaw);
+
+                // グローバル一意な ID 採番（セッション通算で重複しない）
+                const uniqueCaptionId = 'cap_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
+
+                // 全自動配信モード時: 遅延 0ms で即座に聴講者へ配信！
+                if (!isManualMode) {
+                    broadcastToViewers({
+                        type: 'caption',
+                        id: uniqueCaptionId,
+                        text: preCorrected,
+                        englishText: null,
+                        translations: null,
+                        isProvisional: true,
+                        sectionType: currentSectionType,
+                        sourceLang: currentInputLanguage || 'ja',
+                        originalText: trimmedRaw,
+                        timestamp: new Date().toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+                    });
+                    appendHostTranscript(preCorrected, { id: uniqueCaptionId, isProvisional: true, original: trimmedRaw });
                 }
 
-                // 第1段: 辞書プレパス（即時、0ms）
+                // 第2段: 裏側の AI バッチキューに登録
+                batchBuffer.push({
+                    id: uniqueCaptionId,
+                    rawChunk: trimmedRaw,
+                    preCorrected: preCorrected,
+                    dictChanged: dictChanged,
+                    isAlreadyBroadcast: !isManualMode
+                });
 
-                const preCorrected = fixScriptureReferences(replaceChurchTerms(rawChunk.trim()));
-
-                const dictChanged = (preCorrected !== rawChunk.trim());
-
-                provisionalIdCounter++;
-
-                const provisionalId = `prov_${provisionalIdCounter}`;
-
-
-
-                batchBuffer.push({ rawChunk: rawChunk.trim(), preCorrected, dictChanged, provisionalId });
-
-
-
-                // ホスト画面に辞書補正済みテキストを「仮表示」
-
-                showProvisionalCaption(preCorrected, rawChunk, provisionalId);
-
-
-
-                // 最初の文が来た時のみタイマー開始（5秒後にフラッシュ）
-
+                // 15 RPM レート制限を守るため 4.5 秒後にまとめて Gemini へ送信
                 if (!batchTimer) {
-
                     batchTimer = setTimeout(() => {
-
                         batchTimer = null;
-
                         flushBatchBuffer();
-
-                    }, BATCH_INTERVAL_MS);
-
+                    }, 4500);
                 }
-
             }
 
 
@@ -10795,111 +10767,71 @@ ${existingKeys.slice(0, 100).join(', ')}
                     // 結果を1文ずつ配信/手動キューに振り分け
 
                     for (let idx = 0; idx < sentences.length; idx++) {
-
                         const result = sentences[idx];
-
-                        const rawChunk = result.rawChunk || (items[idx] ? items[idx].rawChunk : '');
-
-                        const processedChunk = result.ja || rawChunk;
-
+                        const item = items[idx] || {};
+                        const rawChunk = result.rawChunk || item.rawChunk || '';
+                        const processedChunk = result.ja || item.preCorrected || rawChunk;
                         const englishText = result.en || null;
-
                         const translations = result.translations || null;
-
-                        const isAi = isGeminiAiEnabled && !!geminiApiKey && !!result.isAiSuccess && (processedChunk !== rawChunk);
-
+                        const isAi = isGeminiAiEnabled && !!geminiApiKey && !!result.isAiSuccess;
                         const isEdited = processedChunk !== rawChunk;
-
                         let finalAction = 'BROADCAST';
 
-
-
-                        if (isManualMode) {
-
+                        if (item.isAlreadyBroadcast) {
+                            // 即時先行配信済み ➔ 聴講者画面の既存カードを差分上書き更新（0ms重複防止）
+                            broadcastToViewers({
+                                type: 'update_caption',
+                                id: item.id,
+                                text: processedChunk,
+                                englishText: englishText,
+                                translations: translations,
+                                isAiApplied: isAi
+                            });
+                            updateHostTranscript(item.id, processedChunk, englishText, isAi);
+                            finalAction = 'UPDATE_BROADCAST';
+                        } else if (isManualMode) {
                             const normChunk = normalizeCaption(processedChunk);
-
                             const now = Date.now();
 
-
-
                             // 1. Bug-05修正: 直近6秒以内の過去送信履歴との重複チェック（30秒→6秒に短縮）
-
-                            const isSentDuplicate = recentSentHistory.some(item => {
-
-                                return (now - item.timestamp < 6000) && (item.norm === normChunk);
-
+                            const isSentDuplicate = recentSentHistory.some(h => {
+                                return (now - h.timestamp < 6000) && (h.norm === normChunk);
                             });
-
-
 
                             // 2. 現在のエディタ入力内容との重複チェック
-
                             const isCurrentInputDuplicate = manualCaptionInput && (normalizeCaption(manualCaptionInput.value.trim()) === normChunk);
 
-
-
                             // 3. 待機キュー内の既存アイテムとの重複チェック
-
-                            const isQueueDuplicate = manualPendingQueue.some(item => {
-
-                                const itemText = (typeof item === 'object' && item !== null) ? item.text : item;
-
+                            const isQueueDuplicate = manualPendingQueue.some(q => {
+                                const itemText = (typeof q === 'object' && q !== null) ? q.text : q;
                                 return normalizeCaption(itemText) === normChunk;
-
                             });
 
-
-
                             if (isSentDuplicate || isCurrentInputDuplicate || isQueueDuplicate) {
-
                                 finalAction = 'DUPLICATE_SUPPRESSED';
-
                             } else {
-
                                 finalAction = 'MANUAL_QUEUED';
-
                                 if (manualCaptionInput) {
-
                                     const currentVal = manualCaptionInput.value.trim();
-
                                     if (!currentVal) {
-
                                         manualCaptionInput.value = processedChunk;
-
                                         currentManualOriginalRaw = rawChunk;
-
-                                        currentManualInitialText = processedChunk; // Bug-04修正: 初期テキストを追跡
-
+                                        currentManualInitialText = processedChunk;
                                         currentManualEnglishText = englishText;
-
                                         currentManualTranslations = translations;
-
                                         currentManualSourceLang = currentInputLanguage || 'ja';
-
                                         manualCaptionInput.scrollTop = manualCaptionInput.scrollHeight;
-
                                     } else {
-
-                                        manualPendingQueue.push({ text: processedChunk, original: rawChunk, isAi: isAi, englishText: englishText, translations: translations, sourceLang: currentInputLanguage || 'ja' });
-
+                                        manualPendingQueue.push({ id: item.id, text: processedChunk, original: rawChunk, isAi: isAi, englishText: englishText, translations: translations, sourceLang: currentInputLanguage || 'ja' });
                                         updateManualQueueUI();
-
                                     }
-
                                 }
-
                             }
-
                         } else {
-
-                            const dispatchRes = dispatchCaption(processedChunk, { original: rawChunk, isEdited: isEdited, isAi: isAi, englishText: englishText, translations: translations, sourceLang: currentInputLanguage || 'ja' });
-
+                            const dispatchRes = dispatchCaption(processedChunk, { id: item.id, original: rawChunk, isEdited: isEdited, isAi: isAi, englishText: englishText, translations: translations, sourceLang: currentInputLanguage || 'ja' });
                             if (dispatchRes && dispatchRes.action) {
-
                                 finalAction = dispatchRes.action;
-
                             }
-
                         }
 
 
@@ -11497,131 +11429,112 @@ ${existingKeys.slice(0, 100).join(', ')}
 
 
 
+            const captionId = (meta && meta.id) ? meta.id : null;
+            const isProvisional = !!(meta && meta.isProvisional);
+
             transcriptHistory.push({
-
+                id: captionId,
                 time: timeStr,
-
                 text: text,
-
                 original: rawOriginal,
-
                 isEdited: isEdited,
-
                 isAi: isAi,
-
+                isProvisional: isProvisional,
                 paused: wasPaused,
-
                 englishText: englishText
-
             });
 
-
-
             // メモリ肥大化防止: 上限を超えた古い履歴を削除
-
             while (transcriptHistory.length > MAX_TRANSCRIPT_HISTORY) {
-
                 transcriptHistory.shift();
-
             }
-
-
 
             const item = document.createElement('div');
-
+            if (captionId) {
+                item.dataset.captionId = captionId;
+            }
             const safeText = escapeHtml(text);
-
             const safeOriginal = rawOriginal ? escapeHtml(rawOriginal) : '';
-
             const safeEnglish = englishText ? escapeHtml(englishText) : '';
 
-
-
             if (wasPaused) {
-
                 item.className = 'bg-slate-200/70 p-3 rounded-lg border border-slate-300 shadow-sm opacity-70';
-
                 item.innerHTML = `
-
                     <div class="flex justify-between items-center mb-1">
-
                         <span class="text-[10px] text-slate-400">${timeStr}</span>
-
                         <div class="flex items-center space-x-2">
-
                             <button type="button" class="text-[10px] text-indigo-600 hover:text-indigo-800 font-semibold log-add-dict-btn" data-text="${safeText}" title="この単語を辞書登録">
-
                                 <i class="fa-solid fa-plus-circle"></i> 辞書登録
-
                             </button>
-
                             <span class="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 font-semibold border border-amber-200">⏸️ 未配信</span>
-
                         </div>
-
                     </div>
-
-                    <div class="text-sm text-slate-500 font-medium">${safeText}</div>
-
-                    ${safeEnglish ? `<div class="mt-1 text-xs text-sky-700 font-medium pl-2 border-l-2 border-sky-400 bg-sky-50/70 py-0.5 rounded-r"><span class="text-sky-500 font-bold mr-1">🌐 英訳:</span>${safeEnglish}</div>` : ''}
-
+                    <div class="text-sm text-slate-500 font-medium transcript-text">${safeText}</div>
+                    <div class="transcript-en-container mt-1 text-xs text-sky-700 font-medium pl-2 border-l-2 border-sky-400 bg-sky-50/70 py-0.5 rounded-r ${safeEnglish ? '' : 'hidden'}"><span class="text-sky-500 font-bold mr-1">🌐 英訳:</span><span class="transcript-en-text">${safeEnglish}</span></div>
                 `;
-
             } else {
-
-                item.className = 'bg-white p-3 rounded-lg border border-slate-200 shadow-sm';
-
+                item.className = 'bg-white p-3 rounded-lg border border-slate-200 shadow-sm transition-all';
                 item.innerHTML = `
-
                     <div class="flex justify-between items-center mb-1">
-
                         <div class="flex items-center space-x-1.5">
-
                             <span class="text-[10px] text-slate-400 font-mono">${timeStr}</span>
-
-                            ${isEdited ? (isAi ? `<span class="text-[10px] px-1.5 py-0.2 bg-purple-100 text-purple-800 font-bold rounded border border-purple-300">✨ AI文脈補正</span>` : `<span class="text-[10px] px-1.5 py-0.2 bg-amber-100 text-amber-800 font-bold rounded border border-amber-300">✍️ 手動修正</span>`) : ''}
-
+                            <span class="transcript-badge">
+                                ${isProvisional ? `<span class="text-[10px] px-1.5 py-0.2 bg-amber-50 text-amber-700 font-medium rounded border border-amber-200">⚡ リアルタイム</span>` : (isEdited ? (isAi ? `<span class="text-[10px] px-1.5 py-0.2 bg-purple-100 text-purple-800 font-bold rounded border border-purple-300">✨ AI文脈補正</span>` : `<span class="text-[10px] px-1.5 py-0.2 bg-amber-100 text-amber-800 font-bold rounded border border-amber-300">✍️ 手動修正</span>`) : '')}
+                            </span>
                         </div>
-
                         <button type="button" class="text-[10px] text-indigo-600 hover:text-indigo-800 font-semibold log-add-dict-btn" data-text="${safeText}" title="この単語を辞書登録">
-
                             <i class="fa-solid fa-plus-circle"></i> 辞書登録
-
                         </button>
-
                     </div>
-
-                    <div class="text-sm text-slate-800 font-medium">${safeText}</div>
-
-                    ${safeEnglish ? `<div class="mt-1 text-xs text-sky-700 font-medium pl-2 border-l-2 border-sky-400 bg-sky-50/70 py-0.5 rounded-r"><span class="text-sky-500 font-bold mr-1">🌐 英訳:</span>${safeEnglish}</div>` : ''}
-
+                    <div class="text-sm text-slate-800 font-medium transcript-text">${safeText}</div>
+                    <div class="transcript-en-container mt-1 text-xs text-sky-700 font-medium pl-2 border-l-2 border-sky-400 bg-sky-50/70 py-0.5 rounded-r ${safeEnglish ? '' : 'hidden'}"><span class="text-sky-500 font-bold mr-1">🌐 英訳:</span><span class="transcript-en-text">${safeEnglish}</span></div>
                     ${isEdited ? `
-
                     <div class="mt-1.5 p-2 bg-slate-50 rounded border border-slate-200 text-xs text-slate-700 flex items-start space-x-1.5">
-
                         <span class="text-slate-500 font-bold shrink-0">認識原文:</span>
-
                         <span class="line-through text-slate-400">${safeOriginal}</span>
-
                         <span class="text-indigo-600 font-bold shrink-0">➔ 補正:</span>
-
-                        <span class="text-emerald-700 font-bold">${safeText}</span>
-
+                        <span class="text-emerald-700 font-bold transcript-corrected-text">${safeText}</span>
                     </div>` : ''}
-
                 `;
-
             }
 
-
-
             hostTranscriptLog.appendChild(item);
-
             hostTranscriptLog.scrollTop = hostTranscriptLog.scrollHeight;
-
         }
 
-
+        // ホスト側ログの差分上書き更新（AI補正結果が届いた際にカードを格調高く更新）
+        function updateHostTranscript(id, text, englishText, isAi) {
+            if (!id || !hostTranscriptLog) return;
+            const item = hostTranscriptLog.querySelector(`[data-caption-id="${id}"]`);
+            if (item) {
+                const textEl = item.querySelector('.transcript-text');
+                if (textEl && text) {
+                    textEl.textContent = text;
+                }
+                const correctedEl = item.querySelector('.transcript-corrected-text');
+                if (correctedEl && text) {
+                    correctedEl.textContent = text;
+                }
+                const enContainer = item.querySelector('.transcript-en-container');
+                const enTextEl = item.querySelector('.transcript-en-text');
+                if (englishText && englishText.trim()) {
+                    if (enTextEl) enTextEl.textContent = englishText.trim();
+                    if (enContainer) enContainer.classList.remove('hidden');
+                }
+                const badgeEl = item.querySelector('.transcript-badge');
+                if (badgeEl) {
+                    if (isAi) {
+                        badgeEl.innerHTML = '<span class="text-[10px] px-1.5 py-0.2 bg-purple-100 text-purple-800 font-bold rounded border border-purple-300">✨ AI文脈補正</span>';
+                    }
+                }
+            }
+            const histItem = transcriptHistory.find(h => h.id === id);
+            if (histItem) {
+                if (text) histItem.text = text;
+                if (englishText) histItem.englishText = englishText.trim();
+                if (isAi !== undefined) histItem.isAi = isAi;
+            }
+        }
 
         // ==================== 指数バックオフ付き自動再接続 (Viewer) ====================
 
@@ -11864,17 +11777,12 @@ ${existingKeys.slice(0, 100).join(', ')}
 
 
             hostConnection.on('data', function(data) {
-
                 if (data.type === 'caption') {
-
                     if (data.sectionType) {
-
                         updateViewerSectionBadge(data.sectionType);
-
                     }
 
                     viewerCaptionQueue = viewerCaptionQueue.then(async () => {
-
                         const targetLang = targetLangSelect ? targetLangSelect.value : 'en';
                         const sourceLang = data.sourceLang || 'ja';
                         // 日本語話者の場合は、生音声RAWではなく「AI文脈補正後の日本語(data.text)」をサブテキストとして採用
@@ -11888,29 +11796,79 @@ ${existingKeys.slice(0, 100).join(', ')}
                                 : null;
 
                         if (targetLang === 'ja') {
-                            // 日本語モード:
-                            // 話者が英語やタガログ語の場合、data.text（日本語訳）をメイン、refinedSubText（英語等原文）をサブに併記
-                            // 話者が日本語の場合、data.text（日本語）のみをメイン表示（サブなし）
                             const subText = (sourceLang !== 'ja') ? refinedSubText : '';
-                            appendViewerCaption(data.text, subText, data.timestamp, sourceLang);
+                            appendViewerCaption(data.text, subText, data.timestamp, sourceLang, data.id, !!data.isProvisional);
                         } else if (directTranslation) {
-                            // 英語・タガログ語など高精度直通翻訳が存在する場合:
-                            // ターゲット言語と話者言語が異なる場合、AI文脈補正後の日本語(refinedSubText)をサブ表示
                             const subText = (targetLang !== sourceLang) ? refinedSubText : '';
-                            appendViewerCaption(directTranslation, subText, data.timestamp, sourceLang);
+                            appendViewerCaption(directTranslation, subText, data.timestamp, sourceLang, data.id, !!data.isProvisional);
                         } else {
                             // フォールバック: スマホ側の機械翻訳(gtx) + ローカル教会用語置換
-                            await handleIncomingCaption(data.text, data.timestamp);
+                            await handleIncomingCaption(data.text, data.timestamp, sourceLang, data.id, !!data.isProvisional);
+                        }
+                    }).catch(err => {
+                        console.error('Viewer caption processing error:', err);
+                    });
+                } else if (data.type === 'update_caption') {
+                    viewerCaptionQueue = viewerCaptionQueue.then(async () => {
+                        const card = viewerCaptionFeed ? viewerCaptionFeed.querySelector(`[data-caption-id="${data.id}"]`) : null;
+                        if (!card) return;
+
+                        const targetLang = targetLangSelect ? targetLangSelect.value : 'ja';
+                        const jaTextEl = card.querySelector('.caption-ja-text');
+                        const enTextEl = card.querySelector('.caption-en-text');
+                        const badgeEl = card.querySelector('.caption-status-badge');
+
+                        const directTranslation = (targetLang === 'en' && data.englishText)
+                            ? data.englishText
+                            : (data.translations && data.translations[targetLang])
+                                ? data.translations[targetLang]
+                                : null;
+
+                        if (targetLang === 'ja') {
+                            if (jaTextEl && data.text) {
+                                jaTextEl.innerHTML = formatJapaneseWithBudouX(data.text);
+                            }
+                            if (enTextEl) {
+                                if (data.englishText) {
+                                    enTextEl.textContent = data.englishText;
+                                    enTextEl.classList.remove('hidden');
+                                }
+                            }
+                        } else if (directTranslation) {
+                            if (jaTextEl) {
+                                jaTextEl.textContent = directTranslation;
+                            }
+                            if (enTextEl && data.text) {
+                                enTextEl.innerHTML = formatJapaneseWithBudouX(data.text);
+                                enTextEl.classList.remove('hidden');
+                            }
+                        } else if (data.text) {
+                            // 直接翻訳がない外国語の場合はクライアント翻訳
+                            try {
+                                const translated = await translateText(data.text, targetLang);
+                                if (jaTextEl) jaTextEl.textContent = translated;
+                                if (enTextEl) {
+                                    enTextEl.innerHTML = formatJapaneseWithBudouX(data.text);
+                                    enTextEl.classList.remove('hidden');
+                                }
+                            } catch (e) {
+                                console.warn('Update caption translation error:', e);
+                            }
                         }
 
+                        // AI補正完了バッジの付与
+                        if (badgeEl && data.isAiApplied) {
+                            badgeEl.innerHTML = '<span class="text-[10px] text-purple-400 font-bold">✨ AI補正済</span>';
+                        }
+
+                        // ユーザーが手動スクロール中でなく、最下部付近にいる時のみスクロール追従
+                        if (!isUserManuallyScrolling && isViewerNearBottom()) {
+                            smoothScrollToLatest(CONSTANT_SCROLL_SPEED_PX_PER_SEC);
+                        }
                     }).catch(err => {
-
-                        console.error('Viewer caption processing error:', err);
-
+                        console.error('Viewer update_caption error:', err);
                     });
-
                 }
-
             });
 
 
@@ -12013,24 +11971,15 @@ ${existingKeys.slice(0, 100).join(', ')}
 
 
 
-        async function handleIncomingCaption(japaneseText, timestamp) {
-
+        async function handleIncomingCaption(japaneseText, timestamp, sourceLang = 'ja', captionId = null, isProvisional = false) {
             const targetLang = targetLangSelect ? targetLangSelect.value : 'ja';
-
             let translatedText = japaneseText;
 
-
-
             if (targetLang !== 'ja') {
-
                 translatedText = await translateText(japaneseText, targetLang);
-
             }
 
-
-
-            appendViewerCaption(translatedText, japaneseText, timestamp);
-
+            appendViewerCaption(translatedText, japaneseText, timestamp, sourceLang, captionId, isProvisional);
         }
 
 
@@ -12552,7 +12501,7 @@ ${existingKeys.slice(0, 100).join(', ')}
 
         // ==================== Viewer 字幕表示 ====================
 
-        function appendViewerCaption(translatedText, originalText, timestamp, sourceLang = 'ja') {
+        function appendViewerCaption(translatedText, originalText, timestamp, sourceLang = 'ja', captionId = null, isProvisional = false) {
             const placeholder = document.getElementById('captionPlaceholder');
             if (placeholder) {
                 placeholder.remove();
@@ -12573,6 +12522,9 @@ ${existingKeys.slice(0, 100).join(', ')}
             const currentSizeClass = fontClasses[currentFontSizeIndex];
             const item = document.createElement('div');
             item.className = 'caption-card bg-slate-800/80 p-3.5 sm:p-4 rounded-xl border border-slate-700/60 shadow-md backdrop-blur-sm transition-all';
+            if (captionId) {
+                item.dataset.captionId = captionId;
+            }
             
             const isJapaneseMode = targetLangSelect ? (targetLangSelect.value === 'ja') : false;
             const displayedMainText = isJapaneseMode ? formatJapaneseWithBudouX(translatedText) : escapeHtml(translatedText);
@@ -12590,13 +12542,20 @@ ${existingKeys.slice(0, 100).join(', ')}
 
             item.innerHTML = `
                 <div class="flex justify-between items-center text-[10px] text-slate-400 mb-1.5 border-b border-slate-700/40 pb-1">
-                    <span><i class="fa-solid fa-globe mr-1 text-indigo-400"></i> ${escapeHtml(langLabel)}</span>
+                    <span class="flex items-center gap-1.5">
+                        <span><i class="fa-solid fa-globe mr-1 text-indigo-400"></i> ${escapeHtml(langLabel)}</span>
+                        <span class="caption-status-badge">
+                            ${isProvisional ? '<span class="text-[10px] text-amber-400 font-medium">⚡ リアルタイム</span>' : ''}
+                        </span>
+                    </span>
                     <span class="font-mono">${escapeHtml(timestamp || '')}</span>
                 </div>
-                <div class="${currentSizeClass} font-semibold text-white leading-relaxed break-words">
+                <div class="${currentSizeClass} font-semibold text-white leading-relaxed break-words caption-ja-text">
                     ${displayedMainText}
                 </div>
-                ${displayedOrigText ? `<div class="text-[11px] sm:text-xs text-slate-400 mt-2 italic font-normal break-words">${displayedOrigText}</div>` : ''}
+                <div class="caption-en-text text-[11px] sm:text-xs text-slate-400 mt-2 italic font-normal break-words ${displayedOrigText ? '' : 'hidden'}">
+                    ${displayedOrigText}
+                </div>
             `;
 
             // カード追加前のスクロール位置、または現在オートスクロール進行中であるかを判定
