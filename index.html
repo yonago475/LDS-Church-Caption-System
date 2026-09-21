@@ -4881,6 +4881,10 @@ function isIncompletePhrase(text) {
         let lastLiveSpeechTimestamp = Date.now(); // 最終発話検知時刻
         let isRefreshingLiveWs = false; // 再接続中フラグ（onclose暴発防止）
         let liveAmenReconnectTimeout = null; // アーメン検知後の遅延再接続タイマー
+        let liveSpeakingDurationMs = 0; // 連続発話時間（ミリ秒）
+        let liveSilenceDurationMs = 0;  // 連続沈黙時間（ミリ秒）
+        let liveSentenceDispatchQueue = []; // 複数文一括噴出防止用ストリーミングキュー
+        let liveSentenceDispatchTimer = null; // キュー消化タイマー
 
         // Gemini 3.5 Transcribe Live 用カスタム語彙（Speech Biasing / 日英バイリンガル対応）
         const CHURCH_CUSTOM_VOCABULARY = [
@@ -8661,9 +8665,9 @@ const validModels = models
 
                                 }
 
-                                const matchingRaw = (mergedSentences.length === items.length && items[idx]) ? items[idx].rawChunk : combinedRaw;
+                                const matchingRaw = (items[idx] && items[idx].rawChunk) ? items[idx].rawChunk : combinedRaw;
 
-                                const matchingPre = (mergedSentences.length === items.length && items[idx]) ? items[idx].preCorrected : combinedPre;
+                                const matchingPre = (items[idx] && items[idx].preCorrected) ? items[idx].preCorrected : combinedPre;
 
                                 const isChanged = jaText !== matchingRaw;
 
@@ -10180,6 +10184,28 @@ ${existingKeys.slice(0, 100).join(', ')}
                 }
             };
 
+            // 複数文一括噴出防止: 1文目は遅延0ms即時配信、2文目以降は自然な間隔（700ms）で順次排出
+            const enqueueSentenceOrDispatch = (s, isImmediate = false) => {
+                if (!s || !s.trim()) return;
+                if (isImmediate && liveSentenceDispatchQueue.length === 0) {
+                    dispatchSentence(s);
+                    return;
+                }
+                liveSentenceDispatchQueue.push(s);
+                if (!liveSentenceDispatchTimer) {
+                    liveSentenceDispatchTimer = setInterval(() => {
+                        if (liveSentenceDispatchQueue.length > 0) {
+                            const nextS = liveSentenceDispatchQueue.shift();
+                            dispatchSentence(nextS);
+                        }
+                        if (liveSentenceDispatchQueue.length === 0) {
+                            clearInterval(liveSentenceDispatchTimer);
+                            liveSentenceDispatchTimer = null;
+                        }
+                    }, 700);
+                }
+            };
+
             // 1. 日英両対応の文末記号（句点・ピリオド・感嘆符・疑問符）で文を切り出して即座に自律確定
             // ※Mr. Mrs. Dr. Pres. 等の略称ピリオドは除外
             const sentenceSplitRegex = /(?<=[。！？])\s*|(?<!\b(?:Mr|Mrs|Ms|Dr|vs|Pres|Sr|Jr|etc|[A-Z])\.)(?<=[.!?])\s+(?=[A-Z0-9"“'‘]|$)/i;
@@ -10188,7 +10214,8 @@ ${existingKeys.slice(0, 100).join(', ')}
                 for (let i = 0; i < parts.length - 1; i++) {
                     const sentence = parts[i].trim();
                     if (sentence) {
-                        dispatchSentence(sentence);
+                        // 最初の1文目（キューが空の場合）は即座（0ms）に先行配信、2文目以降は700ms間隔で順次排出
+                        enqueueSentenceOrDispatch(sentence, i === 0);
                     }
                 }
                 liveInputAccumulator = parts[parts.length - 1].trim();
@@ -10202,7 +10229,7 @@ ${existingKeys.slice(0, 100).join(', ')}
                         if (spaceIdx > 30) {
                             const sentence = cleaned.slice(0, spaceIdx).trim();
                             if (sentence) {
-                                dispatchSentence(sentence);
+                                enqueueSentenceOrDispatch(sentence, true);
                             }
                             liveInputAccumulator = cleaned.slice(spaceIdx + 1).trim();
                         }
@@ -10214,14 +10241,14 @@ ${existingKeys.slice(0, 100).join(', ')}
                         const splitIdx = 15 + splitMatch;
                         const sentence = cleaned.slice(0, splitIdx + 1).trim();
                         if (sentence) {
-                            dispatchSentence(sentence);
+                            enqueueSentenceOrDispatch(sentence, true);
                         }
                         liveInputAccumulator = cleaned.slice(splitIdx + 1).trim();
                     } else if (cleaned.length >= 40) {
                         // 40文字を超えたら強制分割
                         const sentence = cleaned.slice(0, 30).trim();
                         if (sentence) {
-                            dispatchSentence(sentence);
+                            enqueueSentenceOrDispatch(sentence, true);
                         }
                         liveInputAccumulator = cleaned.slice(30).trim();
                     }
@@ -10234,7 +10261,7 @@ ${existingKeys.slice(0, 100).join(', ')}
                 if (liveInputAccumulator && liveInputAccumulator.trim()) {
                     const sentence = cleanLiveTranscribeJapanese(liveInputAccumulator);
                     if (sentence && sentence.length >= 2) {
-                        dispatchSentence(sentence);
+                        enqueueSentenceOrDispatch(sentence, true);
                     }
                     liveInputAccumulator = '';
                     if (interimText) interimText.textContent = '（次の音声入力を待機中...）';
@@ -10402,6 +10429,13 @@ ${existingKeys.slice(0, 100).join(', ')}
                 isLiveTranscribing = true;
                 isRefreshingLiveWs = false;
                 liveInputAccumulator = '';
+                liveSpeakingDurationMs = 0;
+                liveSilenceDurationMs = 0;
+                liveSentenceDispatchQueue = [];
+                if (liveSentenceDispatchTimer) {
+                    clearInterval(liveSentenceDispatchTimer);
+                    liveSentenceDispatchTimer = null;
+                }
                 lastLiveSpeechTimestamp = Date.now();
                 if (interimText) interimText.textContent = '⚡ Gemini 3.5 Transcribe Live 接続中...';
 
@@ -10442,10 +10476,12 @@ ${existingKeys.slice(0, 100).join(', ')}
                     }
                 }, 30000); // 30秒ごとにチェック
 
-                // 4. リアルタイム音声送信
+                // 4. リアルタイム音声送信 ＆ インテリジェントVAD（息継ぎアシスト）
                 const CHUNK_SIZE = 2048;
-                // 高齢者や小さな声、演台から離れた声も確実に検知できるよう閾値を適正化（0.18 → 0.02）
-                const SILENCE_THRESHOLD = 0.02;
+                // 静寂（息継ぎ）検知閾値: ゲイン2.2倍後の暗騒音フロア（エアコン・環境ノイズ）をわずかに超える値
+                // 小さな声（通常0.05〜0.1以上）は通し、息継ぎの間の暗騒音（0.015〜0.03）を安全に無音化
+                const SILENCE_THRESHOLD = 0.032;
+                const BREATH_PAUSE_MS = 280; // 280ms以上の静寂でGoogleに明確な沈黙（ゼロPCM）を伝達
 
                 liveScriptProcessor = liveAudioContext.createScriptProcessor(CHUNK_SIZE, 1, 1);
                 liveScriptProcessor.onaudioprocess = (event) => {
@@ -10458,18 +10494,40 @@ ${existingKeys.slice(0, 100).join(', ')}
                         if (abs > maxAmp) maxAmp = abs;
                     }
 
-                    // 微細な音声（0.02以上）でも話者の発話として検知し、沈黙タイマーをリセット
+                    const chunkMs = (inputFloat32.length / liveAudioContext.sampleRate) * 1000;
+
                     if (maxAmp >= SILENCE_THRESHOLD) {
+                        liveSpeakingDurationMs += chunkMs;
+                        liveSilenceDurationMs = 0;
                         lastLiveSpeechTimestamp = Date.now();
+                    } else {
+                        liveSilenceDurationMs += chunkMs;
+                        if (liveSilenceDurationMs >= BREATH_PAUSE_MS) {
+                            liveSpeakingDurationMs = 0;
+                        }
                     }
 
                     const downsampled = downsampleTo16k(inputFloat32, liveAudioContext.sampleRate);
                     const pcm16 = new Int16Array(downsampled.length);
 
-                    // 音声ゼロ塗りつぶし（小さな声の破壊）を完全撤廃し、生音声を忠実に送信
-                    for (let i = 0; i < downsampled.length; i++) {
-                        const s = Math.max(-1, Math.min(1, downsampled[i]));
-                        pcm16[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+                    // 【インテリジェント・ブレス検知（息継ぎアシスト）】
+                    // 1. 話者が280ms以上息継ぎ（ポーズ）をしている場合:
+                    //    環境ノイズがGoogleのサーバーVADを妨害しないよう、完全無音（ゼロPCM）を送信してターン区切りを即座に確定
+                    // 2. 早口で5秒以上（5000ms）連続発話し、音の谷間（maxAmp < 0.06）が訪れた場合:
+                    //    溜め込み防止のため、わずか1チャンク（約40〜50ms）だけ無音を挟んでGoogleに文確定を促す
+                    const isBreathPause = (liveSilenceDurationMs >= BREATH_PAUSE_MS);
+                    const isForcePauseTrigger = (liveSpeakingDurationMs >= 5000 && maxAmp < 0.06);
+
+                    if (isBreathPause || isForcePauseTrigger) {
+                        pcm16.fill(0);
+                        if (isForcePauseTrigger) {
+                            liveSpeakingDurationMs = 0;
+                        }
+                    } else {
+                        for (let i = 0; i < downsampled.length; i++) {
+                            const s = Math.max(-1, Math.min(1, downsampled[i]));
+                            pcm16[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+                        }
                     }
 
                     const base64 = arrayBufferToBase64(pcm16.buffer);
@@ -10515,6 +10573,20 @@ ${existingKeys.slice(0, 100).join(', ')}
             if (liveSilenceTimer) {
                 clearTimeout(liveSilenceTimer);
                 liveSilenceTimer = null;
+            }
+            if (liveSentenceDispatchTimer) {
+                clearInterval(liveSentenceDispatchTimer);
+                liveSentenceDispatchTimer = null;
+            }
+            while (liveSentenceDispatchQueue.length > 0) {
+                const queued = liveSentenceDispatchQueue.shift();
+                if (queued) {
+                    if (typeof handleRecognizedChunk === 'function') {
+                        handleRecognizedChunk(queued);
+                    } else if (typeof window.handleRecognizedChunk === 'function') {
+                        window.handleRecognizedChunk(queued);
+                    }
+                }
             }
 
             // 残余テキストがあればフラッシュ
