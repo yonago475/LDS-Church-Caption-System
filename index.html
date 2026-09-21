@@ -4420,7 +4420,7 @@ function isIncompletePhrase(text) {
     // 2. 助詞止め・接続助詞・前置きによる明確な未完末尾パターン
     // （文末が「〜と」「〜を」「〜に」「〜の」「〜で」「〜は」「〜が」等の助詞、または接続助詞で終わっている場合、
     //   文字数の長さに関係なく100%確実に述語が後ろに続く未完フレーズと判定して次文と結合）
-    const particleEndingRegex = /(?:ですが|ですので|ですと|ですから|ますので|ますから|ますと|まして|ましたら|ませんと|ば|たら|なら|のに|けれど|けど|ながら|つつ|て|で|[はがをもにでとへの]ですね|[はがをもにでとへの]ですけど|[はがをもにでとのへや]|から|まで|より|など|とか|について|に関して|にとって|によって|に向けて)$/;
+    const particleEndingRegex = /(?:ですが|ですので|ですと|ですから|ますので|ますから|ますと|まして|ましたら|ませんと|ば|たら|なら|のに|けれど|けど|ながら|つつ|て|で|[はがをもにでとへの]ですね|[はがをもにでとへの]ですけど|[はがをもにでとのへや]|から|まで|より|など|とか|について|に関して|にとって|によって|に向けて|とき|時|こと|ところ|契|思い|思って)$/;
     if (particleEndingRegex.test(trimmed)) {
         return true;
     }
@@ -10277,23 +10277,19 @@ ${existingKeys.slice(0, 100).join(', ')}
                             liveInputAccumulator = cleaned.slice(spaceIdx + 1).trim();
                         }
                     }
-                } else if (cleaned.length >= 25) {
-                    // 日本語長文: 25文字以上で読点「、」または文末表現で自然に分割
-                    const splitMatch = cleaned.slice(15).search(/[、\s]|(です|ます|ました|ません|でした|こと|とき|時|神|主)(?=[一-龠ぁ-んァ-ヶ])/);
-                    if (splitMatch !== -1) {
-                        const splitIdx = 15 + splitMatch;
-                        const sentence = cleaned.slice(0, splitIdx + 1).trim();
+                } else if (cleaned.length >= 70) {
+                    // 日本語超長文（70文字以上の息継ぎなし連続発話時のみ安全弁作動）:
+                    // 単語の途中や読点でぶった切らず、明確な終止形（です/ます/ました等）の直後でのみ安全に分割
+                    const endingMatch = cleaned.slice(35).search(/(?:あります|ありません|なります|なりません|でしょうか|でした|ました|です|ます|祈ります|証します|アーメン)(?=[、\s]|(?=[一-龠ぁ-んァ-ヶ]))/);
+                    if (endingMatch !== -1) {
+                        const m = cleaned.slice(35).match(/(?:あります|ありません|なります|なりません|でしょうか|でした|ました|です|ます|祈ります|証します|アーメン)/);
+                        const matchLen = m ? m[0].length : 2;
+                        const splitIdx = 35 + endingMatch + matchLen;
+                        const sentence = cleaned.slice(0, splitIdx).trim();
                         if (sentence) {
                             enqueueSentenceOrDispatch(sentence, true);
                         }
-                        liveInputAccumulator = cleaned.slice(splitIdx + 1).trim();
-                    } else if (cleaned.length >= 40) {
-                        // 40文字を超えたら強制分割
-                        const sentence = cleaned.slice(0, 30).trim();
-                        if (sentence) {
-                            enqueueSentenceOrDispatch(sentence, true);
-                        }
-                        liveInputAccumulator = cleaned.slice(30).trim();
+                        liveInputAccumulator = cleaned.slice(splitIdx).trim();
                     }
                 }
             }
@@ -10984,18 +10980,18 @@ ${existingKeys.slice(0, 100).join(', ')}
                         }
                         sentences.splice(items.length);
                     }
-                    // 2. 文数不足時（Geminiが複数文を統合した場合）: 未更新カードが残らないよう、items の辞書補正テキストで補完
+                    // 2. 文数不足時（Geminiが複数文を1文に統合した場合）:
+                    // 先行カードが余分に発行されていた場合、手前のカードに統合されたので、余剰な先行カードを画面から安全に消去（断片カード残存の完全防止）
                     if (!isManualMode && sentences.length < items.length) {
                         for (let missingIdx = sentences.length; missingIdx < items.length; missingIdx++) {
-                            const missingItem = items[missingIdx];
-                            sentences.push({
-                                ja: missingItem.preCorrected,
-                                en: null,
-                                translations: null,
-                                isAiSuccess: false,
-                                rawChunk: missingItem.rawChunk,
-                                preCorrected: missingItem.preCorrected
-                            });
+                            const redundantItem = items[missingIdx];
+                            if (redundantItem && redundantItem.id) {
+                                broadcastToViewers({
+                                    type: 'remove_caption',
+                                    id: redundantItem.id
+                                });
+                                removeHostTranscript(redundantItem.id);
+                            }
                         }
                     }
 
@@ -11771,6 +11767,15 @@ ${existingKeys.slice(0, 100).join(', ')}
             }
         }
 
+        // ホスト側ログの不要カード消去（Geminiが複数文を統合した際に断片カードを安全に消去）
+        function removeHostTranscript(id) {
+            if (!id || !hostTranscriptLog) return;
+            const item = hostTranscriptLog.querySelector(`[data-caption-id="${id}"]`);
+            if (item) item.remove();
+            const histIdx = transcriptHistory.findIndex(h => h.id === id);
+            if (histIdx !== -1) transcriptHistory.splice(histIdx, 1);
+        }
+
         // ==================== 指数バックオフ付き自動再接続 (Viewer) ====================
 
         function initPeerViewer(roomId) {
@@ -12107,6 +12112,15 @@ ${existingKeys.slice(0, 100).join(', ')}
                     }).catch(err => {
                         console.error('Viewer update_caption error:', err);
                     });
+                } else if (data.type === 'remove_caption') {
+                    if (data.id && viewerCaptionFeed) {
+                        const card = viewerCaptionFeed.querySelector(`[data-caption-id="${data.id}"]`);
+                        if (card) {
+                            card.remove();
+                            if (viewerCardCount > 0) viewerCardCount--;
+                            if (totalCardsCount) totalCardsCount.textContent = viewerCardCount;
+                        }
+                    }
                 }
             });
 
