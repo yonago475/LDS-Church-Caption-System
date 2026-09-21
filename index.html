@@ -10191,7 +10191,9 @@ ${existingKeys.slice(0, 100).join(', ')}
             }
 
             liveInputAccumulator += text;
-            const cleaned = cleanLiveTranscribeJapanese(liveInputAccumulator);
+            let cleaned = cleanLiveTranscribeJapanese(liveInputAccumulator);
+            // 英文のピリオド・感嘆符・疑問符の直後に大文字が直接続いている場合の半角スペース自動補正（例: will.There ➔ will. There）
+            cleaned = cleaned.replace(/(?<=[.!?])(?=[A-Z])/g, ' ');
 
             // 途中経過のリアルタイムプレビュー表示
             if (interimText) {
@@ -10248,8 +10250,8 @@ ${existingKeys.slice(0, 100).join(', ')}
             };
 
             // 1. 日英両対応の文末記号（句点・ピリオド・感嘆符・疑問符）で文を切り出して即座に自律確定
-            // ※Mr. Mrs. Dr. Pres. 等の略称ピリオドは除外
-            const sentenceSplitRegex = /(?<=[。！？])\s*|(?<!\b(?:Mr|Mrs|Ms|Dr|vs|Pres|Sr|Jr|etc|[A-Z])\.)(?<=[.!?])\s+(?=[A-Z0-9"“'‘]|$)/i;
+            // ※Mr. Mrs. Dr. Pres. 等の略称ピリオドは除外、スペース有無に関わらず大文字が続けば分割
+            const sentenceSplitRegex = /(?<=[。！？])\s*|(?<!\b(?:Mr|Mrs|Ms|Dr|vs|Pres|Sr|Jr|etc|[A-Z])\.)(?<=[.!?])\s*(?=[A-Z0-9"“'‘]|$)/i;
             const parts = cleaned.split(sentenceSplitRegex);
             if (parts.length > 1) {
                 for (let i = 0; i < parts.length - 1; i++) {
@@ -10723,16 +10725,17 @@ ${existingKeys.slice(0, 100).join(', ')}
             // 日英両対応の個別文分割ヘルパー（段落や複数文を一文ずつに小分け）
             function splitIntoIndividualSentences(text) {
                 if (!text || !text.trim()) return [];
-                const trimmed = text.trim();
-                // 1. 日本語句点（。！？）または 英語文末記号（ピリオド・感嘆符・疑問符 + 空白）
+                // 英文のピリオド・感嘆符・疑問符の直後に大文字が直接続いている場合の半角スペース自動補正（will.There ➔ will. There）
+                const normalized = text.trim().replace(/(?<=[.!?])(?=[A-Z])/g, ' ');
+                // 1. 日本語句点（。！？）または 英語文末記号（ピリオド・感嘆符・疑問符 + 空白または大文字）
                 // ※略語（Mr. Mrs. Dr. Pres. 等）は除外
-                const parts = trimmed.split(/(?<=[。！？])\s*|(?<!\b(?:Mr|Mrs|Ms|Dr|vs|Pres|Sr|Jr|etc|[A-Z])\.)(?<=[.!?])\s+(?=[A-Z0-9"“'‘]|$)/i);
+                const parts = normalized.split(/(?<=[。！？])\s*|(?<!\b(?:Mr|Mrs|Ms|Dr|vs|Pres|Sr|Jr|etc|[A-Z])\.)(?<=[.!?])\s*(?=[A-Z0-9"“'‘]|$)/i);
                 const result = [];
                 for (const p of parts) {
                     const clean = p.trim();
                     if (clean) result.push(clean);
                 }
-                return result.length > 0 ? result : [trimmed];
+                return result.length > 0 ? result : [normalized];
             }
 
             // バッチバッファにアイテムを追加（辞書プレパス済み ＆ 遅延0ms即時配信 ＆ 裏側AIバッチ蓄積）
@@ -10956,10 +10959,45 @@ ${existingKeys.slice(0, 100).join(', ')}
                     // Gemini API へ一括送信
 
                     const batchResult = await correctWithGeminiBatch(items);
-
                     const sentences = batchResult.sentences || [];
 
-
+                    // 【文数不一致ガード】全自動配信モード時:
+                    // 1. 文数超過時（Geminiが余分に文を分割した場合）: 末尾カードにスマート統合して items.length と完全一致させる
+                    //    これにより sentences.length === items.length を100%保証し、余計な新規カードの一括噴出を物理的に根絶
+                    if (!isManualMode && sentences.length > items.length && items.length > 0) {
+                        const mergedLastSentence = sentences[items.length - 1];
+                        for (let extraIdx = items.length; extraIdx < sentences.length; extraIdx++) {
+                            const extra = sentences[extraIdx];
+                            if (extra.ja) {
+                                mergedLastSentence.ja = (mergedLastSentence.ja ? (mergedLastSentence.ja + ' ') : '') + extra.ja;
+                            }
+                            if (extra.en) {
+                                mergedLastSentence.en = (mergedLastSentence.en ? (mergedLastSentence.en + ' ') : '') + extra.en;
+                            }
+                            if (extra.translations && mergedLastSentence.translations) {
+                                Object.keys(extra.translations).forEach(k => {
+                                    mergedLastSentence.translations[k] = (mergedLastSentence.translations[k] ? (mergedLastSentence.translations[k] + ' ') : '') + extra.translations[k];
+                                });
+                            } else if (extra.translations) {
+                                mergedLastSentence.translations = extra.translations;
+                            }
+                        }
+                        sentences.splice(items.length);
+                    }
+                    // 2. 文数不足時（Geminiが複数文を統合した場合）: 未更新カードが残らないよう、items の辞書補正テキストで補完
+                    if (!isManualMode && sentences.length < items.length) {
+                        for (let missingIdx = sentences.length; missingIdx < items.length; missingIdx++) {
+                            const missingItem = items[missingIdx];
+                            sentences.push({
+                                ja: missingItem.preCorrected,
+                                en: null,
+                                translations: null,
+                                isAiSuccess: false,
+                                rawChunk: missingItem.rawChunk,
+                                preCorrected: missingItem.preCorrected
+                            });
+                        }
+                    }
 
                     // 結果を1文ずつ配信/手動キューに振り分け
 
