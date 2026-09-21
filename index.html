@@ -3728,130 +3728,87 @@
 function createSectionDetector() {
 
     let currentSectionType = 'general';
-
     let sectionChangeTimer = null;
-
-
+    let sacramentSafetyTimer = null; // 聖餐の祈り自動失効安全タイマー
 
     function detectSection(text) {
-
         // 入力ガード: null/undefined/非文字列の場合は現在のセクションをそのまま返却
         if (!text || typeof text !== 'string') return currentSectionType;
 
-
-
         // 聖餐の祈り（最優先判定: 非常に定型的なフレーズ）
-
         if (/おおかみよ|パンを祝福|御子の体の記念|水を祝福|いつも御子を覚え|御子の御霊を受けられる|このパンを頂く|この水を頂く|御子の血の記念|祝し(聖めて|福し)/.test(text)) {
-
             if (sectionChangeTimer) { clearTimeout(sectionChangeTimer); sectionChangeTimer = null; }
-
+            if (sacramentSafetyTimer) clearTimeout(sacramentSafetyTimer);
             currentSectionType = 'sacrament_prayer';
-
+            // 安全対策: 聖餐の祈りは長くても1分以内で終わるため、最大75秒経過で無条件に一般(general)へ復帰（スピーチ汚染防止）
+            sacramentSafetyTimer = setTimeout(() => {
+                if (currentSectionType === 'sacrament_prayer') {
+                    currentSectionType = 'general';
+                }
+            }, 75000);
             return currentSectionType;
-
         }
 
-        // 祈り・証の終了検出（アーメン → 5秒後にgeneralへ復帰）
-        // Bug-06修正: testimony（証）もアーメンで一般に復帰できるように条件へ追加
-        if (/アーメン/.test(text) && (currentSectionType === 'prayer' || currentSectionType === 'sacrament_prayer' || currentSectionType === 'testimony')) {
-
+        // 祈り・証の終了検出（アーメン / amen → 2秒後にgeneralへ迅速復帰）
+        if (/(アーメン|あーめん|amen)/i.test(text) && (currentSectionType === 'prayer' || currentSectionType === 'sacrament_prayer' || currentSectionType === 'testimony')) {
             if (sectionChangeTimer) clearTimeout(sectionChangeTimer);
-
-            sectionChangeTimer = setTimeout(() => { currentSectionType = 'general'; }, 5000);
-
+            if (sacramentSafetyTimer) { clearTimeout(sacramentSafetyTimer); sacramentSafetyTimer = null; }
+            sectionChangeTimer = setTimeout(() => { currentSectionType = 'general'; }, 2000);
             return currentSectionType;
-
         }
 
         // 祈りの開始
-        // Bug-07修正: 新しい祈り開始時に先行タイマーを確実にクリア
-        if (/天の御父(様|よ)|父なる神(様|よ)|永遠の父なる/.test(text)) {
-
+        if (/天の御父(様|よ)|父なる神(様|よ)|永遠の父なる|(Our\s+)?Heavenly\s+Father/i.test(text)) {
             if (sectionChangeTimer) { clearTimeout(sectionChangeTimer); sectionChangeTimer = null; }
-
+            if (sacramentSafetyTimer) { clearTimeout(sacramentSafetyTimer); sacramentSafetyTimer = null; }
             currentSectionType = 'prayer';
-
             return currentSectionType;
-
         }
 
         // 証
-        // Bug-07修正: 証開始時に先行タイマーを確実にクリア
         if (/証(を述べ|します|いたし|させて)|わたし(は|の)知って|真実であると(証|知)/.test(text)) {
-
             if (sectionChangeTimer) { clearTimeout(sectionChangeTimer); sectionChangeTimer = null; }
-
+            if (sacramentSafetyTimer) { clearTimeout(sacramentSafetyTimer); sacramentSafetyTimer = null; }
             currentSectionType = 'testimony';
-
             return currentSectionType;
-
         }
 
         return currentSectionType;
-
     }
-
-
 
     function getCurrentSection() {
-
         return currentSectionType;
-
     }
-
-
 
     function reset() {
-
         currentSectionType = 'general';
-
         if (sectionChangeTimer) clearTimeout(sectionChangeTimer);
-
         sectionChangeTimer = null;
-
+        if (sacramentSafetyTimer) clearTimeout(sacramentSafetyTimer);
+        sacramentSafetyTimer = null;
     }
 
-
-
     return { detectSection, getCurrentSection, reset };
-
 }
 
-
-
 // 場面ごとのAI補正ヒント（プロンプトに付与）
-
 const SECTION_HINTS = {
-
     general: '【現在の場面】一般（説教・話・賛美歌の発表・報告・ビジネス（召しの支持・解任）。賛美歌発表時は番号と曲名を対照表に基づき正確に出力し、英語には英語番号 (English #XX) を付与。支持＝「手を挙げてその意を表してください」）',
-
     prayer: '【現在の場面】祈り（定型フレーズが中心。「皆→御名」「音痴/音質→天の御父」「手話→主は」の変換を積極的に適用。結びは「イエス・キリストの聖なる御名により、アーメン」）',
-
-    sacrament_prayer: '【現在の場面】聖餐の祈り（聖典モロナイ4〜5章の厳格な定型句。「永遠の父なる神よ、わたしたちは御子イエス・キリストの御名によって…」「パン: 御子の体の記念 / 水: 御子の血の記念」「いつも御子を覚え」「御子の御霊を受けられるように」等の聖典完全再現を最優先）',
-
+    sacrament_prayer: '【現在の場面】聖餐の祈り（話者が実際にパンまたは水の祝福の祈りを捧げている場合のみ、聖典モロナイ書通りの定型文に補正。話者が個人的な話・証・日常体験・英語スピーチをしている場合は絶対に聖餐の祈りに書き換えてはならず、話者の言葉を忠実に尊重すること）',
     testimony: '【現在の場面】証（個人の信仰告白。「〜であると証します」「〜を知っています」「〜に感謝します」のパターンが頻出。証＝testimony）'
-
 };
 
-
-
         const _sectionDetector = createSectionDetector();
-
         const detectSection = _sectionDetector.detectSection;
-
         let currentSectionType = 'general';
-
         const _origDetect = detectSection;
-
-        const detectSectionSync = (text) => {
-
+        const detectSectionSync = (text, isAiOutput = false) => {
+            // 安全対策: AIが生成したテキストからは場面を自動判定させない（ハルシネーションの自己感染・ループ完全防止）
+            if (isAiOutput) return currentSectionType;
             const result = _origDetect(text);
-
             currentSectionType = _sectionDetector.getCurrentSection();
-
             return result;
-
         };
 
 
@@ -4925,7 +4882,7 @@ function isIncompletePhrase(text) {
         let isRefreshingLiveWs = false; // 再接続中フラグ（onclose暴発防止）
         let liveAmenReconnectTimeout = null; // アーメン検知後の遅延再接続タイマー
 
-        // Gemini 3.5 Transcribe Live 用カスタム語彙（Speech Biasing / 150語）
+        // Gemini 3.5 Transcribe Live 用カスタム語彙（Speech Biasing / 日英バイリンガル対応）
         const CHURCH_CUSTOM_VOCABULARY = [
             "神権", "神権者", "アロン神権", "メルキゼデク神権", "聖餐", "聖餐会", "贖罪", "救い主",
             "天の御父", "主イエス・キリスト", "イエス様", "モルモン書", "聖典", "証", "証します",
@@ -4937,7 +4894,11 @@ function isIncompletePhrase(text) {
             "ネルソン大管長", "オークス大管長", "アイリング管長", "使徒", "十二使徒定員会", "七十人",
             "福音", "回復", "永遠の家族", "安息日", "礼拝堂", "賛美歌", "開会の祈り", "閉会の祈り",
             "断食", "断食安息日", "信仰箇条", "悔い改め", "信仰", "希望", "慈善", "聖約", "約束の地",
-            "救いの計画", "幸福の計画", "日の栄え", "月の栄え", "星の栄え", "復活", "昇栄", "御名により", "アーメン"
+            "救いの計画", "幸福の計画", "日の栄え", "月の栄え", "星の栄え", "復活", "昇栄", "御名により", "アーメン",
+            // 英語・バイリンガル通訳スピーチ用 Speech Biasing
+            "Jesus Christ", "Heavenly Father", "Atonement", "Sacrament", "Baptism", "Testimony",
+            "Book of Mormon", "Holy Ghost", "Relief Society", "Primary", "Bishop", "Elder",
+            "President Oaks", "temple", "covenant", "commandments", "gospel", "Amen"
         ];
 
         // 話者の入力言語設定 ('ja', 'en', 'tl')
@@ -7614,7 +7575,16 @@ function isIncompletePhrase(text) {
 
 ・【大管長・指導者名の維持と現在の大管長】: 現在の教会の第18代大管長は「ダリン・H・オークス大管長（President Dallin H. Oaks）」です。話者が「オークス大管長（ホークス大官庁など）」「ダリン・H・オークス大管長」と述べた場合は必ずオークス大管長として正確に出力してください。また、話者が歴代の大管長や使徒（ラッセル・M・ネルソン大管長、トーマス・S・モンソン大管長、ゴードン・B・ヒンクレー大管長など）に言及した場合、発言された指導者の名前を勝手に別の大管長や使徒の名前にすり替えたり書き換えたりしてはなりません。
 
-・【架空の述語・新事実の捏造厳禁】: 「〜と」「〜を」「〜に」「〜の皆さんと」のように助詞や名詞で途切れている入力に対し、話者が発言していない架空の感謝文（例: 『〜心から感謝いたします』『〜共に集えることを感謝します』『〜感謝をお伝えします』等）や、新しい述語・事実（『〜を知っています』『〜を証します』等）をゼロから勝手に創作して文をでっち上げることを【厳禁】とします。話者の発言どおり読点「、」で留めて出力してください。
+・【架空の述語・新事実の捏造厳禁】: 「〜と」「〜を」「〜に」「〜の皆さんと」のように助詞や名詞で途切れている入力に対し、話者が発言していない架空の感謝文（例: 『〜心から感謝いたします』『〜共に集えることを感謝します』『〜感謝をお伝えします』等）や、新しい述語・事実（『〜を知っています』『〜を証します』『主の御心があるでしょうか』等）をゼロから勝手に創作して文をでっち上げることを【厳禁】とします。意味が取れない場合は原文の発音のまま留めてください。
+
+・【個人的な体験談・日常エピソードの完全尊重（宗教用語への勝手なすり替え厳禁）】: 話者がスピーチや証で語る個人的な体験談（例: 魚、動植物、食べ物、家族の会話、貧しさ、病気や事故、趣味、仕事、学生時代など日常的なエピソード）は、絶対に勝手に「主の御心」「神権」「聖餐」などの高尚な宗教用語に書き換えてはなりません。「魚を見せてください」と話したなら、絶対にそのまま「魚を見せてください」と出力してください。話者の素朴で真摯な言葉を勝手に宗教用語へ「格上げ」することは固く禁じます。
+
+・【聖餐の祈りの適用限定と通常スピーチの混同厳禁】: 聖餐の祈り（モロナイ書4〜5章）への補正は、話者が実際に聖餐の台（パンや水の前）で聖餐の祈りを捧げている場合のみに適用してください。話者が通常のお話、証、個人的な体験談、英語スピーチをしている最中に、断片的な言葉（「パン」「水」「祈り」「There are things」等）が入ってきたとしても、絶対に聖餐の祈りの定型文を出力してはなりません。
+
+・【日英混在・通訳スピーチ（Bilingual Interpretation）のルール】: 英語スピーチと日本語通訳が交互に入る場合、
+  - 英語で話された文は、自然で温かい日本語訳を "ja" に、自然に整えた英語（原文）を "en" に出力してください。
+  - 日本語で通訳された文は、そのままの日本語を "ja" に、公式英訳を "en" に出力してください。
+  - 英語の断片が入ってきても、勝手に定型句や聖餐の祈りにすり替えないでください。
 
 
 
@@ -8677,11 +8647,17 @@ const validModels = models
 
                                     aiStats.activeModelName = successfulModel;
 
-                                    recentContextHistory.push(jaText);
+                                    // 直前文脈の更新: 聖餐の祈り定型文が通常スピーチ中に誤って直前文脈を汚染・固定化しないよう防護
+                                    const isSacramentPrayerText = /永遠の父なる神よ.*御子イエス・キリストの御名によって|このパンを頂くすべての人々が.*御子の体の記念|この水を頂くすべての人々が.*御子の血の記念/.test(jaText);
+                                    const matchingRawText = (mergedSentences.length === items.length && items[idx]) ? items[idx].rawChunk : combinedRaw;
+                                    const isRawSacrament = /パンを祝福|水を祝福|御子の体の記念|御子の血の記念/.test(matchingRawText);
+                                    if (!isSacramentPrayerText || isRawSacrament) {
+                                        recentContextHistory.push(jaText);
+                                        if (recentContextHistory.length > 3) recentContextHistory.shift();
+                                    }
 
-                                    if (recentContextHistory.length > 3) recentContextHistory.shift();
-
-                                    detectSectionSync(jaText);
+                                    // 場面自動判定はAI生成テキストではなく「マイクの生音声RAW」のみから判定（ハルシネーションの自己感染防止）
+                                    detectSectionSync(matchingRawText, false);
 
                                 }
 
@@ -8742,11 +8718,8 @@ const validModels = models
                             aiStats.aiCorrected++;
 
                             recentContextHistory.push(rawJaText);
-
                             if (recentContextHistory.length > 3) recentContextHistory.shift();
-
-                            detectSectionSync(rawJaText);
-
+                            detectSectionSync(items[0] ? items[0].rawChunk : rawJaText, false);
                             updateAiStatsDisplay();
 
                         }
@@ -10265,8 +10238,10 @@ ${existingKeys.slice(0, 100).join(', ')}
 
                 ws.onopen = () => {
                     clearTimeout(timeoutId);
-                    console.log('[Gemini 3.5 Live] WebSocket connected. Sending Setup...');
-                    const langCode = currentInputLanguage === 'en' ? 'en-US' : (currentInputLanguage === 'tl' ? 'fil-PH' : 'ja-JP');
+                    // 通訳形式（英語スピーチ＋日本語通訳）でも両方を自動認識できるようマルチ言語コードを指定
+                    const langCodes = (currentInputLanguage === 'en')
+                        ? ['en-US', 'ja-JP']
+                        : (currentInputLanguage === 'tl' ? ['fil-PH', 'ja-JP', 'en-US'] : ['ja-JP', 'en-US']);
                     const setupMessage = {
                         setup: {
                             model: 'models/gemini-3.5-transcribe-live',
@@ -10274,7 +10249,7 @@ ${existingKeys.slice(0, 100).join(', ')}
                                 responseModalities: ["TEXT"]
                             },
                             inputAudioTranscription: {
-                                languageCodes: [langCode],
+                                languageCodes: langCodes,
                                 customVocabulary: CHURCH_CUSTOM_VOCABULARY
                             }
                         }
@@ -10432,7 +10407,7 @@ ${existingKeys.slice(0, 100).join(', ')}
 
                 const sourceNode = liveAudioContext.createMediaStreamSource(liveMediaStream);
                 const gainNode = liveAudioContext.createGain();
-                gainNode.gain.value = 1.8; // 生音増幅
+                gainNode.gain.value = 2.2; // 生音増幅（高齢者や演台から離れた声も拾えるよう適正増幅）
                 sourceNode.connect(gainNode);
 
                 // 2. WebSocket 接続確立
@@ -10451,9 +10426,8 @@ ${existingKeys.slice(0, 100).join(', ')}
 
                 // 4. リアルタイム音声送信
                 const CHUNK_SIZE = 2048;
-                let silenceDurationMs = 0;
-                const SILENCE_THRESHOLD = 0.18;
-                const BREATH_POUSE_MS = 200;
+                // 高齢者や小さな声、演台から離れた声も確実に検知できるよう閾値を適正化（0.18 → 0.02）
+                const SILENCE_THRESHOLD = 0.02;
 
                 liveScriptProcessor = liveAudioContext.createScriptProcessor(CHUNK_SIZE, 1, 1);
                 liveScriptProcessor.onaudioprocess = (event) => {
@@ -10466,24 +10440,18 @@ ${existingKeys.slice(0, 100).join(', ')}
                         if (abs > maxAmp) maxAmp = abs;
                     }
 
-                    const chunkDurationMs = (inputFloat32.length / liveAudioContext.sampleRate) * 1000;
+                    // 微細な音声（0.02以上）でも話者の発話として検知し、沈黙タイマーをリセット
                     if (maxAmp >= SILENCE_THRESHOLD) {
-                        silenceDurationMs = 0;
-                        lastLiveSpeechTimestamp = Date.now(); // 有意な音声を検知したら沈黙タイマーをリセット
-                    } else {
-                        silenceDurationMs += chunkDurationMs;
+                        lastLiveSpeechTimestamp = Date.now();
                     }
 
                     const downsampled = downsampleTo16k(inputFloat32, liveAudioContext.sampleRate);
                     const pcm16 = new Int16Array(downsampled.length);
 
-                    if (silenceDurationMs >= BREATH_POUSE_MS) {
-                        pcm16.fill(0);
-                    } else {
-                        for (let i = 0; i < downsampled.length; i++) {
-                            const s = Math.max(-1, Math.min(1, downsampled[i]));
-                            pcm16[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
-                        }
+                    // 音声ゼロ塗りつぶし（小さな声の破壊）を完全撤廃し、生音声を忠実に送信
+                    for (let i = 0; i < downsampled.length; i++) {
+                        const s = Math.max(-1, Math.min(1, downsampled[i]));
+                        pcm16[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
                     }
 
                     const base64 = arrayBufferToBase64(pcm16.buffer);
