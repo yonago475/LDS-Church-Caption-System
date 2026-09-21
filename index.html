@@ -5284,6 +5284,34 @@ function isIncompletePhrase(text) {
 
         const targetLangSelect = document.getElementById('targetLangSelect');
 
+        // 多言語対応バッジ辞書 (Badge Translations)
+        const BADGE_I18N = {
+            ja: { realtime: '⚡ リアルタイム', ai: '✨ AI補正済', edit: '✍️ 手動修正' },
+            en: { realtime: '⚡ Realtime', ai: '✨ AI Polished', edit: '✍️ Edited' },
+            tl: { realtime: '⚡ Realtime', ai: '✨ AI Polished', edit: '✍️ Na-edit' },
+            'zh-CN': { realtime: '⚡ 实时', ai: '✨ AI已优化', edit: '✍️ 手动修改' },
+            'zh-TW': { realtime: '⚡ 即時', ai: '✨ AI已優化', edit: '✍️ 手動修改' },
+            pt: { realtime: '⚡ Tempo Real', ai: '✨ Otimizado por IA', edit: '✍️ Editado' },
+            es: { realtime: '⚡ En vivo', ai: '✨ Optimizado por IA', edit: '✍️ Editado' },
+            ko: { realtime: '⚡ 실시간', ai: '✨ AI 보정 완료', edit: '✍️ 수동 수정' }
+        };
+
+        function getBadgeText(type, lang) {
+            const target = BADGE_I18N[lang] || BADGE_I18N['en'] || BADGE_I18N['ja'];
+            return target[type] || target['realtime'];
+        }
+
+        function getBadgeHtml(type, lang) {
+            const text = getBadgeText(type, lang);
+            if (type === 'ai') {
+                return `<span class="text-[10px] text-purple-400 font-bold" data-badge-type="ai">${text}</span>`;
+            } else if (type === 'edit') {
+                return `<span class="text-[10px] text-amber-400 font-bold" data-badge-type="edit">${text}</span>`;
+            } else {
+                return `<span class="text-[10px] text-amber-400 font-medium" data-badge-type="realtime">${text}</span>`;
+            }
+        }
+
         const viewerCaptionFeed = document.getElementById('viewerCaptionFeed');
 
         const peerConnectionStatus = document.getElementById('peerConnectionStatus');
@@ -5840,6 +5868,15 @@ function isIncompletePhrase(text) {
                 safeLocalStorageSet('lds_caption_lang', newLang);
 
                 updateViewerUIStrings(newLang);
+
+                // 既存カードのバッジテキストを選択言語に同期
+                if (viewerCaptionFeed) {
+                    const badgeElements = viewerCaptionFeed.querySelectorAll('[data-badge-type]');
+                    badgeElements.forEach(el => {
+                        const bType = el.dataset.badgeType;
+                        el.textContent = getBadgeText(bType, newLang);
+                    });
+                }
 
                 // ホストへ言語選択変更を通知（オンデマンド他言語翻訳を自動起動）
                 if (hostConnection && hostConnection.open) {
@@ -7555,6 +7592,10 @@ function isIncompletePhrase(text) {
 ・音声認識による同音異義語や聞き間違い（例: 精算/生産→聖餐、明かし/赤潮→証、手話→主は、食材→贖罪、晴天→聖典、電動→伝道、使える→仕える、音痴→天の御父等）は、前後の文脈に合わせて【教会用語へ積極的に補正・変換】してください。
 
 ・音声の息継ぎで途切れた文章であっても、自然で格調高い日本語になるよう、適切な読点「、」や句点「。」を必ず補って1行で出力してください。また、言い淀みや連用形で終わる文末（例: 「〜歩き」→「〜歩かれました」）は、その動詞を活かして自然な敬語の終止形に整えてください。
+
+・【先回り補完・架空の続きの作文厳禁】:
+  - 話者が発言していない未来の文章や述語を勝手に想像・創作して付け足すことは【絶対に禁止】します。
+  - 「〜に、」「〜で、」「〜を」「〜について、」など文の途中で切れているテキストに対しては、入力された範囲の言葉遣いと意味のみを忠実に校正・維持し、勝手に文章を完結させたり、架空の続きを作文したりしないでください。
 
 ・【ディテール完全保持・要約の禁止】: 話者が口にした語彙、修飾語、並列表現（例: 「導き、慰め、嘆きを聞き、恐れを取り除き、涙を拭ってくださいます」等）は、絶対に要約したり削ぎ落としたりせず、話者の熱量と言葉遣いを100%忠実に字幕として残してください。AIの役目は要約ではなく「文字起こしの誤字脱字・教会用語・文末敬語の正確な校正」です。
 
@@ -10725,6 +10766,47 @@ ${existingKeys.slice(0, 100).join(', ')}
                 if (recentBatchInputHistory.some(item => item.norm === normChunk)) return;
                 recentBatchInputHistory.push({ norm: normChunk, time: now });
 
+                // 【スマートアペンド: 未完フレーズの先行カード連結更新】
+                // 直前のアイテムが未完フレーズ（読点・助詞止め等）の場合、新規カードを発行せず先行カードをその場追記更新する
+                if (batchBuffer.length > 0) {
+                    const lastItem = batchBuffer[batchBuffer.length - 1];
+                    const isLastIncomplete = isIncompletePhrase(lastItem.rawChunk) || /[、，,]$/.test(lastItem.rawChunk.trim());
+                    if (isLastIncomplete) {
+                        const needsSpace = /[a-zA-Z0-9]$/.test(lastItem.rawChunk) && /^[a-zA-Z0-9]/.test(trimmedRaw);
+                        const combinedRaw = lastItem.rawChunk + (needsSpace ? ' ' : '') + trimmedRaw;
+                        const combinedPreCorrected = fixScriptureReferences(replaceChurchTerms(combinedRaw));
+
+                        lastItem.rawChunk = combinedRaw;
+                        lastItem.preCorrected = combinedPreCorrected;
+                        lastItem.dictChanged = (combinedPreCorrected !== combinedRaw);
+
+                        if (!isManualMode) {
+                            broadcastToViewers({
+                                type: 'update_caption',
+                                id: lastItem.id,
+                                text: combinedPreCorrected,
+                                englishText: null,
+                                translations: null,
+                                isProvisional: true,
+                                isAiApplied: false
+                            });
+                            updateHostTranscript(lastItem.id, combinedPreCorrected, null, false);
+                        }
+
+                        // バッチタイマーを更新（連結後4.5秒待機してGeminiへ送信）
+                        if (batchTimer) {
+                            clearTimeout(batchTimer);
+                            batchTimer = null;
+                        }
+                        batchTimer = setTimeout(() => {
+                            batchTimer = null;
+                            flushBatchBuffer();
+                        }, 4500);
+
+                        return;
+                    }
+                }
+
                 // 第1段: ローカル辞書＋聖典補正（即時 0ms）
                 const preCorrected = fixScriptureReferences(replaceChurchTerms(trimmedRaw));
                 const dictChanged = (preCorrected !== trimmedRaw);
@@ -10831,12 +10913,12 @@ ${existingKeys.slice(0, 100).join(', ')}
                 }
 
                 // 【未完フレーズ保留ロジック】
-                // 強制フラッシュでなく、かつ認識中(isRecognizing)の場合、末尾の未完フレーズを次回へ保留
+                // 強制フラッシュでなく、かつ音声認識中(isRecognizing || isLiveTranscribing)の場合、末尾の未完フレーズを次回へ保留
                 let items = [];
-                if (!forceFlush && isRecognizing) {
+                if (!forceFlush && (isRecognizing || isLiveTranscribing)) {
                     if (batchBuffer.length > 1) {
                         const lastItem = batchBuffer[batchBuffer.length - 1];
-                        if (isIncompletePhrase(lastItem.rawChunk)) {
+                        if (isIncompletePhrase(lastItem.rawChunk) || /[、，,]$/.test(lastItem.rawChunk.trim())) {
                             // 末尾の未完フレーズを残し、手前の完全文だけを取り出して処理
                             items = batchBuffer.splice(0, batchBuffer.length - 1);
                         } else {
@@ -10844,7 +10926,7 @@ ${existingKeys.slice(0, 100).join(', ')}
                         }
                     } else if (batchBuffer.length === 1) {
                         const onlyItem = batchBuffer[0];
-                        if (isIncompletePhrase(onlyItem.rawChunk)) {
+                        if (isIncompletePhrase(onlyItem.rawChunk) || /[、，,]$/.test(onlyItem.rawChunk.trim())) {
                             // 1件しかなく未完の場合: すぐにGeminiに送らず次を待つ（孤立防止タイマーで7秒沈黙時に強制フラッシュ）
                             if (!incompleteHoldTimer) {
                                 incompleteHoldTimer = setTimeout(() => {
@@ -11971,9 +12053,13 @@ ${existingKeys.slice(0, 100).join(', ')}
                             }
                         }
 
-                        // AI補正完了バッジの付与
-                        if (badgeEl && data.isAiApplied) {
-                            badgeEl.innerHTML = '<span class="text-[10px] text-purple-400 font-bold">✨ AI補正済</span>';
+                        // バッジの更新（選択言語に応じた多言語バッジ表示）
+                        if (badgeEl) {
+                            if (data.isAiApplied) {
+                                badgeEl.innerHTML = getBadgeHtml('ai', targetLang);
+                            } else if (data.isProvisional) {
+                                badgeEl.innerHTML = getBadgeHtml('realtime', targetLang);
+                            }
                         }
 
                         // ユーザーが手動スクロール中でなく、最下部付近にいる時のみスクロール追従
@@ -12660,7 +12746,7 @@ ${existingKeys.slice(0, 100).join(', ')}
                     <span class="flex items-center gap-1.5">
                         <span><i class="fa-solid fa-globe mr-1 text-indigo-400"></i> ${escapeHtml(langLabel)}</span>
                         <span class="caption-status-badge">
-                            ${isProvisional ? '<span class="text-[10px] text-amber-400 font-medium">⚡ リアルタイム</span>' : ''}
+                            ${isProvisional ? getBadgeHtml('realtime', (targetLangSelect ? targetLangSelect.value : 'ja')) : ''}
                         </span>
                     </span>
                     <span class="font-mono">${escapeHtml(timestamp || '')}</span>
