@@ -10180,8 +10180,10 @@ ${existingKeys.slice(0, 100).join(', ')}
                 }
             };
 
-            // 1. 句点（。！？）で文を切り出して即座に自律確定
-            const parts = cleaned.split(/(?<=[。！？])/);
+            // 1. 日英両対応の文末記号（句点・ピリオド・感嘆符・疑問符）で文を切り出して即座に自律確定
+            // ※Mr. Mrs. Dr. Pres. 等の略称ピリオドは除外
+            const sentenceSplitRegex = /(?<=[。！？])\s*|(?<!\b(?:Mr|Mrs|Ms|Dr|vs|Pres|Sr|Jr|etc|[A-Z])\.)(?<=[.!?])\s+(?=[A-Z0-9"“'‘]|$)/i;
+            const parts = cleaned.split(sentenceSplitRegex);
             if (parts.length > 1) {
                 for (let i = 0; i < parts.length - 1; i++) {
                     const sentence = parts[i].trim();
@@ -10190,23 +10192,39 @@ ${existingKeys.slice(0, 100).join(', ')}
                     }
                 }
                 liveInputAccumulator = parts[parts.length - 1].trim();
-            } else if (cleaned.length >= 25) {
-                // 2. 句点がない場合でも、25文字以上で読点「、」または文末表現（です|ます|ました|ません|でした）で自然に分割
-                const splitMatch = cleaned.slice(15).search(/[、\s]|(です|ます|ました|ません|でした|こと|とき|時|神|主)(?=[一-龠ぁ-んァ-ヶ])/);
-                if (splitMatch !== -1) {
-                    const splitIdx = 15 + splitMatch;
-                    const sentence = cleaned.slice(0, splitIdx + 1).trim();
-                    if (sentence) {
-                        dispatchSentence(sentence);
+            } else {
+                // 2. 句点・ピリオドがない長文のスマート分割（息継ぎなしの早口対策）
+                const isEnglishDominant = /[a-zA-Z]{4,}/.test(cleaned);
+                if (isEnglishDominant) {
+                    // 英語長文: 90文字（約12〜15単語）以上で、末尾から近い単語の境界スペースで分割
+                    if (cleaned.length >= 90) {
+                        const spaceIdx = cleaned.slice(0, 80).lastIndexOf(' ');
+                        if (spaceIdx > 30) {
+                            const sentence = cleaned.slice(0, spaceIdx).trim();
+                            if (sentence) {
+                                dispatchSentence(sentence);
+                            }
+                            liveInputAccumulator = cleaned.slice(spaceIdx + 1).trim();
+                        }
                     }
-                    liveInputAccumulator = cleaned.slice(splitIdx + 1).trim();
-                } else if (cleaned.length >= 40) {
-                    // 40文字を超えたら強制分割
-                    const sentence = cleaned.slice(0, 30).trim();
-                    if (sentence) {
-                        dispatchSentence(sentence);
+                } else if (cleaned.length >= 25) {
+                    // 日本語長文: 25文字以上で読点「、」または文末表現で自然に分割
+                    const splitMatch = cleaned.slice(15).search(/[、\s]|(です|ます|ました|ません|でした|こと|とき|時|神|主)(?=[一-龠ぁ-んァ-ヶ])/);
+                    if (splitMatch !== -1) {
+                        const splitIdx = 15 + splitMatch;
+                        const sentence = cleaned.slice(0, splitIdx + 1).trim();
+                        if (sentence) {
+                            dispatchSentence(sentence);
+                        }
+                        liveInputAccumulator = cleaned.slice(splitIdx + 1).trim();
+                    } else if (cleaned.length >= 40) {
+                        // 40文字を超えたら強制分割
+                        const sentence = cleaned.slice(0, 30).trim();
+                        if (sentence) {
+                            dispatchSentence(sentence);
+                        }
+                        liveInputAccumulator = cleaned.slice(30).trim();
                     }
-                    liveInputAccumulator = cleaned.slice(30).trim();
                 }
             }
 
@@ -10589,11 +10607,36 @@ ${existingKeys.slice(0, 100).join(', ')}
 
 
 
+            // 日英両対応の個別文分割ヘルパー（段落や複数文を一文ずつに小分け）
+            function splitIntoIndividualSentences(text) {
+                if (!text || !text.trim()) return [];
+                const trimmed = text.trim();
+                // 1. 日本語句点（。！？）または 英語文末記号（ピリオド・感嘆符・疑問符 + 空白）
+                // ※略語（Mr. Mrs. Dr. Pres. 等）は除外
+                const parts = trimmed.split(/(?<=[。！？])\s*|(?<!\b(?:Mr|Mrs|Ms|Dr|vs|Pres|Sr|Jr|etc|[A-Z])\.)(?<=[.!?])\s+(?=[A-Z0-9"“'‘]|$)/i);
+                const result = [];
+                for (const p of parts) {
+                    const clean = p.trim();
+                    if (clean) result.push(clean);
+                }
+                return result.length > 0 ? result : [trimmed];
+            }
+
             // バッチバッファにアイテムを追加（辞書プレパス済み ＆ 遅延0ms即時配信 ＆ 裏側AIバッチ蓄積）
             function addToBatchBuffer(rawChunk) {
                 if (!rawChunk || !rawChunk.trim()) return;
 
                 const trimmedRaw = rawChunk.trim();
+
+                // 【複数文スマート自動小分け】段落や複数文が届いた場合、1文ずつ分解して先行配信（1対1上書きの保証）
+                const sentences = splitIntoIndividualSentences(trimmedRaw);
+                if (sentences.length > 1) {
+                    for (const s of sentences) {
+                        addToBatchBuffer(s);
+                    }
+                    return;
+                }
+
                 const normChunk = normalizeCaption(trimmedRaw);
                 const now = Date.now();
 
