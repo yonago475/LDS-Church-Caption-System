@@ -5201,6 +5201,12 @@ function isIncompletePhrase(text) {
 
         let currentManualSourceLang = 'ja';
 
+        let currentManualCaptionId = null; // フェーズ62: エディタ内アイテムのID（AI推敲同期用）
+
+        let currentManualIsProvisional = false; // フェーズ62: エディタ内アイテムが先行プレビュー中か否か
+
+        const manualBroadcastSentMap = new Map(); // フェーズ62: 手動先行配信済みアイテムの追跡 (id -> { isHumanEdited, text, original })
+
         // 接続中ビューワーの言語設定トラッカー (conn -> lang)
         const viewerLanguages = new Map();
 
@@ -6312,6 +6318,14 @@ function isIncompletePhrase(text) {
 
                     const nextEnglish = (typeof nextItem === 'object' && nextItem !== null) ? nextItem.englishText : null;
 
+                    const nextTranslations = (typeof nextItem === 'object' && nextItem !== null) ? nextItem.translations : null;
+
+                    const nextId = (typeof nextItem === 'object' && nextItem !== null) ? nextItem.id : null;
+
+                    const nextIsProvisional = (typeof nextItem === 'object' && nextItem !== null) ? !!nextItem.isProvisional : false;
+
+                    const nextSourceLang = (typeof nextItem === 'object' && nextItem !== null) ? (nextItem.sourceLang || 'ja') : 'ja';
+
                     const norm = normalizeCaption(nextText);
 
                     // Bug-05修正: 直近6秒以内の過去送信履歴との重複を自動スキップ（30秒→6秒に短縮）
@@ -6320,7 +6334,7 @@ function isIncompletePhrase(text) {
 
                     if (!isDup && nextText && nextText.trim()) {
 
-                        return { text: nextText, original: nextOrig, englishText: nextEnglish };
+                        return { id: nextId, text: nextText, original: nextOrig, englishText: nextEnglish, translations: nextTranslations, isProvisional: nextIsProvisional, sourceLang: nextSourceLang };
 
                     }
 
@@ -6351,8 +6365,20 @@ function isIncompletePhrase(text) {
                     const finalEnglishText = isHumanEdited ? null : currentManualEnglishText;
                     const finalTranslations = isHumanEdited ? null : currentManualTranslations;
 
+                    // フェーズ62: 一意なCaption IDを確定
+                    const targetCaptionId = currentManualCaptionId || ('cap_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6));
+
+                    // フェーズ62: 先行手動配信マップに記録（後から届くGemini推敲とのスマート同期用）
+                    manualBroadcastSentMap.set(targetCaptionId, {
+                        isHumanEdited: !!isHumanEdited,
+                        text: corrected,
+                        original: currentManualOriginalRaw
+                    });
+
                     // Bug-05修正: 手動配信ボタン押下は force: true で重複チェックをバイパス
                     dispatchCaption(corrected, {
+
+                        id: targetCaptionId,
 
                         original: currentManualOriginalRaw,
 
@@ -6364,7 +6390,9 @@ function isIncompletePhrase(text) {
 
                         sourceLang: currentManualSourceLang || 'ja',
 
-                        force: true
+                        force: true,
+
+                        isProvisional: currentManualIsProvisional
 
                     });
 
@@ -6378,6 +6406,8 @@ function isIncompletePhrase(text) {
 
                     manualCaptionInput.value = nextItem.text;
 
+                    currentManualCaptionId = nextItem.id || null;
+
                     currentManualOriginalRaw = nextItem.original;
 
                     currentManualInitialText = nextItem.text; // Bug-04修正: 新しいエディタ初期テキストを追跡
@@ -6388,9 +6418,13 @@ function isIncompletePhrase(text) {
 
                     currentManualSourceLang = nextItem.sourceLang || 'ja';
 
+                    currentManualIsProvisional = !!nextItem.isProvisional;
+
                 } else {
 
                     manualCaptionInput.value = '';
+
+                    currentManualCaptionId = null;
 
                     currentManualOriginalRaw = '';
 
@@ -6401,6 +6435,8 @@ function isIncompletePhrase(text) {
                     currentManualTranslations = null;
 
                     currentManualSourceLang = 'ja';
+
+                    currentManualIsProvisional = false;
 
                 }
 
@@ -6427,6 +6463,11 @@ function isIncompletePhrase(text) {
                 currentManualOriginalRaw = currentManualOriginalRaw ? `${currentManualOriginalRaw} ${nextItem.original}` : nextItem.original;
 
                 currentManualInitialText = manualCaptionInput.value; // Bug-04修正: 連結後の新しい初期値として更新
+
+                if (!currentManualCaptionId) {
+                    currentManualCaptionId = nextItem.id || null;
+                }
+                currentManualIsProvisional = currentManualIsProvisional || !!nextItem.isProvisional;
 
                 if (nextItem.englishText && currentManualEnglishText) {
 
@@ -6486,6 +6527,8 @@ function isIncompletePhrase(text) {
 
                         manualCaptionInput.value = nextItem.text;
 
+                        currentManualCaptionId = nextItem.id || null;
+
                         currentManualOriginalRaw = nextItem.original;
 
                         currentManualInitialText = nextItem.text; // Bug-04修正: 破棄後の次文を初期テキストとして追跡
@@ -6494,9 +6537,15 @@ function isIncompletePhrase(text) {
 
                         currentManualTranslations = nextItem.translations || null;
 
+                        currentManualSourceLang = nextItem.sourceLang || 'ja';
+
+                        currentManualIsProvisional = !!nextItem.isProvisional;
+
                     } else {
 
                         manualCaptionInput.value = '';
+
+                        currentManualCaptionId = null;
 
                         currentManualOriginalRaw = '';
 
@@ -6505,6 +6554,10 @@ function isIncompletePhrase(text) {
                         currentManualEnglishText = null;
 
                         currentManualTranslations = null;
+
+                        currentManualSourceLang = 'ja';
+
+                        currentManualIsProvisional = false;
 
                     }
 
@@ -10792,6 +10845,23 @@ ${existingKeys.slice(0, 100).join(', ')}
                                 isAiApplied: false
                             });
                             updateHostTranscript(lastItem.id, combinedPreCorrected, null, false);
+                        } else {
+                            // フェーズ62: 手動配信モード時のスマートアペンド同期
+                            if (currentManualCaptionId === lastItem.id && manualCaptionInput) {
+                                const isHumanEdited = currentManualInitialText && (normalizeCaption(manualCaptionInput.value.trim()) !== normalizeCaption(currentManualInitialText));
+                                if (!isHumanEdited) {
+                                    manualCaptionInput.value = combinedPreCorrected;
+                                    currentManualInitialText = combinedPreCorrected;
+                                    currentManualOriginalRaw = combinedRaw;
+                                }
+                            } else {
+                                const qItem = manualPendingQueue.find(q => q.id === lastItem.id);
+                                if (qItem) {
+                                    qItem.text = combinedPreCorrected;
+                                    qItem.original = combinedRaw;
+                                    updateManualQueueUI();
+                                }
+                            }
                         }
 
                         // バッチタイマーを更新（連結後4.5秒待機してGeminiへ送信）
@@ -10830,6 +10900,34 @@ ${existingKeys.slice(0, 100).join(', ')}
                         timestamp: new Date().toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
                     });
                     appendHostTranscript(preCorrected, { id: uniqueCaptionId, isProvisional: true, original: trimmedRaw });
+                } else {
+                    // フェーズ62: 手動配信モード時: 遅延 0ms で手動エディタまたは待機キューへ即時投入！
+                    if (manualCaptionInput) {
+                        const currentVal = manualCaptionInput.value.trim();
+                        if (!currentVal) {
+                            manualCaptionInput.value = preCorrected;
+                            currentManualCaptionId = uniqueCaptionId;
+                            currentManualOriginalRaw = trimmedRaw;
+                            currentManualInitialText = preCorrected;
+                            currentManualEnglishText = null;
+                            currentManualTranslations = null;
+                            currentManualSourceLang = currentInputLanguage || 'ja';
+                            currentManualIsProvisional = true;
+                            manualCaptionInput.scrollTop = manualCaptionInput.scrollHeight;
+                        } else {
+                            manualPendingQueue.push({
+                                id: uniqueCaptionId,
+                                text: preCorrected,
+                                original: trimmedRaw,
+                                isProvisional: true,
+                                isAi: false,
+                                englishText: null,
+                                translations: null,
+                                sourceLang: currentInputLanguage || 'ja'
+                            });
+                            updateManualQueueUI();
+                        }
+                    }
                 }
 
                 // 第2段: 裏側の AI バッチキューに登録
@@ -11011,7 +11109,7 @@ ${existingKeys.slice(0, 100).join(', ')}
                         let finalAction = 'BROADCAST';
 
                         if (item.isAlreadyBroadcast) {
-                            // 即時先行配信済み ➔ 聴講者画面の既存カードを差分上書き更新（0ms重複防止）
+                            // 即時先行配信済み（全自動モード） ➔ 聴講者画面の既存カードを差分上書き更新（0ms重複防止）
                             broadcastToViewers({
                                 type: 'update_caption',
                                 id: item.id,
@@ -11023,40 +11121,86 @@ ${existingKeys.slice(0, 100).join(', ')}
                             updateHostTranscript(item.id, processedChunk, englishText, isAi);
                             finalAction = 'UPDATE_BROADCAST';
                         } else if (isManualMode) {
-                            const normChunk = normalizeCaption(processedChunk);
-                            const now = Date.now();
-
-                            // 1. Bug-05修正: 直近6秒以内の過去送信履歴との重複チェック（30秒→6秒に短縮）
-                            const isSentDuplicate = recentSentHistory.some(h => {
-                                return (now - h.timestamp < 6000) && (h.norm === normChunk);
-                            });
-
-                            // 2. 現在のエディタ入力内容との重複チェック
-                            const isCurrentInputDuplicate = manualCaptionInput && (normalizeCaption(manualCaptionInput.value.trim()) === normChunk);
-
-                            // 3. 待機キュー内の既存アイテムとの重複チェック
-                            const isQueueDuplicate = manualPendingQueue.some(q => {
-                                const itemText = (typeof q === 'object' && q !== null) ? q.text : q;
-                                return normalizeCaption(itemText) === normChunk;
-                            });
-
-                            if (isSentDuplicate || isCurrentInputDuplicate || isQueueDuplicate) {
-                                finalAction = 'DUPLICATE_SUPPRESSED';
+                            // フェーズ62: 手動配信モードのAI推敲スマート同期
+                            const sentInfo = manualBroadcastSentMap.get(item.id);
+                            if (sentInfo) {
+                                // ① オペレーターがすでに先行手動配信済みの場合:
+                                // 日本語本文: 人間手動編集があればそれを100%死守、なければGemini推敲文
+                                const finalJa = sentInfo.isHumanEdited ? sentInfo.text : processedChunk;
+                                broadcastToViewers({
+                                    type: 'update_caption',
+                                    id: item.id,
+                                    text: finalJa,
+                                    englishText: englishText,
+                                    translations: translations,
+                                    isAiApplied: isAi
+                                });
+                                updateHostTranscript(item.id, finalJa, englishText, isAi);
+                                manualBroadcastSentMap.delete(item.id);
+                                finalAction = 'UPDATE_BROADCAST';
+                            } else if (currentManualCaptionId === item.id && manualCaptionInput) {
+                                // ② まだ手動エディタに入っている場合:
+                                const isHumanEdited = currentManualInitialText && (normalizeCaption(manualCaptionInput.value.trim()) !== normalizeCaption(currentManualInitialText));
+                                if (!isHumanEdited) {
+                                    // 人間が未編集なら、AI推敲文と英訳をスマート反映！
+                                    manualCaptionInput.value = processedChunk;
+                                    currentManualInitialText = processedChunk;
+                                    currentManualOriginalRaw = rawChunk;
+                                    currentManualEnglishText = englishText;
+                                    currentManualTranslations = translations;
+                                    currentManualIsProvisional = false;
+                                    finalAction = 'MANUAL_EDITOR_UPDATED';
+                                } else {
+                                    // 人間が編集中ならテキストは死守し、英語翻訳のみ裏でセット！
+                                    currentManualEnglishText = englishText;
+                                    currentManualTranslations = translations;
+                                    currentManualIsProvisional = false;
+                                    finalAction = 'MANUAL_EDITOR_KEPT_HUMAN';
+                                }
                             } else {
-                                finalAction = 'MANUAL_QUEUED';
-                                if (manualCaptionInput) {
-                                    const currentVal = manualCaptionInput.value.trim();
-                                    if (!currentVal) {
-                                        manualCaptionInput.value = processedChunk;
-                                        currentManualOriginalRaw = rawChunk;
-                                        currentManualInitialText = processedChunk;
-                                        currentManualEnglishText = englishText;
-                                        currentManualTranslations = translations;
-                                        currentManualSourceLang = currentInputLanguage || 'ja';
-                                        manualCaptionInput.scrollTop = manualCaptionInput.scrollHeight;
+                                // ③ 待機キューの中にあるかチェック:
+                                const qItem = manualPendingQueue.find(q => q.id === item.id);
+                                if (qItem) {
+                                    qItem.text = processedChunk;
+                                    qItem.original = rawChunk;
+                                    qItem.englishText = englishText;
+                                    qItem.translations = translations;
+                                    qItem.isAi = isAi;
+                                    qItem.isProvisional = false;
+                                    updateManualQueueUI();
+                                    finalAction = 'MANUAL_QUEUE_UPDATED';
+                                } else {
+                                    // ④ どこにも見当たらない場合のフェイルセーフ（重複チェックして追加）
+                                    const normChunk = normalizeCaption(processedChunk);
+                                    const now = Date.now();
+                                    const isSentDuplicate = recentSentHistory.some(h => (now - h.timestamp < 6000) && (h.norm === normChunk));
+                                    const isCurrentInputDuplicate = manualCaptionInput && (normalizeCaption(manualCaptionInput.value.trim()) === normChunk);
+                                    const isQueueDuplicate = manualPendingQueue.some(q => {
+                                        const itemText = (typeof q === 'object' && q !== null) ? q.text : q;
+                                        return normalizeCaption(itemText) === normChunk;
+                                    });
+
+                                    if (isSentDuplicate || isCurrentInputDuplicate || isQueueDuplicate) {
+                                        finalAction = 'DUPLICATE_SUPPRESSED';
                                     } else {
-                                        manualPendingQueue.push({ id: item.id, text: processedChunk, original: rawChunk, isAi: isAi, englishText: englishText, translations: translations, sourceLang: currentInputLanguage || 'ja' });
-                                        updateManualQueueUI();
+                                        finalAction = 'MANUAL_QUEUED';
+                                        if (manualCaptionInput) {
+                                            const currentVal = manualCaptionInput.value.trim();
+                                            if (!currentVal) {
+                                                manualCaptionInput.value = processedChunk;
+                                                currentManualCaptionId = item.id;
+                                                currentManualOriginalRaw = rawChunk;
+                                                currentManualInitialText = processedChunk;
+                                                currentManualEnglishText = englishText;
+                                                currentManualTranslations = translations;
+                                                currentManualSourceLang = currentInputLanguage || 'ja';
+                                                currentManualIsProvisional = false;
+                                                manualCaptionInput.scrollTop = manualCaptionInput.scrollHeight;
+                                            } else {
+                                                manualPendingQueue.push({ id: item.id, text: processedChunk, original: rawChunk, isAi: isAi, englishText: englishText, translations: translations, sourceLang: currentInputLanguage || 'ja', isProvisional: false });
+                                                updateManualQueueUI();
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -11109,38 +11253,77 @@ ${existingKeys.slice(0, 100).join(', ')}
                         const dictChanged = item.dictChanged;
                         let finalAction = 'BROADCAST';
 
-                        if (isManualMode) {
-                            // Bug-02修正: エラー時でも手動配信モードなら自動配信せずキューに格納
-                            const normChunk = normalizeCaption(processedChunk);
-                            const now = Date.now();
-
-                            const isSentDuplicate = recentSentHistory.some(h => (now - h.timestamp < 6000) && (h.norm === normChunk));
-                            const isCurrentInputDuplicate = manualCaptionInput && (normalizeCaption(manualCaptionInput.value.trim()) === normChunk);
-                            const isQueueDuplicate = manualPendingQueue.some(q => {
-                                const qText = (typeof q === 'object' && q !== null) ? q.text : q;
-                                return normalizeCaption(qText) === normChunk;
+                        if (item.isAlreadyBroadcast) {
+                            broadcastToViewers({
+                                type: 'update_caption',
+                                id: item.id,
+                                text: processedChunk,
+                                englishText: null,
+                                translations: null,
+                                isProvisional: false,
+                                isAiApplied: false
                             });
-
-                            if (isSentDuplicate || isCurrentInputDuplicate || isQueueDuplicate) {
-                                finalAction = 'DUPLICATE_SUPPRESSED';
+                            updateHostTranscript(item.id, processedChunk, null, false);
+                            finalAction = 'UPDATE_BROADCAST';
+                        } else if (isManualMode) {
+                            const sentInfo = manualBroadcastSentMap.get(item.id);
+                            if (sentInfo) {
+                                const finalJa = sentInfo.isHumanEdited ? sentInfo.text : processedChunk;
+                                broadcastToViewers({
+                                    type: 'update_caption',
+                                    id: item.id,
+                                    text: finalJa,
+                                    englishText: null,
+                                    translations: null,
+                                    isProvisional: false,
+                                    isAiApplied: false
+                                });
+                                updateHostTranscript(item.id, finalJa, null, false);
+                                manualBroadcastSentMap.delete(item.id);
+                                finalAction = 'UPDATE_BROADCAST';
+                            } else if (currentManualCaptionId === item.id && manualCaptionInput) {
+                                currentManualIsProvisional = false;
+                                finalAction = 'MANUAL_EDITOR_FALLBACK';
                             } else {
-                                finalAction = 'MANUAL_QUEUED';
-                                if (manualCaptionInput) {
-                                    const currentVal = manualCaptionInput.value.trim();
-                                    if (!currentVal) {
-                                        manualCaptionInput.value = processedChunk;
-                                        currentManualOriginalRaw = rawChunk;
-                                        currentManualInitialText = processedChunk;
-                                        currentManualEnglishText = null;
-                                        manualCaptionInput.scrollTop = manualCaptionInput.scrollHeight;
+                                const qItem = manualPendingQueue.find(q => q.id === item.id);
+                                if (qItem) {
+                                    qItem.isProvisional = false;
+                                    finalAction = 'MANUAL_QUEUE_FALLBACK';
+                                } else {
+                                    // 従来のフォールバック追加
+                                    const normChunk = normalizeCaption(processedChunk);
+                                    const now = Date.now();
+                                    const isSentDuplicate = recentSentHistory.some(h => (now - h.timestamp < 6000) && (h.norm === normChunk));
+                                    const isCurrentInputDuplicate = manualCaptionInput && (normalizeCaption(manualCaptionInput.value.trim()) === normChunk);
+                                    const isQueueDuplicate = manualPendingQueue.some(q => {
+                                        const qText = (typeof q === 'object' && q !== null) ? q.text : q;
+                                        return normalizeCaption(qText) === normChunk;
+                                    });
+
+                                    if (isSentDuplicate || isCurrentInputDuplicate || isQueueDuplicate) {
+                                        finalAction = 'DUPLICATE_SUPPRESSED';
                                     } else {
-                                        manualPendingQueue.push({ text: processedChunk, original: rawChunk, isAi: false, englishText: null });
-                                        updateManualQueueUI();
+                                        finalAction = 'MANUAL_QUEUED';
+                                        if (manualCaptionInput) {
+                                            const currentVal = manualCaptionInput.value.trim();
+                                            if (!currentVal) {
+                                                manualCaptionInput.value = processedChunk;
+                                                currentManualCaptionId = item.id;
+                                                currentManualOriginalRaw = rawChunk;
+                                                currentManualInitialText = processedChunk;
+                                                currentManualEnglishText = null;
+                                                currentManualIsProvisional = false;
+                                                manualCaptionInput.scrollTop = manualCaptionInput.scrollHeight;
+                                            } else {
+                                                manualPendingQueue.push({ id: item.id, text: processedChunk, original: rawChunk, isAi: false, englishText: null, isProvisional: false });
+                                                updateManualQueueUI();
+                                            }
+                                        }
                                     }
                                 }
                             }
                         } else {
-                            const dispatchRes = dispatchCaption(processedChunk, { original: rawChunk, isEdited: dictChanged, isAi: false });
+                            const dispatchRes = dispatchCaption(processedChunk, { id: item.id, original: rawChunk, isEdited: dictChanged, isAi: false });
                             if (dispatchRes && dispatchRes.action) {
                                 finalAction = dispatchRes.action;
                             }
