@@ -683,6 +683,17 @@
 
                             </div>
 
+                            <!-- 待機キューの見える化リスト（2件以上ある時に展開表示） -->
+                            <div id="manualQueueListBox" class="hidden space-y-1.5 pt-1">
+                                <div class="flex items-center justify-between text-[11px] font-semibold text-indigo-900 px-1">
+                                    <span class="flex items-center"><i class="fa-solid fa-list-ol mr-1 text-indigo-500"></i>待機中キュー一覧</span>
+                                    <span class="text-[10px] text-slate-400">クリックでエディターに読み込み</span>
+                                </div>
+                                <div id="manualQueueListItems" class="space-y-1 max-h-32 overflow-y-auto pr-1">
+                                    <!-- 動的にアイテムが挿入される -->
+                                </div>
+                            </div>
+
 
 
                             <div class="flex items-center justify-between gap-2 flex-wrap sm:flex-nowrap">
@@ -5189,6 +5200,10 @@ function isIncompletePhrase(text) {
 
         const manualQueueCountBadge = document.getElementById('manualQueueCountBadge');
 
+        const manualQueueListBox = document.getElementById('manualQueueListBox');
+
+        const manualQueueListItems = document.getElementById('manualQueueListItems');
+
         let manualPendingQueue = [];
 
         let currentManualOriginalRaw = '';
@@ -6258,6 +6273,69 @@ function isIncompletePhrase(text) {
 
             }
 
+            // 待機中キューの見える化リスト（複数文が並ぶリスト）の更新
+            if (manualQueueListBox && manualQueueListItems) {
+                if (count > 0) {
+                    manualQueueListBox.classList.remove('hidden');
+                    manualQueueListItems.innerHTML = '';
+                    manualPendingQueue.forEach((item, index) => {
+                        const itemText = (typeof item === 'object' && item !== null) ? item.text : item;
+                        const isAi = (typeof item === 'object' && item !== null) ? !!item.isAi : false;
+                        const isProv = (typeof item === 'object' && item !== null) ? !!item.isProvisional : false;
+                        const row = document.createElement('div');
+                        row.className = "p-1.5 bg-white hover:bg-indigo-50/80 border border-indigo-100 rounded-lg text-xs flex items-center justify-between gap-2 cursor-pointer transition-colors shadow-2xs group";
+                        row.title = "クリックしてこの文をエディターに読み込み";
+
+                        const badgeHtml = isProv
+                            ? `<span class="text-[9px] px-1.5 py-0.2 bg-amber-50 text-amber-700 font-medium rounded border border-amber-200 shrink-0">⚡ リアルタイム</span>`
+                            : (isAi ? `<span class="text-[9px] px-1.5 py-0.2 bg-purple-50 text-purple-700 font-bold rounded border border-purple-200 shrink-0">✨ AI補正済</span>` : '');
+
+                        row.innerHTML = `
+                            <div class="flex items-center gap-1.5 min-w-0 flex-1">
+                                <span class="px-1.5 py-0.2 bg-indigo-100 text-indigo-800 rounded font-mono font-bold text-[10px] shrink-0">#${index + 1}</span>
+                                <span class="truncate text-slate-800 text-xs font-medium">${escapeHtml(itemText || '')}</span>
+                                ${badgeHtml}
+                            </div>
+                            <button type="button" class="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-500 text-[11px] px-1.5 py-0.5 rounded transition-opacity" title="このアイテムをキューから削除">
+                                <i class="fa-solid fa-xmark"></i>
+                            </button>
+                        `;
+                        row.onclick = (e) => {
+                            if (e.target.closest('button')) return;
+                            loadSpecificManualQueueItem(index);
+                        };
+                        const delBtn = row.querySelector('button');
+                        if (delBtn) {
+                            delBtn.onclick = (e) => {
+                                e.stopPropagation();
+                                manualPendingQueue.splice(index, 1);
+                                updateManualQueueUI();
+                            };
+                        }
+                        manualQueueListItems.appendChild(row);
+                    });
+                } else {
+                    manualQueueListBox.classList.add('hidden');
+                    manualQueueListItems.innerHTML = '';
+                }
+            }
+
+        }
+
+        function loadSpecificManualQueueItem(index) {
+            if (index < 0 || index >= manualPendingQueue.length) return;
+            const item = manualPendingQueue.splice(index, 1)[0];
+            if (!item || !manualCaptionInput) return;
+            manualCaptionInput.value = item.text || '';
+            currentManualCaptionId = item.id || null;
+            currentManualOriginalRaw = item.original || '';
+            currentManualInitialText = item.text || '';
+            currentManualEnglishText = item.englishText || null;
+            currentManualTranslations = item.translations || null;
+            currentManualSourceLang = item.sourceLang || 'ja';
+            currentManualIsProvisional = !!item.isProvisional;
+            updateManualQueueUI();
+            manualCaptionInput.focus();
         }
 
 
@@ -10332,14 +10410,14 @@ ${existingKeys.slice(0, 100).join(', ')}
                             liveInputAccumulator = cleaned.slice(spaceIdx + 1).trim();
                         }
                     }
-                } else if (cleaned.length >= 70) {
-                    // 日本語超長文（70文字以上の息継ぎなし連続発話時のみ安全弁作動）:
+                } else if (cleaned.length >= 40) {
+                    // 日本語連続発話（40文字以上で息継ぎが途切れない場合の先行安全切り出し）:
                     // 単語の途中や読点でぶった切らず、明確な終止形（です/ます/ました等）の直後でのみ安全に分割
-                    const endingMatch = cleaned.slice(35).search(/(?:あります|ありません|なります|なりません|でしょうか|でした|ました|です|ます|祈ります|証します|アーメン)(?=[、\s]|(?=[一-龠ぁ-んァ-ヶ]))/);
+                    const endingMatch = cleaned.slice(15).search(/(?:あります|ありません|なります|なりません|でしょうか|でした|ました|です|ます|祈ります|証します|アーメン)(?=[、\s]|(?=[一-龠ぁ-んァ-ヶ]))/);
                     if (endingMatch !== -1) {
-                        const m = cleaned.slice(35).match(/(?:あります|ありません|なります|なりません|でしょうか|でした|ました|です|ます|祈ります|証します|アーメン)/);
+                        const m = cleaned.slice(15).match(/(?:あります|ありません|なります|なりません|でしょうか|でした|ました|です|ます|祈ります|証します|アーメン)/);
                         const matchLen = m ? m[0].length : 2;
-                        const splitIdx = 35 + endingMatch + matchLen;
+                        const splitIdx = 15 + endingMatch + matchLen;
                         const sentence = cleaned.slice(0, splitIdx).trim();
                         if (sentence) {
                             enqueueSentenceOrDispatch(sentence, true);
@@ -10349,7 +10427,7 @@ ${existingKeys.slice(0, 100).join(', ')}
                 }
             }
 
-            // 3. 話者の息継ぎ・無音（1.2秒）による自律確定タイマー
+            // 3. 話者の息継ぎ・無音（850ms）による自律確定タイマー（子供の短いポーズでも確実に確定）
             if (liveSilenceTimer) clearTimeout(liveSilenceTimer);
             liveSilenceTimer = setTimeout(() => {
                 if (liveInputAccumulator && liveInputAccumulator.trim()) {
@@ -10360,7 +10438,7 @@ ${existingKeys.slice(0, 100).join(', ')}
                     liveInputAccumulator = '';
                     if (interimText) interimText.textContent = '（次の音声入力を待機中...）';
                 }
-            }, 1200);
+            }, 850);
         }
 
         // Gemini 3.5 Transcribe Live WebSocket 接続確立 & イベントバインドヘルパー
@@ -10575,7 +10653,7 @@ ${existingKeys.slice(0, 100).join(', ')}
                 // 静寂（息継ぎ）検知閾値: ゲイン2.2倍後の暗騒音フロア（エアコン・環境ノイズ）をわずかに超える値
                 // 小さな声（通常0.05〜0.1以上）は通し、息継ぎの間の暗騒音（0.015〜0.03）を安全に無音化
                 const SILENCE_THRESHOLD = 0.032;
-                const BREATH_PAUSE_MS = 280; // 280ms以上の静寂でGoogleに明確な沈黙（ゼロPCM）を伝達
+                const BREATH_PAUSE_MS = 200; // フェーズ63調律: 200ms以上の静寂でGoogleに明確な沈黙（ゼロPCM）を伝達（子供の素早い息継ぎ対応）
 
                 liveScriptProcessor = liveAudioContext.createScriptProcessor(CHUNK_SIZE, 1, 1);
                 liveScriptProcessor.onaudioprocess = (event) => {
@@ -10604,13 +10682,15 @@ ${existingKeys.slice(0, 100).join(', ')}
                     const downsampled = downsampleTo16k(inputFloat32, liveAudioContext.sampleRate);
                     const pcm16 = new Int16Array(downsampled.length);
 
-                    // 【インテリジェント・ブレス検知（息継ぎアシスト）】
-                    // 1. 話者が280ms以上息継ぎ（ポーズ）をしている場合:
+                    // 【インテリジェント・ブレス検知（息継ぎアシスト）- フェーズ63調律】
+                    // 1. 話者が200ms以上息継ぎ（ポーズ）をしている場合:
                     //    環境ノイズがGoogleのサーバーVADを妨害しないよう、完全無音（ゼロPCM）を送信してターン区切りを即座に確定
-                    // 2. 早口で5秒以上（5000ms）連続発話し、音の谷間（maxAmp < 0.06）が訪れた場合:
-                    //    溜め込み防止のため、わずか1チャンク（約40〜50ms）だけ無音を挟んでGoogleに文確定を促す
+                    // 2. 早口で3.8秒以上（3800ms）連続発話し、音の谷間（maxAmp < 0.09）が訪れた場合:
+                    //    元気な子供の大きな声でも言葉の隙間を確実に捉え、わずか1チャンク（約40〜50ms）無音を挟んでGoogleに文確定を促す
+                    // 3. 7秒以上一度も音の谷間がない超連続早口の場合（安全弁）:
+                    //    溜め込み防止のため強制的に1チャンク無音を挟む
                     const isBreathPause = (liveSilenceDurationMs >= BREATH_PAUSE_MS);
-                    const isForcePauseTrigger = (liveSpeakingDurationMs >= 5000 && maxAmp < 0.06);
+                    const isForcePauseTrigger = (liveSpeakingDurationMs >= 3800 && maxAmp < 0.09) || (liveSpeakingDurationMs >= 7000);
 
                     if (isBreathPause || isForcePauseTrigger) {
                         pcm16.fill(0);
