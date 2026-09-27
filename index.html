@@ -1284,6 +1284,15 @@
 
         const DEFAULT_DICTIONARY = {
 
+            // --- 2026/09/27 聖餐会・ディボーショナル実機ログ分析に基づく新用語プリセット ---
+            "庭姉妹": "みやつ姉妹",
+            "宮下姉妹": "みやつ姉妹",
+            "みやつ姉妹": "みやつ姉妹",
+            "米国の地": "米子の地",
+            "大和高田の宣教師": "山高帽の宣教師",
+            "大和高棒の宣教師": "山高帽の宣教師",
+            "大和高棒": "山高帽",
+
             // --- 2026/09/01 手動修正ログ分析に基づく新用語プリセット ---
 
             "電動に出る": "伝道に出る",
@@ -4758,76 +4767,38 @@ function isIncompletePhrase(text) {
 
 
 
-        // WebRTC ICE サーバー設定（NAT越え接続信頼性向上のため複数STUNサーバー＋多重TURNリレーを設定）
-
+        // WebRTC ICE サーバー設定（フェーズ65最適化: 教会Wi-Fi/NAT越え用TLS・TCP TURN最優先 + 厳選STUN）
         const PEER_CONFIG = {
-
             config: {
-
                 iceServers: [
-
-                    { urls: 'stun:stun.l.google.com:19302' },
-
-                    { urls: 'stun:stun1.l.google.com:19302' },
-
-                    { urls: 'stun:stun2.l.google.com:19302' },
-
-                    { urls: 'stun:stun3.l.google.com:19302' },
-
-                    { urls: 'stun:stun4.l.google.com:19302' },
-
-                    { urls: 'stun:stun.cloudflare.com:3478' },
-
-                    { urls: 'stun:stun.services.mozilla.com' },
-
-                    // 無料TURNリレーサーバー（教会の厳しいWi-Fi・Symmetric NAT越え用、ポート443 HTTPS偽装 & TCP中継）
-
+                    // 1. 最優先: 厳格な教会Wi-FiやSymmetric NAT越えのための暗号化TLS/TCP TURNリレー（HTTPSポート443偽装）
                     {
-
-                        urls: 'turn:openrelay.metered.ca:80',
-
-                        username: 'openrelayproject',
-
-                        credential: 'openrelayproject'
-
-                    },
-
-                    {
-
-                        urls: 'turn:openrelay.metered.ca:443',
-
-                        username: 'openrelayproject',
-
-                        credential: 'openrelayproject'
-
-                    },
-
-                    {
-
-                        urls: 'turn:openrelay.metered.ca:443?transport=tcp',
-
-                        username: 'openrelayproject',
-
-                        credential: 'openrelayproject'
-
-                    },
-
-                    {
-
                         urls: 'turns:openrelay.metered.ca:443?transport=tcp',
-
                         username: 'openrelayproject',
-
                         credential: 'openrelayproject'
-
-                    }
-
+                    },
+                    {
+                        urls: 'turn:openrelay.metered.ca:443?transport=tcp',
+                        username: 'openrelayproject',
+                        credential: 'openrelayproject'
+                    },
+                    {
+                        urls: 'turn:openrelay.metered.ca:443',
+                        username: 'openrelayproject',
+                        credential: 'openrelayproject'
+                    },
+                    {
+                        urls: 'turn:openrelay.metered.ca:80',
+                        username: 'openrelayproject',
+                        credential: 'openrelayproject'
+                    },
+                    // 2. 高速直接P2Pのための主要STUNサーバー（探索遅延を防ぐため選りすぐりの3サーバーに厳選）
+                    { urls: 'stun:stun.l.google.com:19302' },
+                    { urls: 'stun:stun1.l.google.com:19302' },
+                    { urls: 'stun:stun.cloudflare.com:3478' }
                 ],
-
-                iceCandidatePoolSize: 10
-
+                iceCandidatePoolSize: 4
             }
-
         };
 
 
@@ -12204,37 +12175,24 @@ ${existingKeys.slice(0, 100).join(', ')}
 
 
 
-            hostConnection = peer.connect(roomId, { reliable: true });
-
-
+            // フェーズ65: iOS Safari (WebKit) でのバイナリ通信失敗を防止するため serialization: 'json' を明示
+            hostConnection = peer.connect(roomId, { reliable: true, serialization: 'json' });
 
             if (!hostConnection) {
-
                 console.error('Failed to create connection to host');
-
                 scheduleViewerReconnect(false);
-
                 return;
-
             }
 
-
-
             // 接続タイムアウト: ホストオフライン時に「接続中...」で永久フリーズするのを防止
-
+            // ※フェーズ65改善: 教会Wi-Fiやセルラー回線・iOS SafariでのTURN中継ハンドシェイク時間を考慮し25秒に緩和
             const connectionTimeout = setTimeout(() => {
-
                 if (hostConnection && !hostConnection.open) {
-
-                    console.warn('接続タイムアウト（10秒）。再接続を開始します。');
-
+                    console.warn('接続タイムアウト（25秒）。再接続を開始します。');
                     try { hostConnection.close(); } catch(e){ console.warn('hostConnection.close error:', e.message); }
-
                     scheduleViewerReconnect(true);
-
                 }
-
-            }, 10000);
+            }, 25000);
 
 
 
@@ -12454,11 +12412,15 @@ ${existingKeys.slice(0, 100).join(', ')}
                             <i class="fa-solid fa-circle-question"></i>
                             <span>繋がらない場合のチェックポイント</span>
                         </div>
-                        <ul class="list-disc list-inside text-[11px] text-slate-300 space-y-1 pl-1">
+                        <ul class="list-disc list-inside text-[11px] text-slate-300 space-y-1.5 pl-1 leading-relaxed">
+                            <li><span class="font-bold text-amber-200">iPhone (Safari) の場合:</span> <strong>Google Chrome</strong>でお試しいただくか、iPhoneの「設定 ➔ Apple ID ➔ iCloud ➔ プライベートリレー」を一時的にオフにしてください（Appleによる通信遮断を防ぎます）。</li>
                             <li>ホストPC側で画面が開かれ、ルームIDが「<span class="font-mono text-amber-300 font-bold">${escapeHtml(currentRoomId || '')}</span>」になっているかご確認ください。</li>
-                            <li>LINE内で開いている場合は、右下の【︙】から「Safariで開く / 他のブラウザで開く」をお選びください。</li>
+                            <li>LINE等のアプリ内で開いている場合は、右下のメニューから「外部ブラウザ（Safari/Chrome）で開く」をお選びください。</li>
                             <li>教会のWi-Fiをご利用の場合、一時的にWi-Fiをオフ（モバイル4G/5G通信）に切り替えると改善することがあります。</li>
                         </ul>
+                        <div class="pt-1.5 border-t border-slate-700/60 text-[10px] text-slate-400">
+                            <strong>【For iPhone users】</strong> If connection fails on Safari, please try <strong>Google Chrome</strong> or temporarily disable <em>iCloud Private Relay</em> in iOS Settings.
+                        </div>
                     </div>
                 `;
             }
