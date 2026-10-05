@@ -11169,6 +11169,9 @@ ${existingKeys.slice(0, 100).join(', ')}
                     for (let idx = 0; idx < sentences.length; idx++) {
                         const result = sentences[idx];
                         const item = items[idx] || {};
+                        const rawChunk = result.rawChunk || item.rawChunk || '';
+                        const processedChunk = result.ja || item.preCorrected || rawChunk;
+
                         // 【英訳抜け自動フォールバック補填（二重安全ネット）】
                         // Geminiが出力カットや省略で英訳を返さなかった場合でも、機械翻訳(translateText)で即座に補填し空白配信を100%防止
                         let englishText = (result.en && String(result.en).trim()) ? String(result.en).trim() : null;
