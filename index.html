@@ -8439,7 +8439,7 @@ const validModels = models
 
                 const batchInput = items.map(item => item.preCorrected).join('\n===\n');
 
-                userPrompt += `【今回の発話（校正対象）】\n${batchInput}\n\n※重要:\n1. 【直前の発話文脈】は参考情報です。出力の "sentences" 配列には【直前の発話文脈】の文を絶対に含めず、【今回の発話（校正対象）】の文だけを1対1で出力してください。\n2. 全文に対して必ず "ja"（日本語補正）と "en"（教会の公式英語用語を用いた格調高い英訳）の両方を揃えて出力してください。"en" の省略は厳禁です。`;
+                userPrompt += `【今回の発話（校正対象）】\n${batchInput}\n\n※最重要ルール:\n1. 出力の "sentences" 配列には【直前の発話文脈】を含めず、【今回の発話（校正対象）】の文だけを1対1で出力してください（出力配列の要素数は必ず入力と同じ ${items.length} 個にしてください）。\n2. 【英語翻訳の全要素必須】: 出力配列の全要素に必ず "ja"（完全な日本語校正文）と "en"（教会の公式英語用語を用いた格調高い英訳）の両方を100%揃えて出力してください。"en" の省略・空文字・nullは絶対に厳禁です。\n3. 文末が途中で切れないよう、完全な文として美しく完結させてください。`;
 
                 // 聴講者の選択言語に応じたオンデマンド他言語翻訳指示（タガログ語等）
                 const activeExtraLangs = isTest ? [] : getActiveViewerLanguages();
@@ -10809,9 +10809,10 @@ ${existingKeys.slice(0, 100).join(', ')}
 
             const batchBuffer = [];        // {rawChunk, preCorrected, dictChanged, provisionalId} の配列
 
-            let batchTimer = null;         // 5秒タイマーID
+            let batchTimer = null;         // バッチタイマーID
 
-            const BATCH_INTERVAL_MS = 5000; // バッチ間隔（5秒）
+            const BATCH_INTERVAL_MS = 4000; // バッチ最大待機間隔（4秒）
+            const MAX_BATCH_SENTENCES = 3;  // 1回のGeminiバッチ上限文数（3文で即時発射 ＆ 応答2秒台を死守）
 
             let provisionalIdCounter = 0;  // 仮表示ID管理用
 
@@ -10989,12 +10990,19 @@ ${existingKeys.slice(0, 100).join(', ')}
                     isAlreadyBroadcast: !isManualMode
                 });
 
-                // 15 RPM レート制限を守るため 4.5 秒後にまとめて Gemini へ送信
-                if (!batchTimer) {
+                // 文数が上限（MAX_BATCH_SENTENCES = 3）に達した場合は時間を待たずに即時フラッシュ！
+                if (batchBuffer.length >= MAX_BATCH_SENTENCES) {
+                    if (batchTimer) {
+                        clearTimeout(batchTimer);
+                        batchTimer = null;
+                    }
+                    flushBatchBuffer();
+                } else if (!batchTimer) {
+                    // 3文未満の場合は BATCH_INTERVAL_MS（4秒）後にまとめて送信（息継ぎ・沈黙時のフォールバック）
                     batchTimer = setTimeout(() => {
                         batchTimer = null;
                         flushBatchBuffer();
-                    }, 4500);
+                    }, BATCH_INTERVAL_MS);
                 }
             }
 
@@ -11061,22 +11069,19 @@ ${existingKeys.slice(0, 100).join(', ')}
                     return;
                 }
 
-                // 【未完フレーズ保留ロジック】
-                // 強制フラッシュでなく、かつ音声認識中(isRecognizing || isLiveTranscribing)の場合、末尾の未完フレーズを次回へ保留
+                // 【バッチ上限文数キャップ & 未完フレーズ保留】
+                // 1回のGeminiバッチ処理を最大 MAX_BATCH_SENTENCES (3文) に制限し、応答2秒台と英訳抜け完全防止を両立
                 let items = [];
                 if (!forceFlush && (isRecognizing || isLiveTranscribing)) {
-                    if (batchBuffer.length > 1) {
+                    let candidateCount = batchBuffer.length;
+                    if (candidateCount > 1) {
                         const lastItem = batchBuffer[batchBuffer.length - 1];
                         if (isIncompletePhrase(lastItem.rawChunk) || /[、，,]$/.test(lastItem.rawChunk.trim())) {
-                            // 末尾の未完フレーズを残し、手前の完全文だけを取り出して処理
-                            items = batchBuffer.splice(0, batchBuffer.length - 1);
-                        } else {
-                            items = batchBuffer.splice(0);
+                            candidateCount = batchBuffer.length - 1; // 末尾の未完フレーズを次回へ保留
                         }
-                    } else if (batchBuffer.length === 1) {
+                    } else if (candidateCount === 1) {
                         const onlyItem = batchBuffer[0];
                         if (isIncompletePhrase(onlyItem.rawChunk) || /[、，,]$/.test(onlyItem.rawChunk.trim())) {
-                            // 1件しかなく未完の場合: すぐにGeminiに送らず次を待つ（孤立防止タイマーで7秒沈黙時に強制フラッシュ）
                             if (!incompleteHoldTimer) {
                                 incompleteHoldTimer = setTimeout(() => {
                                     incompleteHoldTimer = null;
@@ -11084,12 +11089,18 @@ ${existingKeys.slice(0, 100).join(', ')}
                                 }, 7000);
                             }
                             return;
-                        } else {
-                            items = batchBuffer.splice(0);
                         }
                     }
+
+                    const takeCount = Math.min(candidateCount, MAX_BATCH_SENTENCES);
+                    if (takeCount > 0) {
+                        items = batchBuffer.splice(0, takeCount);
+                    }
                 } else {
-                    items = batchBuffer.splice(0);
+                    const takeCount = Math.min(batchBuffer.length, MAX_BATCH_SENTENCES);
+                    if (takeCount > 0) {
+                        items = batchBuffer.splice(0, takeCount);
+                    }
                 }
 
                 if (items.length === 0) return;
@@ -11158,9 +11169,16 @@ ${existingKeys.slice(0, 100).join(', ')}
                     for (let idx = 0; idx < sentences.length; idx++) {
                         const result = sentences[idx];
                         const item = items[idx] || {};
-                        const rawChunk = result.rawChunk || item.rawChunk || '';
-                        const processedChunk = result.ja || item.preCorrected || rawChunk;
-                        const englishText = result.en || null;
+                        // 【英訳抜け自動フォールバック補填（二重安全ネット）】
+                        // Geminiが出力カットや省略で英訳を返さなかった場合でも、機械翻訳(translateText)で即座に補填し空白配信を100%防止
+                        let englishText = (result.en && String(result.en).trim()) ? String(result.en).trim() : null;
+                        if (!englishText && processedChunk && processedChunk.trim()) {
+                            try {
+                                englishText = await translateText(processedChunk, 'en');
+                            } catch (te) {
+                                console.warn('英訳自動補填フォールバックエラー:', te.message);
+                            }
+                        }
                         const translations = result.translations || null;
                         const isAi = isGeminiAiEnabled && !!geminiApiKey && !!result.isAiSuccess;
                         const isEdited = processedChunk !== rawChunk;
@@ -11417,12 +11435,13 @@ ${existingKeys.slice(0, 100).join(', ')}
                     // Bug-03修正: 排他ロック解放（必ず実行）
                     isBatchFlushing = false;
 
-                    // 処理中に蓄積された新規バッファがあれば自動再フラッシュ
-                    if (batchBuffer.length > 0 && !batchTimer) {
+                    // 処理中に蓄積された新規バッファがあれば即座に自動再フラッシュ（残余文を3文ずつ連続消化）
+                    if (batchBuffer.length > 0) {
+                        if (batchTimer) clearTimeout(batchTimer);
                         batchTimer = setTimeout(() => {
                             batchTimer = null;
                             flushBatchBuffer();
-                        }, 500);
+                        }, 250);
                     }
                 }
 
