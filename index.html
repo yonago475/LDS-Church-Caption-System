@@ -431,7 +431,18 @@
 
                             </div>
 
-
+                            <!-- AI Model Preference Row -->
+                            <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-1.5 pt-2 border-t border-indigo-900/50 text-xs">
+                                <div class="flex items-center gap-1.5 text-indigo-200">
+                                    <i class="fa-solid fa-gauge-high text-amber-400 text-xs"></i>
+                                    <span class="font-semibold text-xs text-white">AIモデル優先度:</span>
+                                    <span id="geminiModelBadge" class="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-medium">高速 (3.1-flash-lite)</span>
+                                </div>
+                                <select id="geminiModelPreferenceSelect" class="bg-indigo-950/80 border border-indigo-500/60 rounded-lg px-2.5 py-1 text-xs text-indigo-100 focus:outline-none focus:ring-2 focus:ring-purple-400 font-sans cursor-pointer hover:border-indigo-400 transition-colors">
+                                    <option value="speed">⚡ 高速レスポンス最優先 (3.1-flash-lite / ~1.9秒)</option>
+                                    <option value="quality">✨ 校正品質最優先 (2.5-flash / ~3.0秒)</option>
+                                </select>
+                            </div>
 
                             <!-- Test Result Box -->
 
@@ -1786,7 +1797,6 @@
 
             "温故の見たまま": "御子の御霊",
 
-            "うんこの見たまま": "御子の御霊",
 
             "見たまま 受けられる": "御霊を受けられる",
 
@@ -1794,7 +1804,6 @@
 
             "温故の": "御子の",
 
-            "温故": "御子",
 
             // Bug-13対策: 「御子」への強力な変換力を維持しつつ、最長一致優先で交通運行状況等を保護
             "運行状況": "運行状況",
@@ -2005,7 +2014,6 @@
 
             "にちようがっこう": "日曜学校",
 
-            "ちょうろうていいんかい": "長老定員会",
 
             "わーど": "ワード",
 
@@ -2053,9 +2061,7 @@
 
             "ひょうぎいん": "評議員",
 
-            "こうとうひょうぎいん": "高等評議員",
 
-            "こうとうひょうぎかい": "高等評議会",
 
             "しぶちょう": "支部長",
 
@@ -2069,13 +2075,10 @@
 
             "わかいだんせい": "若い男性",
 
-            "せみなりー": "セミナリー",
 
             "いんすてぃてゅーと": "インスティテュート",
 
-            "よなごわーど": "米子ワード",
 
-            "よなご": "米子",
 
             "豊平ワード": "豊平ワード",
 
@@ -2177,7 +2180,6 @@
 
             "おむない": "オムナイ",
 
-            "もーさや": "モーサヤ",
 
             "べんじゃみんおう": "ベニヤミン王",
 
@@ -2341,7 +2343,6 @@
 
             "そるとれーく": "ソルトレーク",
 
-            "だいかんちょう": "大管長",
 
             "大官庁": "大管長",
 
@@ -2465,15 +2466,10 @@
 
             "けんそん": "謙遜",
 
-            "せいさん": "聖餐",
 
-            "精算": "聖餐",
 
-            "清算": "聖餐",
 
-            "せいさんかい": "聖餐会",
 
-            "生産会": "聖餐会",
 
             "生産感": "聖餐会",
 
@@ -2537,7 +2533,6 @@
 
             "街頭伝道": "街頭伝道",
 
-            "でんどう": "伝道",
 
             "電動": "伝道",
 
@@ -2545,13 +2540,11 @@
 
             "電動宣教師": "伝道宣教師",
 
-            "電動に出る": "伝道に出る",
 
             "言動の責任": "伝道の責任",
 
             "命の機能": "命の木の",
 
-            "いのちのき": "命の木",
 
             "発祥の": "8章の",
 
@@ -2629,7 +2622,6 @@
 
             "店員会の会員": "定員会の会員",
 
-            "店員会": "定員会",
 
             "正解に参加": "聖会に参加",
 
@@ -2745,7 +2737,6 @@
 
             "政令がどれほど": "聖霊がどれほど",
 
-            "インスピュート": "インスティテュート",
 
             "リボー ショナル": "ディボーショナル",
 
@@ -2773,7 +2764,6 @@
 
             "オン チチ": "天の御父",
 
-            "温故": "御子",
 
             "身元に戻ろう": "御許に戻ろう",
 
@@ -2833,11 +2823,8 @@
 
             "日の栄の考え方": "日の栄えの考え方",
 
-            "教師 会": "司会",
 
-            "神件": "神権",
 
-            "しんけんのかぎ": "神権の鍵",
 
             "ばぷてすま": "バプテスマ",
 
@@ -2869,7 +2856,6 @@
 
             "決戦までと": "ゲツセマネと",
 
-            "カルバリ": "カルバリ",
 
             "きょうかいいん": "教会員",
 
@@ -2901,7 +2887,6 @@
 
             "非難し": "非難し",
 
-            "しんこう": "信仰",
 
             "進行はゆるぎない": "信仰は揺るぎない",
 
@@ -2933,33 +2918,19 @@
 
             "滅亡な気": "滅亡の気",
 
-            "明かします": "証します",
 
-            "明かしします": "証します",
 
-            "明かしを述べ": "証を述べ",
 
-            "明かしを": "証を",
 
-            "明かしの": "証の",
 
-            "明かしが": "証が",
 
-            "あかします": "証します",
 
-            "あかしします": "証します",
 
-            "あかしを述べ": "証を述べ",
 
-            "あかしを": "証を",
 
-            "あかしの": "証の",
 
-            "あかしが": "証が",
 
-            "ふくいん": "福音",
 
-            "服員": "福音",
 
             "あんそくび": "安息日",
 
@@ -2971,11 +2942,8 @@
 
             "せいれい": "聖霊",
 
-            "精霊": "聖霊",
 
-            "てんのちち": "天の父",
 
-            "てんのおとうさま": "天のお父様",
 
             "かみさま": "神様",
 
@@ -3057,13 +3025,11 @@
 
             "だんじきけんきん": "断食献金",
 
-            "ちえのことば": "知恵の言葉",
 
             "ふぁみりーひすとりー": "ファミリーヒストリー",
 
             "ふっかつ": "復活",
 
-            "しょうえい": "昇栄",
 
             "すくいのおけいかく": "救いの計画",
 
@@ -3073,7 +3039,6 @@
 
             "イエスキリスト": "イエス・キリスト",
 
-            "あーめん": "アーメン",
 
             "だんじきあかしかい": "断食証会",
 
@@ -3143,25 +3108,17 @@
 
             "予言者": "預言者",
 
-            "けいじ": "啓示",
 
             "しおん": "シオン",
 
             "うりむととみむ": "ウリムとトミム",
 
-            "りあほな": "リアホナ",
 
-            "めしを受ける": "召しを受ける",
 
-            "めしを受けた": "召しを受けた",
 
-            "めしを果たす": "召しを果たす",
 
-            "新しいめし": "新しい召し",
 
-            "主のめし": "主の召し",
 
-            "めしの務め": "召しの務め",
 
 
 
@@ -3173,19 +3130,12 @@
 
             "ぶりがむやんぐ": "ブリガム・ヤング",
 
-            "にーふぁい": "ニーファイ",
 
-            "りーはい": "リーハイ",
 
-            "あるま": "アルマ",
 
-            "ひらまん": "ヒラマン",
 
-            "もろない": "モロナイ",
 
-            "えてるしょ": "エテル書",
 
-            "えのす": "エノス",
 
             "やこぶ": "ヤコブ",
 
@@ -3193,7 +3143,6 @@
 
             "らばん": "ラバン",
 
-            "れむえる": "レムエル",
 
             "さむ": "サム",
 
@@ -3205,11 +3154,9 @@
 
             "りむはい": "リムハイ",
 
-            "あびなだい": "アビナダイ",
 
             "あみゅれく": "アミュレク",
 
-            "ぜーずろむ": "ゼーズロム",
 
             "ぱほーらん": "パホーラン",
 
@@ -3223,13 +3170,11 @@
 
             "みゅれく": "ミュレク",
 
-            "こりあんたまー": "コリアンタマー",
 
             "しざー": "シザー",
 
             "やれど": "ヤレド",
 
-            "おむない": "オムナイ",
 
             "ぜらへむら": "ゼラヘムラ",
 
@@ -3237,7 +3182,6 @@
 
             // --- 歴代大管長 & 現代の使徒・指導者 ---
 
-            "ねるそんだいかんちょう": "ネルソン大管長",
 
             "らっせるえむねるそん": "ラッセル・M・ネルソン",
 
@@ -3297,19 +3241,16 @@
 
             "じぇふりーあーるほらんど": "ジェフリー・R・ホランド",
 
-            "ほらんどちょうろう": "ホランド長老",
 
             "ほらんど": "ホランド",
 
             "でぃーたーえふうーくとどるふ": "ディーター・F・ウークトドルフ",
 
-            "うーくとどるふちょうろう": "ウークトドルフ長老",
 
             "うーくとどるふ": "ウークトドルフ",
 
             "でびっどえーべどなー": "デビッド・A・ベドナー",
 
-            "べどなーちょうろう": "ベドナー長老",
 
             "くえんてぃんえるくっく": "クエンティン・L・クック",
 
@@ -3317,33 +3258,27 @@
 
             "でぃーとっどくりすとふぁーそん": "D・トッド・クリストファーソン",
 
-            "くりすとふぁーそんちょうろう": "クリストファーソン長老",
 
             "くりすとふぁーそん": "クリストファーソン",
 
             "にーるえるあんだーせん": "ニール・L・アンダーセン",
 
-            "あんだーせんちょうろう": "アンダーセン長老",
 
             "ろなるどえーらずばんど": "ロナルド・A・ラズバンド",
 
-            "らずばんどちょうろう": "ラズバンド長老",
 
             "らずばんど": "ラズバンド",
 
             "げーりーいーすてぃーぶんそん": "ゲーリー・E・スティーブンソン",
 
-            "すてぃーぶんそんちょうろう": "スティーブンソン長老",
 
             "でーるじーれんらんど": "デール・G・レンランド",
 
             "れんらんどちょうろう": "レンランド長老",
             "れんらんど": "レンランド",
             "げりっとだぶりゅーごんぐ": "ゲリット・W・ゴング",
-            "ごんぐちょうろう": "ゴング長老",
             "ごんぐ": "ゴング",
             "うりせすそあれす": "ウリセス・ソアレス",
-            "そあれすちょうろう": "ソアレス長老",
             "そあれす": "ソアレス",
             "ぱとりっくきあろん": "パトリック・キアロン",
             "きあろんちょうろう": "キアロン長老",
@@ -3351,9 +3286,7 @@
             "だりんえいちおーくすだいかんちょう": "ダリン・H・オークス大管長",
             "だりんえいちおーくす": "ダリン・H・オークス",
             "おーくすだいかんちょう": "オークス大管長",
-            "おーくすかんちょう": "オークス管長",
             "へんりーびーあいりんぐ": "ヘンリー・B・アイリング",
-            "あいりんぐかんちょう": "アイリング管長",
             // Phase T: ダリン・H・オークス大管長 & モルモン書・教会用語救出
             "ダリン H を 世代 官庁": "ダリン・H・オークス大管長",
             "ダリンHを世代官庁": "ダリン・H・オークス大管長",
@@ -4945,6 +4878,8 @@ function isIncompletePhrase(text) {
 
         let isGeminiAiEnabled = safeLocalStorageGet('lds_gemini_ai_enabled', 'false') === 'true';
 
+        let preferredGeminiModelMode = safeLocalStorageGet('lds_gemini_model_mode', 'speed'); // 'speed' (3.1-flash-lite) または 'quality' (2.5-flash)
+
 
 
         // ==================== システム稼働・診断テレメトリログ ====================
@@ -6412,6 +6347,10 @@ function isIncompletePhrase(text) {
                     const targetCaptionId = currentManualCaptionId || ('cap_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6));
 
                     // フェーズ62: 先行手動配信マップに記録（後から届くGemini推敲とのスマート同期用）
+                    if (manualBroadcastSentMap.size >= 200) {
+                        const oldestKey = manualBroadcastSentMap.keys().next().value;
+                        if (oldestKey) manualBroadcastSentMap.delete(oldestKey);
+                    }
                     manualBroadcastSentMap.set(targetCaptionId, {
                         isHumanEdited: !!isHumanEdited,
                         text: corrected,
@@ -8131,7 +8070,7 @@ function isIncompletePhrase(text) {
 
             try {
 
-                const listUrl = `https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(cleanKey)}`;
+                const listUrl = `https://generativelanguage.googleapis.com/v1beta/models`;
 
                 const ctrl = new AbortController();
 
@@ -8158,17 +8097,31 @@ const validModels = models
                         .map(m => m.name.replace(/^models\//, ''))
                         .filter(m => m.toLowerCase().startsWith('gemini') && !m.toLowerCase().includes('gemma') && !m.toLowerCase().includes('latest') && !m.toLowerCase().includes('2.5-flash-lite') && !m.toLowerCase().includes('omni') && !m.toLowerCase().includes('tts') && !m.toLowerCase().includes('image'));
 
-                    // 実在するFlashモデルの中から優先順位をつけて選択（最高精度・安定運用の gemini-2.5-flash を最優先）
-                    const preferred = validModels.find(m => m === 'gemini-2.5-flash') ||
-                                      validModels.find(m => m.includes('2.5-flash') && !m.includes('2.5-flash-lite')) ||
-                                      validModels.find(m => m === 'gemini-2.0-flash') ||
-                                      validModels.find(m => m.includes('2.0-flash')) ||
-                                      validModels.find(m => m === 'gemini-1.5-flash') ||
-                                      validModels.find(m => m.includes('1.5-flash')) ||
-                                      validModels.find(m => m.includes('3-flash')) ||
-                                      validModels.find(m => m.includes('3.1-flash-lite')) ||
-                                      validModels.find(m => m.includes('flash')) ||
-                                      validModels[0];
+                    // 実在するFlashモデルの中から優先順位をつけて選択（モードに応じて高速優先/品質優先）
+                    let preferred = null;
+                    if (preferredGeminiModelMode === 'speed') {
+                        preferred = validModels.find(m => m.includes('3.1-flash-lite')) ||
+                                          validModels.find(m => m === 'gemini-2.5-flash') ||
+                                          validModels.find(m => m.includes('2.5-flash') && !m.includes('2.5-flash-lite')) ||
+                                          validModels.find(m => m === 'gemini-2.0-flash') ||
+                                          validModels.find(m => m.includes('2.0-flash')) ||
+                                          validModels.find(m => m === 'gemini-1.5-flash') ||
+                                          validModels.find(m => m.includes('1.5-flash')) ||
+                                          validModels.find(m => m.includes('3-flash')) ||
+                                          validModels.find(m => m.includes('flash')) ||
+                                          validModels[0];
+                    } else {
+                        preferred = validModels.find(m => m === 'gemini-2.5-flash') ||
+                                          validModels.find(m => m.includes('2.5-flash') && !m.includes('2.5-flash-lite')) ||
+                                          validModels.find(m => m.includes('3.1-flash-lite')) ||
+                                          validModels.find(m => m === 'gemini-2.0-flash') ||
+                                          validModels.find(m => m.includes('2.0-flash')) ||
+                                          validModels.find(m => m === 'gemini-1.5-flash') ||
+                                          validModels.find(m => m.includes('1.5-flash')) ||
+                                          validModels.find(m => m.includes('3-flash')) ||
+                                          validModels.find(m => m.includes('flash')) ||
+                                          validModels[0];
+                    }
 
                     lastModelDiscoveryDiagnostics = { attempted: true, success: true, models: validModels, selected: preferred || null, error: '' };
 
@@ -8404,14 +8357,22 @@ const validModels = models
                 return lower.startsWith('gemini') && lower.includes('flash') && !lower.includes('latest') && !lower.includes('2.5-flash-lite') && !lower.includes('omni') && !lower.includes('tts') && !lower.includes('image');
             });
 
-            // 実在するFlashモデルのみを優先度順に整理（最高精度・公式安定稼働の gemini-2.5-flash を最優先）
-            const priorityOrder = [
-                'gemini-2.5-flash',
-                'gemini-2.0-flash',
-                'gemini-1.5-flash',
-                'gemini-3-flash-preview',
-                'gemini-3.1-flash-lite'
-            ];
+            // 実在するFlashモデルのみを優先度順に整理（高速モード時は 3.1-flash-lite 最優先、品質モード時は 2.5-flash 最優先）
+            const priorityOrder = (preferredGeminiModelMode === 'speed')
+                ? [
+                    'gemini-3.1-flash-lite',
+                    'gemini-2.5-flash',
+                    'gemini-2.0-flash',
+                    'gemini-1.5-flash',
+                    'gemini-3-flash-preview'
+                ]
+                : [
+                    'gemini-2.5-flash',
+                    'gemini-3.1-flash-lite',
+                    'gemini-2.0-flash',
+                    'gemini-1.5-flash',
+                    'gemini-3-flash-preview'
+                ];
 
             let candidateModels = [];
             if (validDiscoveredFlash.length > 0) {
@@ -8421,7 +8382,9 @@ const validModels = models
                     return (idxA === -1 ? 999 : idxA) - (idxB === -1 ? 999 : idxB);
                 });
             } else {
-                candidateModels = ['gemini-2.5-flash', 'gemini-3-flash-preview', 'gemini-2.0-flash'];
+                candidateModels = (preferredGeminiModelMode === 'speed')
+                    ? ['gemini-3.1-flash-lite', 'gemini-2.5-flash', 'gemini-2.0-flash']
+                    : ['gemini-2.5-flash', 'gemini-3.1-flash-lite', 'gemini-2.0-flash'];
             }
 
             if (cachedWorkingGeminiModel && candidateModels.includes(cachedWorkingGeminiModel)) {
@@ -8519,7 +8482,7 @@ const validModels = models
                     overallController.signal.addEventListener('abort', abortForwarder, { once: true });
 
                     try {
-                        const url = `https://generativelanguage.googleapis.com/${apiVer}/models/${modelName}:generateContent?key=${encodeURIComponent(cleanKey)}`;
+                        const url = `https://generativelanguage.googleapis.com/${apiVer}/models/${modelName}:generateContent`;
                         const response = await fetch(url, {
                             method: 'POST',
                             headers: {
@@ -9046,11 +9009,22 @@ const validModels = models
 
 
 
+            const geminiModelBadge = document.getElementById('geminiModelBadge');
+            if (geminiModelBadge) {
+                if (preferredGeminiModelMode === 'speed') {
+                    geminiModelBadge.className = 'text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-medium';
+                    geminiModelBadge.textContent = '高速 (3.1-flash-lite)';
+                } else {
+                    geminiModelBadge.className = 'text-[10px] px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30 font-medium';
+                    geminiModelBadge.textContent = '品質 (2.5-flash)';
+                }
+            }
+
             if (isGeminiAiEnabled && geminiApiKey) {
 
                 geminiStatusBadge.className = 'text-[10px] px-2 py-0.5 rounded-full font-bold bg-purple-500/40 text-purple-200 border border-purple-400/50';
 
-                geminiStatusBadge.textContent = '有効 (Gemini 2.0 Flash)';
+                geminiStatusBadge.textContent = preferredGeminiModelMode === 'speed' ? '有効 (Gemini 3.1 Flash-Lite)' : '有効 (Gemini 2.5 Flash)';
 
                 geminiToggleLabel.textContent = 'AI補正: ON';
 
@@ -9100,6 +9074,18 @@ const validModels = models
 
                 geminiAiToggle.checked = isGeminiAiEnabled;
 
+            }
+
+            // モデル優先度セレクタの初期値反映とイベントバインド
+            const geminiModelPreferenceSelect = document.getElementById('geminiModelPreferenceSelect');
+            if (geminiModelPreferenceSelect) {
+                geminiModelPreferenceSelect.value = preferredGeminiModelMode;
+                geminiModelPreferenceSelect.onchange = function() {
+                    preferredGeminiModelMode = this.value;
+                    safeLocalStorageSet('lds_gemini_model_mode', preferredGeminiModelMode);
+                    cachedWorkingGeminiModel = null; // キャッシュをリセットして即座にモデル反映
+                    updateGeminiUIState();
+                };
             }
 
             updateGeminiUIState();
@@ -9654,7 +9640,7 @@ ${existingKeys.slice(0, 100).join(', ')}
 
                     const cleanDictKey = geminiApiKey.trim();
 
-                    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${encodeURIComponent(cleanDictKey)}`;
+                    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent`;
 
                     const response = await fetch(url, {
 
@@ -10212,17 +10198,30 @@ ${existingKeys.slice(0, 100).join(', ')}
 
 
 
+        // ==================== 切断接続・メモリクレンジング ====================
+
+        function cleanupDeadConnections() {
+            const beforeCount = peerConnections.length;
+            peerConnections = peerConnections.filter(conn => conn && conn.open);
+            // viewerLanguages の古い切断クライアントも掃除
+            for (const conn of viewerLanguages.keys()) {
+                if (!peerConnections.includes(conn) || !conn.open) {
+                    viewerLanguages.delete(conn);
+                }
+            }
+            if (peerConnections.length !== beforeCount) {
+                updateViewerCount();
+            }
+        }
+
         function broadcastToViewers(data) {
 
             if (isBroadcastPaused) return;
 
+            // 無効な接続と古い参照を除去してからブロードキャスト（メモリリーク完全防止）
+            cleanupDeadConnections();
 
-
-            // 無効な接続を除去してからブロードキャスト（メモリリーク防止）
-
-            peerConnections = peerConnections.filter(conn => conn.open);
-
-
+            let hasSendError = false;
 
             peerConnections.forEach(conn => {
 
@@ -10236,11 +10235,17 @@ ${existingKeys.slice(0, 100).join(', ')}
 
                     console.warn('送信エラー（接続を除去）:', e.message);
 
+                    hasSendError = true;
+
                     try { conn.close(); } catch(e){ console.warn('conn.close error:', e.message); }
 
                 }
 
             });
+
+            if (hasSendError) {
+                cleanupDeadConnections();
+            }
 
         }
 
@@ -12196,7 +12201,12 @@ ${existingKeys.slice(0, 100).join(', ')}
 
                 reconnectAttemptCount = 0;
 
-                if (viewerReconnectTimer) clearTimeout(viewerReconnectTimer);
+                lastViewerReconnectTrigger = 0;
+
+                if (viewerReconnectTimer) {
+                    clearTimeout(viewerReconnectTimer);
+                    viewerReconnectTimer = null;
+                }
 
 
 
@@ -12373,7 +12383,16 @@ ${existingKeys.slice(0, 100).join(', ')}
 
 
 
+        let lastViewerReconnectTrigger = 0;
+
         function scheduleViewerReconnect(recreatePeer) {
+            const now = Date.now();
+            // 連続発火（error直後のclose等）による重複カウントアップ防止ガード
+            if (viewerReconnectTimer && (now - lastViewerReconnectTrigger < 1000) && !recreatePeer) {
+                console.log('重複再接続リクエストを抑制（既存タイマー待機中）');
+                return;
+            }
+            lastViewerReconnectTrigger = now;
 
             reconnectAttemptCount++;
 
