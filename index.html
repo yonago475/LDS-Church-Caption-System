@@ -8462,7 +8462,8 @@ function isIncompletePhrase(text) {
                 const selectedTargetName = preferredGeminiModelMode === '3.5-flash-lite' ? 'gemini-3.5-flash-lite'
                                          : preferredGeminiModelMode === '3.8-flash' ? 'gemini-3.8-flash'
                                          : preferredGeminiModelMode === '3.5-flash' ? 'gemini-3.5-flash'
-                                         : null;
+                                         : preferredGeminiModelMode === 'quality' ? 'gemini-2.5-flash'
+                                         : 'gemini-3.1-flash-lite';
                 if (selectedTargetName && !candidateModels.some(m => m.includes(selectedTargetName)) && !isModelCoolingDown(selectedTargetName)) {
                     candidateModels.unshift(selectedTargetName);
                 }
@@ -8480,8 +8481,12 @@ function isIncompletePhrase(text) {
                 return (idxA === -1 ? 999 : idxA) - (idxB === -1 ? 999 : idxB);
             });
 
+            // 直近キャッシュが有効かつクールダウン中でない場合、現在の選択モードの第1候補ファミリーと一致していれば最優先
             if (cachedWorkingGeminiModel && !isModelCoolingDown(cachedWorkingGeminiModel) && candidateModels.includes(cachedWorkingGeminiModel)) {
-                candidateModels = [cachedWorkingGeminiModel, ...candidateModels.filter(m => m !== cachedWorkingGeminiModel)];
+                const firstChoice = dynamicPriorityOrder[0];
+                if (cachedWorkingGeminiModel.includes(firstChoice) || firstChoice.includes(cachedWorkingGeminiModel)) {
+                    candidateModels = [cachedWorkingGeminiModel, ...candidateModels.filter(m => m !== cachedWorkingGeminiModel)];
+                }
             }
             candidateModels = Array.from(new Set(candidateModels));
 
