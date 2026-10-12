@@ -3766,6 +3766,25 @@ const SECTION_HINTS = {
 
 
 
+        // AIの出力テキストから誤混入したJSON構造タグ（{"sentences": [{"ja": や {"ja": 等）の残骸を完全に削ぎ落とすサニタイザー
+        function sanitizeAiExtractedText(text) {
+            if (!text || typeof text !== 'string') return text;
+            let t = text.trim();
+            // 1. 文頭に誤混入した JSON 構造タグの残骸を再帰的・貪欲に除去
+            t = t.replace(/^\{?\s*(?:"sentences"|'sentences')\s*:\s*\[\s*\{?\s*(?:"ja"|"en"|"tl"|'ja'|'en'|'tl')\s*:\s*["':\s]*/i, '');
+            t = t.replace(/^\{?\s*(?:"ja"|"en"|"tl"|'ja'|'en'|'tl')\s*:\s*["':\s]*/i, '');
+            t = t.replace(/^\{?\s*(?:"sentences"|'sentences')\s*:\s*\[\s*/i, '');
+
+            // 2. 先頭に残ったエスケープ引用符やバックスラッシュ、コロン、カンマを除去（※日本語の括弧「や『は保持）
+            t = t.replace(/^[\s"':,]+/, '');
+
+            // 3. 末尾に残った JSON 構造タグの残骸（}] や }] や "} など）を除去
+            t = t.replace(/["']?\s*[\],\}]+\s*$/g, '');
+            t = t.replace(/[\s"']+$|^\s+/g, '');
+
+            return t.trim();
+        }
+
 // マークダウンの ```json や中途切断されたレスポンスから ja と en を確実に救出する超堅牢パーサー
 
 // バッチ処理対応: {"sentences": [{ja, en}, ...]} 形式と旧 {"ja": ..., "en": ...} 形式の両方に対応
@@ -3804,17 +3823,23 @@ function extractJsonFromAiResponse(raw) {
 
                         sentences: parsed.sentences.map(s => {
 
+                            const rawJa = s.ja ? String(s.ja).trim() : '';
+                            const rawEn = (s.en && String(s.en).trim()) ? String(s.en).trim() : null;
+
                             const item = {
 
-                                ja: s.ja ? String(s.ja).trim() : '',
+                                ja: sanitizeAiExtractedText(rawJa),
 
-                                en: (s.en && String(s.en).trim()) ? String(s.en).trim() : null
+                                en: rawEn ? sanitizeAiExtractedText(rawEn) : null
 
                             };
 
                             if (s.translations && typeof s.translations === 'object') {
 
-                                item.translations = s.translations;
+                                item.translations = {};
+                                Object.keys(s.translations).forEach(k => {
+                                    item.translations[k] = sanitizeAiExtractedText(String(s.translations[k]).trim());
+                                });
 
                             }
 
@@ -3824,7 +3849,7 @@ function extractJsonFromAiResponse(raw) {
 
                                     if (!item.translations) item.translations = {};
 
-                                    item.translations[lang] = String(s[lang]).trim();
+                                    item.translations[lang] = sanitizeAiExtractedText(String(s[lang]).trim());
 
                                 }
 
@@ -3841,62 +3866,39 @@ function extractJsonFromAiResponse(raw) {
 
 
                 // 旧形式: {"ja": "...", "en": "..."}（後方互換）
-
                 if (parsed.ja) {
-
+                    const rawJa = String(parsed.ja).trim();
+                    const rawEn = (parsed.en && String(parsed.en).trim()) ? String(parsed.en).trim() : null;
                     const item = {
-
-                        ja: String(parsed.ja).trim(),
-
-                        en: (parsed.en && String(parsed.en).trim()) ? String(parsed.en).trim() : null
-
+                        ja: sanitizeAiExtractedText(rawJa),
+                        en: rawEn ? sanitizeAiExtractedText(rawEn) : null
                     };
-
                     if (parsed.translations && typeof parsed.translations === 'object') {
-
-                        item.translations = parsed.translations;
-
+                        item.translations = {};
+                        Object.keys(parsed.translations).forEach(k => {
+                            item.translations[k] = sanitizeAiExtractedText(String(parsed.translations[k]).trim());
+                        });
                     }
-
                     ['tl', 'zh', 'zh-CN', 'zh-TW', 'es', 'pt', 'ko', 'vi'].forEach(lang => {
-
                         if (parsed[lang] && String(parsed[lang]).trim()) {
-
                             if (!item.translations) item.translations = {};
-
-                            item.translations[lang] = String(parsed[lang]).trim();
-
+                            item.translations[lang] = sanitizeAiExtractedText(String(parsed[lang]).trim());
                         }
-
                     });
-
                     return item;
-
                 }
-
             }
-
         }
-
     } catch (e) { console.warn('JSON parse error (regex extract):', e.message); }
 
-
-
     // 2. バッチ形式の部分パース（中途切断時の救出）
-
     // "sentences" キーの存在を検出
-
     if (cleaned.includes('"sentences"')) {
-
         const sentences = [];
-
         // 各文ブロックを抽出（ja, en, tl 等）
         const blockRegex = /\{[^{}]*"ja"\s*:\s*"((?:[^"\\]|\\.)*)"[^{}]*\}/g;
-
         let match;
-
         while ((match = blockRegex.exec(cleaned)) !== null) {
-
             const blockStr = match[0];
             let parsedBlock = null;
             try {
@@ -3906,16 +3908,19 @@ function extractJsonFromAiResponse(raw) {
 
             if (parsedBlock) {
                 const item = {
-                    ja: String(parsedBlock.ja).trim(),
-                    en: (parsedBlock.en && String(parsedBlock.en).trim()) ? String(parsedBlock.en).trim() : null
+                    ja: sanitizeAiExtractedText(String(parsedBlock.ja).trim()),
+                    en: (parsedBlock.en && String(parsedBlock.en).trim()) ? sanitizeAiExtractedText(String(parsedBlock.en).trim()) : null
                 };
                 if (parsedBlock.translations && typeof parsedBlock.translations === 'object') {
-                    item.translations = parsedBlock.translations;
+                    item.translations = {};
+                    Object.keys(parsedBlock.translations).forEach(k => {
+                        item.translations[k] = sanitizeAiExtractedText(String(parsedBlock.translations[k]).trim());
+                    });
                 }
                 ['tl', 'zh', 'zh-CN', 'zh-TW', 'es', 'pt', 'ko', 'vi'].forEach(lang => {
                     if (parsedBlock[lang] && String(parsedBlock[lang]).trim()) {
                         if (!item.translations) item.translations = {};
-                        item.translations[lang] = String(parsedBlock[lang]).trim();
+                        item.translations[lang] = sanitizeAiExtractedText(String(parsedBlock[lang]).trim());
                     }
                 });
                 sentences.push(item);
@@ -3931,14 +3936,15 @@ function extractJsonFromAiResponse(raw) {
                     try { tl = JSON.parse(`"${tlMatch[1]}"`); } catch (e) { tl = tlMatch[1]; }
                 }
                 if (ja && ja.trim()) {
-                    const resItem = { ja: ja.trim(), en: en ? en.trim() : null };
+                    const cleanJa = sanitizeAiExtractedText(ja.trim());
+                    const cleanEn = en ? sanitizeAiExtractedText(en.trim()) : null;
+                    const resItem = { ja: cleanJa, en: cleanEn };
                     if (tl && tl.trim()) {
-                        resItem.translations = { tl: tl.trim() };
+                        resItem.translations = { tl: sanitizeAiExtractedText(tl.trim()) };
                     }
                     sentences.push(resItem);
                 }
             }
-
         }
 
         // 最後の1文が途中で切れている場合の救出（閉じ括弧なし）
@@ -3947,103 +3953,57 @@ function extractJsonFromAiResponse(raw) {
         const lastOpenBrace = cleaned.lastIndexOf('{');
         const lastCloseBrace = cleaned.lastIndexOf('}');
         if (lastOpenBrace !== -1 && (sentences.length === 0 || lastOpenBrace > lastCloseBrace)) {
-
             const unclosedChunk = cleaned.substring(lastOpenBrace);
-
             const lastJaMatch = unclosedChunk.match(/"ja"\s*:\s*"((?:[^"\\]|\\.)*)(?:"|\s*$)/);
-
             if (lastJaMatch && lastJaMatch[1]) {
-
                 let lastJa = null;
-
                 try { lastJa = JSON.parse(`"${lastJaMatch[1]}"`); } catch (e) { lastJa = lastJaMatch[1]; }
-
                 if (lastJa && lastJa.trim()) {
-
-                    const isDup = sentences.some(s => s.ja === lastJa.trim());
-
-                    if (!isDup) sentences.push({ ja: lastJa.trim(), en: null });
-
+                    const cleanLastJa = sanitizeAiExtractedText(lastJa.trim());
+                    const isDup = sentences.some(s => s.ja === cleanLastJa);
+                    if (!isDup) sentences.push({ ja: cleanLastJa, en: null });
                 }
-
             }
-
         }
 
         if (sentences.length > 0) {
-
             return { sentences };
-
         }
-
     }
-
-
 
     // 3. 旧形式のトークン上限等で中途切断された場合の正規表現救出
-
     let ja = null;
-
     let en = null;
 
-
-
     // "ja": "..." の完全マッチ
-
     const jaMatch = cleaned.match(/"ja"\s*:\s*"((?:[^"\\]|\\.)*)"/);
-
     if (jaMatch) {
-
         try {
-
             ja = JSON.parse(`"${jaMatch[1]}"`);
-
         } catch (e) {
-
             ja = jaMatch[1];
-
         }
-
     } else {
-
         // "ja": "..." が途中で切れている場合（末尾引用符なし）
-
         const jaCutMatch = cleaned.match(/"ja"\s*:\s*"((?:[^"\\]|\\.)*)$/);
-
         if (jaCutMatch) {
-
             ja = jaCutMatch[1].replace(/\\n/g, '\n').replace(/\\"/g, '"');
-
         }
-
     }
-
-
 
     // "en": "..." のマッチ
-
     const enMatch = cleaned.match(/"en"\s*:\s*"((?:[^"\\]|\\.)*)"/);
-
     if (enMatch) {
-
         try {
-
             en = JSON.parse(`"${enMatch[1]}"`);
-
         } catch (e) {
-
             en = enMatch[1];
-
         }
-
     }
-
-
 
     // "tl": "..." のマッチ
     let tl = null;
     const tlMatch = cleaned.match(/"tl"\s*:\s*"((?:[^"\\]|\\.)*)"/);
-
     if (tlMatch) {
         try {
             tl = JSON.parse(`"${tlMatch[1]}"`);
@@ -4053,29 +4013,22 @@ function extractJsonFromAiResponse(raw) {
     }
 
     if (ja) {
-
-        const item = { ja: ja.trim(), en: en ? en.trim() : null };
-        if (tl && tl.trim()) item.translations = { tl: tl.trim() };
+        const cleanJa = sanitizeAiExtractedText(ja.trim());
+        const cleanEn = en ? sanitizeAiExtractedText(en.trim()) : null;
+        const item = { ja: cleanJa, en: cleanEn };
+        if (tl && tl.trim()) item.translations = { tl: sanitizeAiExtractedText(tl.trim()) };
         return item;
-
     }
-
-
 
     // 4. 生のテキストから JSONプレフィックス・ゴミ文字を綺麗に除去して救出
-
+    cleaned = sanitizeAiExtractedText(cleaned);
     cleaned = cleaned.replace(/^\{?\s*"ja"\s*:\s*"?/i, '').replace(/"?\s*,?\s*"en"\s*:.*$/is, '').replace(/[}"']+$/g, '').trim();
-
+    cleaned = sanitizeAiExtractedText(cleaned);
     if (cleaned) {
-
         return { ja: cleaned, en: null };
-
     }
 
-
-
     return null;
-
 }
 
 
@@ -8849,11 +8802,18 @@ function isIncompletePhrase(text) {
 
                             const resultSentences = mergedSentences.map((aiItem, idx) => {
 
-                                const jaText = fixScriptureReferences((aiItem.ja || '').trim());
+                                const jaText = fixScriptureReferences(sanitizeAiExtractedText((aiItem.ja || '').trim()));
 
-                                const enText = aiItem.en ? aiItem.en.trim() : null;
+                                const enText = aiItem.en ? sanitizeAiExtractedText(aiItem.en.trim()) : null;
 
-                                const trans = aiItem.translations || null;
+                                let trans = aiItem.translations || null;
+                                if (trans && typeof trans === 'object') {
+                                    const sanitizedTrans = {};
+                                    Object.keys(trans).forEach(k => {
+                                        sanitizedTrans[k] = sanitizeAiExtractedText(String(trans[k]).trim());
+                                    });
+                                    trans = sanitizedTrans;
+                                }
 
                                 if (!isTest) {
 
@@ -8925,7 +8885,7 @@ function isIncompletePhrase(text) {
 
                     // JSONパース失敗だが生テキストがある場合: 全文を1つの結果として返す
 
-                    const rawJaText = fixScriptureReferences(aiOutput.replace(/^["'\s]+|["'\s]+$/g, ''));
+                    const rawJaText = fixScriptureReferences(sanitizeAiExtractedText(aiOutput.replace(/^["'\s]+|["'\s]+$/g, '')));
 
                     if (rawJaText && items.length > 0) {
 
