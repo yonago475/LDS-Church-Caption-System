@@ -439,8 +439,11 @@
                                     <span id="geminiModelBadge" class="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-medium">高速 (3.1-flash-lite)</span>
                                 </div>
                                 <select id="geminiModelPreferenceSelect" class="bg-indigo-950/80 border border-indigo-500/60 rounded-lg px-2.5 py-1 text-xs text-indigo-100 focus:outline-none focus:ring-2 focus:ring-purple-400 font-sans cursor-pointer hover:border-indigo-400 transition-colors">
-                                    <option value="speed">⚡ 高速レスポンス最優先 (3.1-flash-lite / ~1.9秒)</option>
-                                    <option value="quality">✨ 校正品質最優先 (2.5-flash / ~3.0秒)</option>
+                                    <option value="speed">⚡ 最速レスポンス最優先 (3.1-flash-lite / ~1.9秒)</option>
+                                    <option value="3.5-flash-lite">🧪 Gemini 3.5 Flash-Lite (最新世代・超軽量)</option>
+                                    <option value="3.8-flash">🧪 Gemini 3.8 Flash (最新世代・高度推論)</option>
+                                    <option value="3.5-flash">🧪 Gemini 3.5 Flash (最新世代・標準)</option>
+                                    <option value="quality">✨ 本番安定品質 (2.5-flash / ~3.0秒)</option>
                                 </select>
                             </div>
 
@@ -8159,26 +8162,40 @@ function isIncompletePhrase(text) {
                     const activeValidModels = validModels.filter(m => !isModelCoolingDown(m));
                     const candidatePool = activeValidModels.length > 0 ? activeValidModels : validModels;
 
-                    // 実在するFlashモデルの中から優先順位をつけて選択（最速3.1-flash-lite最優先、最新Flash群へ自動順位付け）
+                    // 実在するFlashモデルの中から優先順位をつけて選択（選択モードに応じた第一走者決定）
                     let preferred = null;
-                    if (preferredGeminiModelMode === 'speed') {
+                    if (preferredGeminiModelMode === '3.5-flash-lite') {
+                        preferred = candidatePool.find(m => m.includes('3.5-flash-lite')) ||
+                                    candidatePool.find(m => m.includes('3.1-flash-lite')) ||
+                                    candidatePool.find(m => m === 'gemini-2.5-flash') ||
+                                    candidatePool.find(m => m.includes('3.8-flash')) ||
+                                    candidatePool[0];
+                    } else if (preferredGeminiModelMode === '3.8-flash') {
+                        preferred = candidatePool.find(m => m.includes('3.8-flash')) ||
+                                    candidatePool.find(m => m.includes('3.1-flash-lite')) ||
+                                    candidatePool.find(m => m === 'gemini-2.5-flash') ||
+                                    candidatePool.find(m => m.includes('3.5-flash-lite')) ||
+                                    candidatePool[0];
+                    } else if (preferredGeminiModelMode === '3.5-flash') {
+                        preferred = candidatePool.find(m => m.includes('3.5-flash') && !m.includes('lite')) ||
+                                    candidatePool.find(m => m.includes('3.1-flash-lite')) ||
+                                    candidatePool.find(m => m === 'gemini-2.5-flash') ||
+                                    candidatePool[0];
+                    } else if (preferredGeminiModelMode === 'quality') {
+                        preferred = candidatePool.find(m => m === 'gemini-2.5-flash') ||
+                                    candidatePool.find(m => m.includes('2.5-flash') && !m.includes('2.5-flash-lite')) ||
+                                    candidatePool.find(m => m.includes('3.1-flash-lite')) ||
+                                    candidatePool.find(m => m.includes('3.8-flash')) ||
+                                    candidatePool.find(m => m.includes('3.5-flash')) ||
+                                    candidatePool[0];
+                    } else {
+                        // 'speed'（デフォルト）: 最速3.1-flash-lite最優先
                         preferred = candidatePool.find(m => m.includes('3.1-flash-lite')) ||
                                     candidatePool.find(m => m.includes('3.5-flash-lite')) ||
                                     candidatePool.find(m => m === 'gemini-2.5-flash') ||
                                     candidatePool.find(m => m.includes('2.5-flash') && !m.includes('2.5-flash-lite')) ||
                                     candidatePool.find(m => m.includes('3.8-flash')) ||
                                     candidatePool.find(m => m.includes('3.5-flash')) ||
-                                    candidatePool.find(m => m.includes('3-flash')) ||
-                                    candidatePool.find(m => m.includes('flash')) ||
-                                    candidatePool[0];
-                    } else {
-                        preferred = candidatePool.find(m => m === 'gemini-2.5-flash') ||
-                                    candidatePool.find(m => m.includes('2.5-flash') && !m.includes('2.5-flash-lite')) ||
-                                    candidatePool.find(m => m.includes('3.1-flash-lite')) ||
-                                    candidatePool.find(m => m.includes('3.8-flash')) ||
-                                    candidatePool.find(m => m.includes('3.5-flash')) ||
-                                    candidatePool.find(m => m.includes('3-flash')) ||
-                                    candidatePool.find(m => m.includes('flash')) ||
                                     candidatePool[0];
                     }
 
@@ -8418,8 +8435,8 @@ function isIncompletePhrase(text) {
                 return lower.startsWith('gemini') && lower.includes('flash') && !isDeprecated && !isNonText;
             });
 
-            // 実在するFlashモデルのみを優先度順に整理（最速の 3.1-flash-lite を最優先維持、廃止モデル1.5/2.0を除外）
-            const priorityOrder = [
+            // 実在するFlashモデルのみを優先度順に整理（選択モードに応じた第一走者を最優先）
+            let dynamicPriorityOrder = [
                 'gemini-3.1-flash-lite',
                 'gemini-3.5-flash-lite',
                 'gemini-2.5-flash',
@@ -8428,19 +8445,29 @@ function isIncompletePhrase(text) {
                 'gemini-3-flash-preview',
                 'gemini-3-flash'
             ];
+            if (preferredGeminiModelMode === '3.5-flash-lite') {
+                dynamicPriorityOrder = ['gemini-3.5-flash-lite', 'gemini-3.1-flash-lite', 'gemini-2.5-flash', 'gemini-3.8-flash', 'gemini-3.5-flash', 'gemini-3-flash-preview'];
+            } else if (preferredGeminiModelMode === '3.8-flash') {
+                dynamicPriorityOrder = ['gemini-3.8-flash', 'gemini-3.1-flash-lite', 'gemini-2.5-flash', 'gemini-3.5-flash-lite', 'gemini-3.5-flash', 'gemini-3-flash-preview'];
+            } else if (preferredGeminiModelMode === '3.5-flash') {
+                dynamicPriorityOrder = ['gemini-3.5-flash', 'gemini-3.1-flash-lite', 'gemini-2.5-flash', 'gemini-3.8-flash', 'gemini-3.5-flash-lite', 'gemini-3-flash-preview'];
+            } else if (preferredGeminiModelMode === 'quality') {
+                dynamicPriorityOrder = ['gemini-2.5-flash', 'gemini-3.1-flash-lite', 'gemini-3.8-flash', 'gemini-3.5-flash', 'gemini-3.5-flash-lite', 'gemini-3-flash-preview'];
+            }
 
             let candidateModels = [];
             if (validDiscoveredFlash.length > 0) {
                 candidateModels = [...validDiscoveredFlash];
+                // ユーザー指定モデルが発見一覧に未掲載でも直接テストできるよう先頭に追加
+                const selectedTargetName = preferredGeminiModelMode === '3.5-flash-lite' ? 'gemini-3.5-flash-lite'
+                                         : preferredGeminiModelMode === '3.8-flash' ? 'gemini-3.8-flash'
+                                         : preferredGeminiModelMode === '3.5-flash' ? 'gemini-3.5-flash'
+                                         : null;
+                if (selectedTargetName && !candidateModels.some(m => m.includes(selectedTargetName)) && !isModelCoolingDown(selectedTargetName)) {
+                    candidateModels.unshift(selectedTargetName);
+                }
             } else {
-                candidateModels = [
-                    'gemini-3.1-flash-lite',
-                    'gemini-3.5-flash-lite',
-                    'gemini-2.5-flash',
-                    'gemini-3.8-flash',
-                    'gemini-3.5-flash',
-                    'gemini-3-flash-preview'
-                ];
+                candidateModels = [...dynamicPriorityOrder];
             }
 
             // サーキットブレーカー判定: クールダウン中（3分以内に過負荷/タイムアウト発生）のモデルは末尾に回す
@@ -8448,8 +8475,8 @@ function isIncompletePhrase(text) {
                 const coolA = isModelCoolingDown(a) ? 1 : 0;
                 const coolB = isModelCoolingDown(b) ? 1 : 0;
                 if (coolA !== coolB) return coolA - coolB;
-                const idxA = priorityOrder.findIndex(p => a === p || a.includes(p));
-                const idxB = priorityOrder.findIndex(p => b === p || b.includes(p));
+                const idxA = dynamicPriorityOrder.findIndex(p => a === p || a.includes(p));
+                const idxB = dynamicPriorityOrder.findIndex(p => b === p || b.includes(p));
                 return (idxA === -1 ? 999 : idxA) - (idxB === -1 ? 999 : idxB);
             });
 
@@ -9087,22 +9114,26 @@ function isIncompletePhrase(text) {
 
 
 
+            const MODEL_LABEL_CONFIG = {
+                'speed': { badge: '最速 (3.1-flash-lite)', full: '有効 (Gemini 3.1 Flash-Lite)', badgeCls: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30' },
+                '3.5-flash-lite': { badge: '新世代軽量 (3.5-flash-lite)', full: '有効 (Gemini 3.5 Flash-Lite)', badgeCls: 'bg-sky-500/20 text-sky-300 border-sky-500/30' },
+                '3.8-flash': { badge: '最新推論 (3.8-flash)', full: '有効 (Gemini 3.8 Flash)', badgeCls: 'bg-indigo-500/20 text-indigo-300 border-indigo-500/30' },
+                '3.5-flash': { badge: '新世代標準 (3.5-flash)', full: '有効 (Gemini 3.5 Flash)', badgeCls: 'bg-blue-500/20 text-blue-300 border-blue-500/30' },
+                'quality': { badge: '品質 (2.5-flash)', full: '有効 (Gemini 2.5 Flash)', badgeCls: 'bg-purple-500/20 text-purple-300 border-purple-500/30' }
+            };
+            const currentModelCfg = MODEL_LABEL_CONFIG[preferredGeminiModelMode] || MODEL_LABEL_CONFIG['speed'];
+
             const geminiModelBadge = document.getElementById('geminiModelBadge');
             if (geminiModelBadge) {
-                if (preferredGeminiModelMode === 'speed') {
-                    geminiModelBadge.className = 'text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-medium';
-                    geminiModelBadge.textContent = '高速 (3.1-flash-lite)';
-                } else {
-                    geminiModelBadge.className = 'text-[10px] px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30 font-medium';
-                    geminiModelBadge.textContent = '品質 (2.5-flash)';
-                }
+                geminiModelBadge.className = `text-[10px] px-2 py-0.5 rounded-full border font-medium ${currentModelCfg.badgeCls}`;
+                geminiModelBadge.textContent = currentModelCfg.badge;
             }
 
             if (isGeminiAiEnabled && geminiApiKey) {
 
                 geminiStatusBadge.className = 'text-[10px] px-2 py-0.5 rounded-full font-bold bg-purple-500/40 text-purple-200 border border-purple-400/50';
 
-                geminiStatusBadge.textContent = preferredGeminiModelMode === 'speed' ? '有効 (Gemini 3.1 Flash-Lite)' : '有効 (Gemini 2.5 Flash)';
+                geminiStatusBadge.textContent = currentModelCfg.full;
 
                 geminiToggleLabel.textContent = 'AI補正: ON';
 
