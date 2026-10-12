@@ -8147,32 +8147,37 @@ function isIncompletePhrase(text) {
                     const validModels = models
                         .filter(m => (m.supportedGenerationMethods || []).includes('generateContent'))
                         .map(m => m.name.replace(/^models\//, ''))
-                        .filter(m => m.toLowerCase().startsWith('gemini') && !m.toLowerCase().includes('gemma') && !m.toLowerCase().includes('latest') && !m.toLowerCase().includes('2.5-flash-lite') && !m.toLowerCase().includes('omni') && !m.toLowerCase().includes('tts') && !m.toLowerCase().includes('image'));
+                        .filter(m => {
+                            const lower = m.toLowerCase();
+                            // 廃止済みモデル（1.5系・2.0系・1.0系等）および非対応モダリティを完全に除外
+                            const isDeprecated = lower.includes('1.5') || lower.includes('2.0') || lower.includes('1.0');
+                            const isNonText = lower.includes('gemma') || lower.includes('latest') || lower.includes('2.5-flash-lite') || lower.includes('omni') || lower.includes('tts') || lower.includes('image') || lower.includes('embed');
+                            return lower.startsWith('gemini') && !isDeprecated && !isNonText;
+                        });
 
                     // サーキットブレーカー: クールダウン中でない稼働可能モデルを優先選定
                     const activeValidModels = validModels.filter(m => !isModelCoolingDown(m));
                     const candidatePool = activeValidModels.length > 0 ? activeValidModels : validModels;
 
-                    // 実在するFlashモデルの中から優先順位をつけて選択（モードに応じて高速優先/品質優先）
+                    // 実在するFlashモデルの中から優先順位をつけて選択（最速3.1-flash-lite最優先、最新Flash群へ自動順位付け）
                     let preferred = null;
                     if (preferredGeminiModelMode === 'speed') {
                         preferred = candidatePool.find(m => m.includes('3.1-flash-lite')) ||
+                                    candidatePool.find(m => m.includes('3.5-flash-lite')) ||
                                     candidatePool.find(m => m === 'gemini-2.5-flash') ||
                                     candidatePool.find(m => m.includes('2.5-flash') && !m.includes('2.5-flash-lite')) ||
-                                    candidatePool.find(m => m === 'gemini-2.0-flash') ||
-                                    candidatePool.find(m => m.includes('2.0-flash')) ||
+                                    candidatePool.find(m => m.includes('3.8-flash')) ||
+                                    candidatePool.find(m => m.includes('3.5-flash')) ||
                                     candidatePool.find(m => m.includes('3-flash')) ||
-                                    candidatePool.find(m => m === 'gemini-1.5-flash') ||
                                     candidatePool.find(m => m.includes('flash')) ||
                                     candidatePool[0];
                     } else {
-                        preferred = candidatePool.find(m => m.includes('3.1-flash-lite')) ||
-                                    candidatePool.find(m => m === 'gemini-2.5-flash') ||
+                        preferred = candidatePool.find(m => m === 'gemini-2.5-flash') ||
                                     candidatePool.find(m => m.includes('2.5-flash') && !m.includes('2.5-flash-lite')) ||
-                                    candidatePool.find(m => m === 'gemini-2.0-flash') ||
-                                    candidatePool.find(m => m.includes('2.0-flash')) ||
+                                    candidatePool.find(m => m.includes('3.1-flash-lite')) ||
+                                    candidatePool.find(m => m.includes('3.8-flash')) ||
+                                    candidatePool.find(m => m.includes('3.5-flash')) ||
                                     candidatePool.find(m => m.includes('3-flash')) ||
-                                    candidatePool.find(m => m === 'gemini-1.5-flash') ||
                                     candidatePool.find(m => m.includes('flash')) ||
                                     candidatePool[0];
                     }
@@ -8408,23 +8413,34 @@ function isIncompletePhrase(text) {
 
             const validDiscoveredFlash = discoveredModels.filter(m => {
                 const lower = m.toLowerCase();
-                return lower.startsWith('gemini') && lower.includes('flash') && !lower.includes('latest') && !lower.includes('2.5-flash-lite') && !lower.includes('omni') && !lower.includes('tts') && !lower.includes('image');
+                const isDeprecated = lower.includes('1.5') || lower.includes('2.0') || lower.includes('1.0');
+                const isNonText = lower.includes('latest') || lower.includes('2.5-flash-lite') || lower.includes('omni') || lower.includes('tts') || lower.includes('image') || lower.includes('embed');
+                return lower.startsWith('gemini') && lower.includes('flash') && !isDeprecated && !isNonText;
             });
 
-            // 実在するFlashモデルのみを優先度順に整理（最速の 3.1-flash-lite を最優先維持）
+            // 実在するFlashモデルのみを優先度順に整理（最速の 3.1-flash-lite を最優先維持、廃止モデル1.5/2.0を除外）
             const priorityOrder = [
                 'gemini-3.1-flash-lite',
+                'gemini-3.5-flash-lite',
                 'gemini-2.5-flash',
-                'gemini-2.0-flash',
+                'gemini-3.8-flash',
+                'gemini-3.5-flash',
                 'gemini-3-flash-preview',
-                'gemini-1.5-flash'
+                'gemini-3-flash'
             ];
 
             let candidateModels = [];
             if (validDiscoveredFlash.length > 0) {
                 candidateModels = [...validDiscoveredFlash];
             } else {
-                candidateModels = ['gemini-3.1-flash-lite', 'gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-3-flash-preview'];
+                candidateModels = [
+                    'gemini-3.1-flash-lite',
+                    'gemini-3.5-flash-lite',
+                    'gemini-2.5-flash',
+                    'gemini-3.8-flash',
+                    'gemini-3.5-flash',
+                    'gemini-3-flash-preview'
+                ];
             }
 
             // サーキットブレーカー判定: クールダウン中（3分以内に過負荷/タイムアウト発生）のモデルは末尾に回す
