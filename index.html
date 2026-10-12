@@ -4837,7 +4837,15 @@ function isIncompletePhrase(text) {
 
         }
 
-
+        // 聴講者端末ID管理（同一端末の再接続検知＆重複カウント防止）
+        function getViewerDeviceId() {
+            let devId = safeLocalStorageGet('lds_caption_viewer_device_id');
+            if (!devId || typeof devId !== 'string' || !devId.startsWith('dev_')) {
+                devId = 'dev_' + Math.random().toString(36).substring(2, 10) + Date.now().toString(36);
+                safeLocalStorageSet('lds_caption_viewer_device_id', devId);
+            }
+            return devId;
+        }
 
         let audioContext = null;
 
@@ -5815,7 +5823,7 @@ function isIncompletePhrase(text) {
                 // ホストへ言語選択変更を通知（オンデマンド他言語翻訳を自動起動）
                 if (hostConnection && hostConnection.open) {
                     try {
-                        hostConnection.send({ type: 'lang_select', lang: newLang });
+                        hostConnection.send({ type: 'lang_select', deviceId: getViewerDeviceId(), lang: newLang });
                     } catch (e) {
                         console.warn('Failed to send lang_select to host:', e);
                     }
@@ -10000,19 +10008,68 @@ ${existingKeys.slice(0, 100).join(', ')}
 
 
 
-        // ==================== 接続者数カウンターの更新 & 言語別内訳 ====================
+        // ==================== 接続者数カウンターの更新 & 端末ID管理 & 言語別内訳 ====================
+
+        const viewerDeviceMap = new Map();  // deviceId -> conn (同一端末の最新接続参照)
+        const connToDeviceMap = new Map();  // conn -> deviceId (逆引きマップ)
+        const viewerLastPongMap = new Map(); // conn -> timestamp (最終応答時刻)
+
+        // 端末IDの登録および同一端末の古い残存接続の即時置換（重複カウント完全防止）
+        function registerViewerDevice(conn, deviceId) {
+            if (!conn || !deviceId) return;
+
+            const existingConn = viewerDeviceMap.get(deviceId);
+            if (existingConn && existingConn !== conn) {
+                console.log(`[Host] 端末 (${deviceId}) の再接続を検知。古い残存接続を即座に破棄・置換します。`);
+                try {
+                    if (typeof existingConn.removeAllListeners === 'function') {
+                        existingConn.removeAllListeners();
+                    }
+                    existingConn.close();
+                } catch(e){}
+                peerConnections = peerConnections.filter(c => c !== existingConn);
+                viewerLanguages.delete(existingConn);
+                viewerLastPongMap.delete(existingConn);
+                connToDeviceMap.delete(existingConn);
+            }
+
+            viewerDeviceMap.set(deviceId, conn);
+            connToDeviceMap.set(conn, deviceId);
+        }
+
+        // 接続の完全除去ヘルパー
+        function removeViewerConnection(conn) {
+            if (!conn) return;
+            const deviceId = connToDeviceMap.get(conn);
+            if (deviceId) {
+                if (viewerDeviceMap.get(deviceId) === conn) {
+                    viewerDeviceMap.delete(deviceId);
+                }
+                connToDeviceMap.delete(conn);
+            }
+            peerConnections = peerConnections.filter(c => c !== conn);
+            viewerLanguages.delete(conn);
+            viewerLastPongMap.delete(conn);
+        }
 
         function updateViewerCount() {
-
+            // 1. 生存している有効な接続をフィルタ
             const activeConnections = peerConnections.filter(c => c && c.open);
-            const activeCount = activeConnections.length;
 
-            // 言語別人数の集計
+            // 2. deviceId ごとにユニーク化（同一端末の重複カウントを物理的に防ぐ）
+            const seenDevices = new Set();
             const langCounts = {};
+
             activeConnections.forEach(c => {
-                const lang = viewerLanguages.get(c) || 'en';
-                langCounts[lang] = (langCounts[lang] || 0) + 1;
+                const deviceId = connToDeviceMap.get(c) || c.peer || ('anon_' + Math.random());
+                if (!seenDevices.has(deviceId)) {
+                    seenDevices.add(deviceId);
+                    const lang = viewerLanguages.get(c) || 'en';
+                    langCounts[lang] = (langCounts[lang] || 0) + 1;
+                }
             });
+
+            const activeCount = seenDevices.size;
 
             const langParts = Object.entries(langCounts)
                 .map(([l, cnt]) => `${l.toUpperCase()}:${cnt}`);
@@ -10032,27 +10089,83 @@ ${existingKeys.slice(0, 100).join(', ')}
             }
         }
 
-        const viewerLastPongMap = new Map(); // conn -> timestamp (最終応答時刻)
+        // 接続端末へ直近の確定字幕履歴（最大25件）を同期送信（途中参加・再接続時の歯抜け完全救出）
+        function sendRecentHistoryToViewer(conn) {
+            if (!conn || !conn.open || transcriptHistory.length === 0) return;
+            const recentItems = transcriptHistory
+                .filter(item => !item.paused && item.text)
+                .slice(-25)
+                .map(item => ({
+                    id: item.id,
+                    text: item.text,
+                    englishText: item.englishText,
+                    timestamp: item.time,
+                    isAiApplied: item.isAi,
+                    sourceLang: 'ja'
+                }));
+
+            if (recentItems.length > 0) {
+                try {
+                    conn.send({
+                        type: 'sync_history',
+                        history: recentItems
+                    });
+                } catch(e) {
+                    console.warn('[Host] 履歴同期パケット送信エラー:', e.message);
+                }
+            }
+        }
 
         function attachHostConnectionListeners(conn) {
-            // Bug-01修正: ハンドシェイク完了(open)前にpushすると、broadcastToViewersの
-            // conn.openフィルターで永久除外されるRace Conditionが発生するため、
-            // openイベント完了後に初めて配列に追加する
+            // Bug-01修正: ハンドシェイク完了(open)後に配列に追加
             conn.on('open', function() {
                 if (!peerConnections.includes(conn)) {
                     peerConnections.push(conn);
                 }
                 viewerLastPongMap.set(conn, Date.now());
+                // PeerJS peer ID があれば初期仮登録
+                if (conn.peer) {
+                    registerViewerDevice(conn, conn.peer);
+                }
                 updateViewerCount();
             });
 
             conn.on('data', function(msg) {
                 if (!msg) return;
+
+                // 端末IDがあれば即座にデバイス登録＆古い接続を置換
+                if (msg.deviceId) {
+                    registerViewerDevice(conn, msg.deviceId);
+                }
+
                 // フェーズC: クライアントからのpong受信時は最終応答時刻を更新して即座に終了
                 if (msg.type === 'pong') {
                     viewerLastPongMap.set(conn, Date.now());
                     return;
                 }
+
+                // 聴講者端末の初期挨拶 (viewer_hello)
+                if (msg.type === 'viewer_hello') {
+                    if (msg.lang) {
+                        viewerLanguages.set(conn, msg.lang);
+                    }
+                    viewerLastPongMap.set(conn, Date.now());
+                    updateViewerCount();
+                    // 接続端末へ直近履歴（最大25件）を即時同期して歯抜け・途中参加を完全救出
+                    sendRecentHistoryToViewer(conn);
+                    return;
+                }
+
+                // 聴講者端末の自律退店通知 (viewer_goodbye)
+                if (msg.type === 'viewer_goodbye') {
+                    console.log(`[Host] 端末 (${msg.deviceId || 'unknown'}) の退店通知を受信。即座に除去します。`);
+                    removeViewerConnection(conn);
+                    try { conn.close(); } catch(e){}
+                    updateViewerCount();
+                    return;
+                }
+
+                // 言語切替通知 (lang_select)
                 if (msg.type === 'lang_select' && msg.lang) {
                     viewerLanguages.set(conn, msg.lang);
                     viewerLastPongMap.set(conn, Date.now());
@@ -10061,17 +10174,13 @@ ${existingKeys.slice(0, 100).join(', ')}
             });
 
             conn.on('close', function() {
-                peerConnections = peerConnections.filter(c => c !== conn);
-                viewerLanguages.delete(conn);
-                viewerLastPongMap.delete(conn);
+                removeViewerConnection(conn);
                 updateViewerCount();
             });
 
             conn.on('error', function(err) {
                 console.warn('Host-side connection error:', err);
-                peerConnections = peerConnections.filter(c => c !== conn);
-                viewerLanguages.delete(conn);
-                viewerLastPongMap.delete(conn);
+                removeViewerConnection(conn);
                 updateViewerCount();
             });
         }
@@ -10338,46 +10447,51 @@ ${existingKeys.slice(0, 100).join(', ')}
         let hostHeartbeatTimer = null;
 
         function cleanupDeadConnections() {
-            const beforeCount = peerConnections.length;
             const now = Date.now();
 
-            // フェーズC修正: 通常の open 判定に加え、30秒間 pong が無い接続をゾンビとみなして安全に破棄
+            // 通常の open 判定に加え、10秒間 pong が無い接続をゾンビとみなして安全に破棄（ping 3秒間隔）
             peerConnections = peerConnections.filter(conn => {
-                if (!conn || !conn.open) return false;
+                if (!conn || !conn.open) {
+                    removeViewerConnection(conn);
+                    return false;
+                }
                 const lastPong = viewerLastPongMap.get(conn);
-                // 接続直後（lastPong未設定）は猶予を与える。30秒以上 pong が途絶えていればゾンビ切断
-                if (lastPong && (now - lastPong > 30000)) {
-                    console.warn('[Host Heartbeat] 30秒間応答のないゾンビクライアントを検知。切断・除去します。');
+                // 接続直後（lastPong未設定）は猶予を与える。10秒以上 pong が途絶えていればゾンビ切断
+                if (lastPong && (now - lastPong > 10000)) {
+                    console.warn('[Host Heartbeat] 10秒間応答のないゾンビクライアントを検知。切断・除去します。');
                     try { conn.close(); } catch(e){}
+                    removeViewerConnection(conn);
                     return false;
                 }
                 return true;
             });
 
-            // viewerLanguages と viewerLastPongMap の古い切断クライアントも掃除
-            for (const conn of viewerLanguages.keys()) {
+            // マップ類の整合性クリーンアップ
+            for (const conn of Array.from(viewerLanguages.keys())) {
                 if (!peerConnections.includes(conn) || !conn.open) {
-                    viewerLanguages.delete(conn);
+                    removeViewerConnection(conn);
                 }
             }
-            for (const conn of viewerLastPongMap.keys()) {
+            for (const conn of Array.from(viewerLastPongMap.keys())) {
                 if (!peerConnections.includes(conn) || !conn.open) {
-                    viewerLastPongMap.delete(conn);
+                    removeViewerConnection(conn);
                 }
             }
 
-            if (peerConnections.length !== beforeCount) {
-                updateViewerCount();
-            }
+            // 接続数・言語内訳表示を常に最新状態に更新
+            updateViewerCount();
         }
 
         function startHostHeartbeat() {
             if (hostHeartbeatTimer) clearInterval(hostHeartbeatTimer);
             hostHeartbeatTimer = setInterval(() => {
-                if (!isHost || peerConnections.length === 0) return;
-                // クリーンアップ
+                if (!isHost) return;
+                // クリーンアップ & 画面表示更新
                 cleanupDeadConnections();
-                // 接続中の全端末へ ping 送信（5秒間隔）
+
+                if (peerConnections.length === 0) return;
+
+                // 接続中の全端末へ ping 送信（3秒間隔）
                 const pingMsg = { type: 'ping', t: Date.now() };
                 peerConnections.forEach(conn => {
                     if (conn && conn.open) {
@@ -10388,7 +10502,7 @@ ${existingKeys.slice(0, 100).join(', ')}
                         }
                     }
                 });
-            }, 5000);
+            }, 3000);
         }
 
         function broadcastToViewers(data) {
@@ -12218,6 +12332,23 @@ ${existingKeys.slice(0, 100).join(', ')}
             if (histIdx !== -1) transcriptHistory.splice(histIdx, 1);
         }
 
+        // スマホ側（Viewer）画面終了・リロード時の自律退店通知
+        function handleViewerLeave() {
+            if (!isHost) {
+                if (hostConnection && hostConnection.open) {
+                    try {
+                        hostConnection.send({ type: 'viewer_goodbye', deviceId: getViewerDeviceId() });
+                        hostConnection.close();
+                    } catch(e){}
+                }
+                if (peer && !peer.destroyed) {
+                    try { peer.destroy(); } catch(e){}
+                }
+            }
+        }
+        window.addEventListener('beforeunload', handleViewerLeave);
+        window.addEventListener('pagehide', handleViewerLeave);
+
         // ==================== 指数バックオフ付き自動再接続 (Viewer) ====================
 
         function initPeerViewer(roomId) {
@@ -12373,6 +12504,9 @@ ${existingKeys.slice(0, 100).join(', ')}
                 try {
                     const oldConn = hostConnection;
                     hostConnection = null;
+                    if (oldConn.open) {
+                        try { oldConn.send({ type: 'viewer_goodbye', deviceId: getViewerDeviceId() }); } catch(e){}
+                    }
                     if (typeof oldConn.removeAllListeners === 'function') {
                         oldConn.removeAllListeners();
                     } else if (typeof oldConn.off === 'function') {
@@ -12469,12 +12603,13 @@ ${existingKeys.slice(0, 100).join(', ')}
 
                 const lang = targetLangSelect ? targetLangSelect.value : 'en';
                 const s = VIEWER_UI_STRINGS[lang] || VIEWER_UI_STRINGS['en'];
+                const myDeviceId = getViewerDeviceId();
 
-                // ホストへ自身の選択言語を通知（オンデマンド他言語翻訳トリガー）
+                // ホストへ端末IDと選択言語を初期通知（viewer_hello: 同一端末の重複置換＆オンデマンド他言語翻訳トリガー）
                 try {
-                    conn.send({ type: 'lang_select', lang: lang });
+                    conn.send({ type: 'viewer_hello', deviceId: myDeviceId, lang: lang });
                 } catch (e) {
-                    console.warn('Failed to send initial lang_select to host:', e);
+                    console.warn('Failed to send initial viewer_hello to host:', e);
                 }
 
                 // フェーズC修正: 最新接触時刻を記録 & ゾンビ監視ウォッチドッグ起動
@@ -12527,7 +12662,7 @@ ${existingKeys.slice(0, 100).join(', ')}
                 // フェーズC修正: ホストからのpingを受信した場合は即座にpongを返送して終了（字幕キューはバイパス）
                 if (data && data.type === 'ping') {
                     try {
-                        conn.send({ type: 'pong', t: data.t });
+                        conn.send({ type: 'pong', deviceId: getViewerDeviceId(), t: data.t });
                     } catch(e){}
                     return;
                 }
@@ -12565,19 +12700,47 @@ ${existingKeys.slice(0, 100).join(', ')}
                     });
                 } else if (data.type === 'update_caption') {
                     viewerCaptionQueue = viewerCaptionQueue.then(async () => {
-                        const card = viewerCaptionFeed ? viewerCaptionFeed.querySelector(`[data-caption-id="${data.id}"]`) : null;
-                        if (!card) return;
-
                         const targetLang = targetLangSelect ? targetLangSelect.value : 'ja';
-                        const jaTextEl = card.querySelector('.caption-ja-text');
-                        const enTextEl = card.querySelector('.caption-en-text');
-                        const badgeEl = card.querySelector('.caption-status-badge');
-
                         const directTranslation = (targetLang === 'en' && data.englishText)
                             ? data.englishText
                             : (data.translations && data.translations[targetLang])
                                 ? data.translations[targetLang]
                                 : null;
+
+                        const card = viewerCaptionFeed ? viewerCaptionFeed.querySelector(`[data-caption-id="${data.id}"]`) : null;
+                        if (!card) {
+                            // 先行生字幕パケット未達時の救出フォールバック（ゴミ箱ポイ捨てを完全防止）
+                            console.log(`[Viewer] 先行カード未達を検知。確定字幕から新規カードとして救出・描画します (ID: ${data.id})`);
+                            let mainText = data.text || '';
+                            let subText = '';
+                            if (targetLang === 'ja') {
+                                mainText = data.text || '';
+                                subText = (data.sourceLang && data.sourceLang !== 'ja') ? (data.originalText || '') : '';
+                            } else if (directTranslation) {
+                                mainText = directTranslation;
+                                subText = data.text || data.originalText || '';
+                            } else if (data.text) {
+                                try {
+                                    mainText = await translateText(data.text, targetLang);
+                                    subText = data.text;
+                                } catch (e) {
+                                    mainText = data.text;
+                                }
+                            }
+                            appendViewerCaption(mainText, subText, data.timestamp || new Date().toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', second: '2-digit' }), data.sourceLang || 'ja', data.id, false);
+                            const newCard = viewerCaptionFeed ? viewerCaptionFeed.querySelector(`[data-caption-id="${data.id}"]`) : null;
+                            if (newCard) {
+                                const newBadgeEl = newCard.querySelector('.caption-status-badge');
+                                if (newBadgeEl && data.isAiApplied) {
+                                    newBadgeEl.innerHTML = getBadgeHtml('ai', targetLang);
+                                }
+                            }
+                            return;
+                        }
+
+                        const jaTextEl = card.querySelector('.caption-ja-text');
+                        const enTextEl = card.querySelector('.caption-en-text');
+                        const badgeEl = card.querySelector('.caption-status-badge');
 
                         if (targetLang === 'ja') {
                             if (jaTextEl && data.text) {
@@ -12626,6 +12789,42 @@ ${existingKeys.slice(0, 100).join(', ')}
                         }
                     }).catch(err => {
                         console.error('Viewer update_caption error:', err);
+                    });
+                } else if (data.type === 'sync_history' && Array.isArray(data.history)) {
+                    // 途中参加・再接続時のバックログ自動補填同期
+                    viewerCaptionQueue = viewerCaptionQueue.then(async () => {
+                        const targetLang = targetLangSelect ? targetLangSelect.value : 'en';
+                        for (const item of data.history) {
+                            if (!item || !item.id) continue;
+                            const exists = viewerCaptionFeed ? viewerCaptionFeed.querySelector(`[data-caption-id="${item.id}"]`) : null;
+                            if (exists) continue; // 既に画面に存在する場合は二重追加しない
+
+                            let mainText = item.text || '';
+                            let subText = '';
+                            if (targetLang === 'ja') {
+                                mainText = item.text || '';
+                                subText = (item.sourceLang && item.sourceLang !== 'ja') ? (item.originalText || '') : '';
+                            } else if (targetLang === 'en' && item.englishText) {
+                                mainText = item.englishText;
+                                subText = item.text || '';
+                            } else if (item.text) {
+                                try {
+                                    mainText = await translateText(item.text, targetLang);
+                                    subText = item.text;
+                                } catch(e) {
+                                    mainText = item.text;
+                                }
+                            }
+
+                            appendViewerCaption(mainText, subText, item.timestamp || '', item.sourceLang || 'ja', item.id, false);
+                            const cardEl = viewerCaptionFeed ? viewerCaptionFeed.querySelector(`[data-caption-id="${item.id}"]`) : null;
+                            if (cardEl && item.isAiApplied) {
+                                const badgeEl = cardEl.querySelector('.caption-status-badge');
+                                if (badgeEl) badgeEl.innerHTML = getBadgeHtml('ai', targetLang);
+                            }
+                        }
+                    }).catch(err => {
+                        console.error('Viewer sync_history error:', err);
                     });
                 } else if (data.type === 'remove_caption') {
                     if (data.id && viewerCaptionFeed) {
