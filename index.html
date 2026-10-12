@@ -784,7 +784,10 @@
                         </div>
 
                         <code id="roomIdDisplay" class="bg-slate-100 text-slate-800 px-3 py-1 rounded text-xs font-mono select-all font-bold block truncate">接続待機中...</code>
-
+                        <div id="hostSignalingStatus" class="mt-1.5 text-[11px] flex items-center justify-center gap-1.5 text-amber-600 font-medium animate-pulse">
+                            <span class="w-2 h-2 rounded-full bg-amber-500"></span>
+                            <span>シグナリング接続中...</span>
+                        </div>
                     </div>
 
 
@@ -4860,6 +4863,16 @@ function isIncompletePhrase(text) {
 
         let reconnectAttemptCount = 0;
 
+        let viewerConnectionGeneration = 0; // 聴講者側: 接続世代番号（競合・古いタイマーによる誤切断防止）
+
+        let activeViewerConnectionTimeout = null; // 聴講者側: 現在試行中の接続タイムアウトID
+
+        let pendingViewerRecreatePeer = false; // 聴講者側: 次回再試行時にPeer再生成が必要かどうかの昇格フラグ
+
+        let viewerHeartbeatWatchdogTimer = null; // 聴講者側: ホスト無通信監視（ゾンビ検知）用タイマー
+
+        let lastHostContactTime = 0; // 聴講者側: ホストからの最新データ/ping受信時刻
+
         let recognitionRestartTimer = null; // 音声認識自動再接続用タイマー
 
 
@@ -5856,6 +5869,34 @@ function isIncompletePhrase(text) {
             }
         }
 
+        // ==================== 聴講者側 ライフサイクル＆回線復帰監視 (H5修正) ====================
+        function checkViewerConnectionHealth() {
+            if (isHost || !currentRoomId) return;
+            // 画面復帰・BFCache復帰・回線回復時に、接続が切断中またはゾンビ状態であれば即座に再接続
+            if (!hostConnection || !hostConnection.open) {
+                console.warn('[Viewer Health] 画面復帰/回線回復を検知: 切断またはゾンビ状態のため自動再接続を開始します。');
+                scheduleViewerReconnect(true);
+            }
+        }
+
+        // 全端末・全ブラウザ（iOS 16.4未満を含む）で常時有効なライフサイクル監視
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible') {
+                checkViewerConnectionHealth();
+            }
+        });
+        window.addEventListener('pageshow', (event) => {
+            // SafariなどのBFCache（戻る・進むキャッシュ）からの復帰時
+            if (event.persisted || document.visibilityState === 'visible') {
+                checkViewerConnectionHealth();
+            }
+        });
+        window.addEventListener('online', () => {
+            // 機内モード解除、Wi-Fi切替、電波回復時
+            console.log('[Viewer Health] 端末のオンライン復帰を検知');
+            checkViewerConnectionHealth();
+        });
+
         function setupWakeLock() {
             // 起動後 3.5秒間スリープ防止ボタンの上に吹き出し案内を表示し、その後自動フェードアウト
             setTimeout(() => {
@@ -5868,14 +5909,6 @@ function isIncompletePhrase(text) {
                 document.addEventListener('visibilitychange', () => {
                     if (document.visibilityState === 'visible' && isWakeLockEnabled) {
                         requestWakeLock();
-                    }
-
-                    // スマホ画面復帰時: WebRTC接続のゾンビ化を検知して自動再接続
-                    if (document.visibilityState === 'visible' && !isHost && currentRoomId) {
-                        if (!hostConnection || !hostConnection.open) {
-                            console.warn('画面復帰時にゾンビ接続を検知。再接続を開始します。');
-                            scheduleViewerReconnect(true);
-                        }
                     }
                 });
 
@@ -9999,6 +10032,8 @@ ${existingKeys.slice(0, 100).join(', ')}
             }
         }
 
+        const viewerLastPongMap = new Map(); // conn -> timestamp (最終応答時刻)
+
         function attachHostConnectionListeners(conn) {
             // Bug-01修正: ハンドシェイク完了(open)前にpushすると、broadcastToViewersの
             // conn.openフィルターで永久除外されるRace Conditionが発生するため、
@@ -10007,12 +10042,20 @@ ${existingKeys.slice(0, 100).join(', ')}
                 if (!peerConnections.includes(conn)) {
                     peerConnections.push(conn);
                 }
+                viewerLastPongMap.set(conn, Date.now());
                 updateViewerCount();
             });
 
             conn.on('data', function(msg) {
-                if (msg && msg.type === 'lang_select' && msg.lang) {
+                if (!msg) return;
+                // フェーズC: クライアントからのpong受信時は最終応答時刻を更新して即座に終了
+                if (msg.type === 'pong') {
+                    viewerLastPongMap.set(conn, Date.now());
+                    return;
+                }
+                if (msg.type === 'lang_select' && msg.lang) {
                     viewerLanguages.set(conn, msg.lang);
+                    viewerLastPongMap.set(conn, Date.now());
                     updateViewerCount();
                 }
             });
@@ -10020,6 +10063,7 @@ ${existingKeys.slice(0, 100).join(', ')}
             conn.on('close', function() {
                 peerConnections = peerConnections.filter(c => c !== conn);
                 viewerLanguages.delete(conn);
+                viewerLastPongMap.delete(conn);
                 updateViewerCount();
             });
 
@@ -10027,6 +10071,7 @@ ${existingKeys.slice(0, 100).join(', ')}
                 console.warn('Host-side connection error:', err);
                 peerConnections = peerConnections.filter(c => c !== conn);
                 viewerLanguages.delete(conn);
+                viewerLastPongMap.delete(conn);
                 updateViewerCount();
             });
         }
@@ -10037,6 +10082,46 @@ ${existingKeys.slice(0, 100).join(', ')}
         const DEFAULT_ROOM_ID = 'lds-yonago';
         let hostPeerRetryTimer = null;
         let hostPeerRetryCount = 0;
+        let hostSignalingWatchdogTimer = null;
+
+        function updateHostSignalingUI(status, label) {
+            const el = document.getElementById('hostSignalingStatus');
+            if (!el) return;
+            if (status === 'ready') {
+                el.className = "mt-1.5 text-[11px] flex items-center justify-center gap-1.5 text-emerald-600 font-medium";
+                el.innerHTML = `<span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span><span>${label || '新規受付中'}</span>`;
+            } else if (status === 'reconnecting') {
+                el.className = "mt-1.5 text-[11px] flex items-center justify-center gap-1.5 text-amber-600 font-medium animate-pulse";
+                el.innerHTML = `<span class="w-2 h-2 rounded-full bg-amber-500"></span><span>${label || 'シグナリング再接続中...'}</span>`;
+            } else if (status === 'waiting') {
+                el.className = "mt-1.5 text-[11px] flex items-center justify-center gap-1.5 text-amber-700 font-medium animate-pulse";
+                el.innerHTML = `<span class="w-2 h-2 rounded-full bg-amber-500"></span><span>${label || 'ID解放待ち...'}</span>`;
+            } else if (status === 'error') {
+                el.className = "mt-1.5 text-[11px] flex items-center justify-center gap-1.5 text-rose-600 font-medium";
+                el.innerHTML = `<span class="w-2 h-2 rounded-full bg-rose-500"></span><span>${label || 'シグナリング切断'}</span>`;
+            }
+        }
+
+        function startHostSignalingWatchdog(savedPeerId) {
+            if (hostSignalingWatchdogTimer) clearInterval(hostSignalingWatchdogTimer);
+            hostSignalingWatchdogTimer = setInterval(() => {
+                if (!isHost) return;
+                // peer が切断状態のまま放置されていないか監視
+                if (peer && !peer.destroyed) {
+                    if (peer.disconnected) {
+                        console.warn('[Host Watchdog] シグナリング切断を検知。peer.reconnect() を実行します。');
+                        updateHostSignalingUI('reconnecting', 'シグナリング自動復旧中...');
+                        try {
+                            peer.reconnect();
+                        } catch(e) {
+                            console.warn('Watchdog reconnect error:', e.message);
+                        }
+                    } else if (peer.open) {
+                        updateHostSignalingUI('ready', '新規受付中');
+                    }
+                }
+            }, 15000);
+        }
 
         function initPeerHost(customPeerId) {
             if (hostPeerRetryTimer) {
@@ -10062,6 +10147,8 @@ ${existingKeys.slice(0, 100).join(', ')}
                 safeLocalStorageSet('lds_caption_peer_id', savedPeerId);
             }
 
+            updateHostSignalingUI('reconnecting', 'シグナリング接続中...');
+
             peer = new Peer(savedPeerId, PEER_CONFIG);
 
             peer.on('open', function(id) {
@@ -10071,15 +10158,23 @@ ${existingKeys.slice(0, 100).join(', ')}
                     roomIdDisplay.textContent = id;
                     roomIdDisplay.className = "bg-slate-100 text-slate-800 px-3 py-1 rounded text-xs font-mono select-all font-bold block truncate";
                 }
+                updateHostSignalingUI('ready', '新規受付中');
                 generateQRCode(id);
+                startHostSignalingWatchdog(savedPeerId);
+                startHostHeartbeat();
             });
 
             peer.on('connection', attachHostConnectionListeners);
 
             peer.on('disconnected', function() {
                 console.warn('Host Peer disconnected from signaling server. Reconnecting...');
+                updateHostSignalingUI('reconnecting', 'シグナリング再接続中...');
                 if (peer && !peer.destroyed) {
-                    peer.reconnect();
+                    try {
+                        peer.reconnect();
+                    } catch(e) {
+                        console.warn('Host peer.reconnect() error:', e.message);
+                    }
                 }
             });
 
@@ -10097,6 +10192,7 @@ ${existingKeys.slice(0, 100).join(', ')}
                         roomIdDisplay.textContent = `⏳ ID解放待ち... (${retryDelaySec}秒後に再接続)`;
                         roomIdDisplay.className = "bg-amber-100 text-amber-900 border border-amber-300 px-3 py-1 rounded text-xs font-mono select-all font-bold block truncate animate-pulse";
                     }
+                    updateHostSignalingUI('waiting', `ID解放待ち (${retryDelaySec}秒)`);
 
                     if (peer && !peer.destroyed) {
                         try { peer.destroy(); } catch(e){}
@@ -10105,9 +10201,45 @@ ${existingKeys.slice(0, 100).join(', ')}
                     hostPeerRetryTimer = setTimeout(() => {
                         initPeerHost(savedPeerId);
                     }, retryDelaySec * 1000);
+                } else {
+                    // H4修正: unavailable-id 以外のネットワーク/サーバーエラーでも自動再接続をスケジュール
+                    hostPeerRetryCount++;
+                    const retryDelaySec = Math.min(3 + hostPeerRetryCount * 2, 15);
+                    console.warn(`[PeerJS Host] エラー「${err.type || err.message}」を検知。${retryDelaySec}秒後にシグナリング再試行...`);
+                    updateHostSignalingUI('reconnecting', `再接続試行中 (${retryDelaySec}秒後)`);
+
+                    if (peer && !peer.destroyed && peer.disconnected) {
+                        try {
+                            peer.reconnect();
+                            return;
+                        } catch(e){}
+                    }
+
+                    if (!hostPeerRetryTimer) {
+                        hostPeerRetryTimer = setTimeout(() => {
+                            hostPeerRetryTimer = null;
+                            if (peer && !peer.destroyed && peer.disconnected) {
+                                try { peer.reconnect(); } catch(e){ initPeerHost(savedPeerId); }
+                            } else {
+                                initPeerHost(savedPeerId);
+                            }
+                        }, retryDelaySec * 1000);
+                    }
                 }
             });
         }
+
+        // M4修正: ホスト画面終了/リロード時の即時セッション破棄（ID解放通知）
+        window.addEventListener('beforeunload', function() {
+            if (isHost && peer && !peer.destroyed) {
+                try { peer.destroy(); } catch(e){}
+            }
+        });
+        window.addEventListener('pagehide', function() {
+            if (isHost && peer && !peer.destroyed) {
+                try { peer.destroy(); } catch(e){}
+            }
+        });
 
         function generateQRCode(peerId) {
             qrcodeContainer.innerHTML = '';
@@ -10202,20 +10334,61 @@ ${existingKeys.slice(0, 100).join(', ')}
 
 
 
-        // ==================== 切断接続・メモリクレンジング ====================
+        // ==================== 切断接続・メモリクレンジング & ハートビート ====================
+        let hostHeartbeatTimer = null;
 
         function cleanupDeadConnections() {
             const beforeCount = peerConnections.length;
-            peerConnections = peerConnections.filter(conn => conn && conn.open);
-            // viewerLanguages の古い切断クライアントも掃除
+            const now = Date.now();
+
+            // フェーズC修正: 通常の open 判定に加え、30秒間 pong が無い接続をゾンビとみなして安全に破棄
+            peerConnections = peerConnections.filter(conn => {
+                if (!conn || !conn.open) return false;
+                const lastPong = viewerLastPongMap.get(conn);
+                // 接続直後（lastPong未設定）は猶予を与える。30秒以上 pong が途絶えていればゾンビ切断
+                if (lastPong && (now - lastPong > 30000)) {
+                    console.warn('[Host Heartbeat] 30秒間応答のないゾンビクライアントを検知。切断・除去します。');
+                    try { conn.close(); } catch(e){}
+                    return false;
+                }
+                return true;
+            });
+
+            // viewerLanguages と viewerLastPongMap の古い切断クライアントも掃除
             for (const conn of viewerLanguages.keys()) {
                 if (!peerConnections.includes(conn) || !conn.open) {
                     viewerLanguages.delete(conn);
                 }
             }
+            for (const conn of viewerLastPongMap.keys()) {
+                if (!peerConnections.includes(conn) || !conn.open) {
+                    viewerLastPongMap.delete(conn);
+                }
+            }
+
             if (peerConnections.length !== beforeCount) {
                 updateViewerCount();
             }
+        }
+
+        function startHostHeartbeat() {
+            if (hostHeartbeatTimer) clearInterval(hostHeartbeatTimer);
+            hostHeartbeatTimer = setInterval(() => {
+                if (!isHost || peerConnections.length === 0) return;
+                // クリーンアップ
+                cleanupDeadConnections();
+                // 接続中の全端末へ ping 送信（5秒間隔）
+                const pingMsg = { type: 'ping', t: Date.now() };
+                peerConnections.forEach(conn => {
+                    if (conn && conn.open) {
+                        try {
+                            conn.send(pingMsg);
+                        } catch(e) {
+                            console.warn('[Host Heartbeat] ping 送信エラー:', e.message);
+                        }
+                    }
+                });
+            }, 5000);
         }
 
         function broadcastToViewers(data) {
@@ -12154,119 +12327,187 @@ ${existingKeys.slice(0, 100).join(', ')}
 
         }
 
-
+        // ==================== 聴講者側 ハートビート無通信監視 (フェーズC) ====================
+        function startViewerHeartbeatWatchdog(conn, currentGen) {
+            if (viewerHeartbeatWatchdogTimer) clearInterval(viewerHeartbeatWatchdogTimer);
+            viewerHeartbeatWatchdogTimer = setInterval(() => {
+                if (currentGen !== viewerConnectionGeneration) {
+                    clearInterval(viewerHeartbeatWatchdogTimer);
+                    viewerHeartbeatWatchdogTimer = null;
+                    return;
+                }
+                // 接続中のはずなのに20秒間ホストから一切データ（pingも字幕も）が届かない場合
+                if (conn && conn.open) {
+                    const elapsed = Date.now() - lastHostContactTime;
+                    if (elapsed > 20000) {
+                        console.warn(`[Viewer Watchdog] ホストからの無通信が20秒経過(${Math.round(elapsed/1000)}秒)。サイレント切断と判定し自動再接続します。`);
+                        clearInterval(viewerHeartbeatWatchdogTimer);
+                        viewerHeartbeatWatchdogTimer = null;
+                        try {
+                            if (typeof conn.removeAllListeners === 'function') conn.removeAllListeners();
+                            conn.close();
+                        } catch(e){}
+                        scheduleViewerReconnect(true);
+                    }
+                }
+            }, 5000);
+        }
 
         function connectToHost(roomId) {
+            // H1/H2修正: 接続世代番号をインクリメント（過去世代のイベント・タイマーを無効化）
+            const currentGen = ++viewerConnectionGeneration;
 
-            if (hostConnection) {
-
-                try { hostConnection.close(); } catch(e){ console.warn('hostConnection.close error:', e.message); }
-
+            // 既存の接続タイムアウト・ウォッチドッグがあれば確実にクリア
+            if (activeViewerConnectionTimeout) {
+                clearTimeout(activeViewerConnectionTimeout);
+                activeViewerConnectionTimeout = null;
+            }
+            if (viewerHeartbeatWatchdogTimer) {
+                clearInterval(viewerHeartbeatWatchdogTimer);
+                viewerHeartbeatWatchdogTimer = null;
             }
 
-
+            // H2修正: 古い hostConnection を安全に破棄
+            // （リスナーを解除してからcloseし、古いcloseイベントによる意図せぬ再接続予約を完全防止）
+            if (hostConnection) {
+                try {
+                    const oldConn = hostConnection;
+                    hostConnection = null;
+                    if (typeof oldConn.removeAllListeners === 'function') {
+                        oldConn.removeAllListeners();
+                    } else if (typeof oldConn.off === 'function') {
+                        oldConn.off('open');
+                        oldConn.off('data');
+                        oldConn.off('error');
+                        oldConn.off('close');
+                    }
+                    oldConn.close();
+                } catch(e) {
+                    console.warn('hostConnection cleanup error:', e.message);
+                }
+            }
 
             // Peerが破壊されている場合は再生成
-
             if (!peer || peer.destroyed) {
-
-                peer = new Peer(PEER_CONFIG);
+                try {
+                    peer = new Peer(PEER_CONFIG);
+                } catch (e) {
+                    console.error('Peer creation failed in connectToHost:', e);
+                    scheduleViewerReconnect(true);
+                    return;
+                }
 
                 peer.on('open', function() {
-
-                    connectToHost(roomId);
-
+                    if (currentGen === viewerConnectionGeneration) {
+                        connectToHost(roomId);
+                    }
                 });
 
                 peer.on('error', function(err) {
-
+                    if (currentGen !== viewerConnectionGeneration) return;
                     console.error('Viewer Peer Error (reconnect):', err);
-
                     scheduleViewerReconnect(true);
-
                 });
 
                 peer.on('disconnected', function() {
-
+                    if (currentGen !== viewerConnectionGeneration) return;
                     if (!peer.destroyed) { peer.reconnect(); }
-
                     else { scheduleViewerReconnect(true); }
-
                 });
 
                 return;
-
             }
 
-
-
             // フェーズ65: iOS Safari (WebKit) でのバイナリ通信失敗を防止するため serialization: 'json' を明示
-            hostConnection = peer.connect(roomId, { reliable: true, serialization: 'json' });
+            const conn = peer.connect(roomId, { reliable: true, serialization: 'json' });
+            hostConnection = conn;
 
-            if (!hostConnection) {
+            if (!conn) {
                 console.error('Failed to create connection to host');
                 scheduleViewerReconnect(false);
                 return;
             }
 
-            // 接続タイムアウト: ホストオフライン時に「接続中...」で永久フリーズするのを防止
-            // ※フェーズ65改善: 教会Wi-Fiやセルラー回線・iOS SafariでのTURN中継ハンドシェイク時間を考慮し25秒に緩和
-            const connectionTimeout = setTimeout(() => {
-                if (hostConnection && !hostConnection.open) {
-                    console.warn('接続タイムアウト（25秒）。再接続を開始します。');
-                    try { hostConnection.close(); } catch(e){ console.warn('hostConnection.close error:', e.message); }
+            // H1修正: 接続タイムアウト（25秒）
+            // ローカルスコープの conn と currentGen に紐付け、最新世代かつ未openの時のみ発火
+            activeViewerConnectionTimeout = setTimeout(() => {
+                if (currentGen !== viewerConnectionGeneration) return;
+
+                if (conn && !conn.open) {
+                    console.warn(`[世代#${currentGen}] 接続タイムアウト（25秒）。再接続を開始します。`);
+                    try {
+                        if (typeof conn.removeAllListeners === 'function') conn.removeAllListeners();
+                        conn.close();
+                    } catch(e) { console.warn('conn.close error:', e.message); }
+                    if (hostConnection === conn) hostConnection = null;
                     scheduleViewerReconnect(true);
                 }
             }, 25000);
 
+            conn.on('open', function() {
+                // 世代チェック: 既に新しい接続が試行されている場合は破棄
+                if (currentGen !== viewerConnectionGeneration) {
+                    console.warn(`[世代#${currentGen}] 過去世代の接続がopenしましたが、最新(#${viewerConnectionGeneration})ではないため破棄します。`);
+                    try { conn.close(); } catch(e){}
+                    return;
+                }
 
-
-            hostConnection.on('open', function() {
-
-                clearTimeout(connectionTimeout);
+                // タイムアウト解除
+                if (activeViewerConnectionTimeout) {
+                    clearTimeout(activeViewerConnectionTimeout);
+                    activeViewerConnectionTimeout = null;
+                }
 
                 reconnectAttemptCount = 0;
-
                 lastViewerReconnectTrigger = 0;
+                pendingViewerRecreatePeer = false;
 
                 if (viewerReconnectTimer) {
                     clearTimeout(viewerReconnectTimer);
                     viewerReconnectTimer = null;
                 }
 
-
-
                 const lang = targetLangSelect ? targetLangSelect.value : 'en';
-
                 const s = VIEWER_UI_STRINGS[lang] || VIEWER_UI_STRINGS['en'];
 
                 // ホストへ自身の選択言語を通知（オンデマンド他言語翻訳トリガー）
                 try {
-                    hostConnection.send({ type: 'lang_select', lang: lang });
+                    conn.send({ type: 'lang_select', lang: lang });
                 } catch (e) {
                     console.warn('Failed to send initial lang_select to host:', e);
                 }
 
-                peerConnectionStatus.className = 'w-2 h-2 rounded-full bg-emerald-400';
+                // フェーズC修正: 最新接触時刻を記録 & ゾンビ監視ウォッチドッグ起動
+                lastHostContactTime = Date.now();
+                startViewerHeartbeatWatchdog(conn, currentGen);
 
-                peerStatusText.textContent = s.peerConnected;
-
-
-
-                const placeholder = document.getElementById('captionPlaceholder');
-
-                if (placeholder) {
-
-                    placeholder.innerHTML = `
-
-                        <i class="fa-solid fa-circle-check text-3xl mb-3 block text-emerald-400"></i>
-
-                        ${escapeHtml(s.connectedStream)}
-
-                    `;
-
+                // フェーズC修正: WebRTC層のICE接続状態を直接監視（サイレント切断即時検知）
+                if (conn.peerConnection) {
+                    try {
+                        conn.peerConnection.oniceconnectionstatechange = function() {
+                            if (currentGen !== viewerConnectionGeneration) return;
+                            const state = conn.peerConnection.iceConnectionState;
+                            console.log(`[ICE State Change] ${state}`);
+                            if (state === 'failed' || state === 'disconnected') {
+                                console.warn(`[ICE State Change] 物理WebRTC切断を検知 (${state})。即時再接続をスケジュールします。`);
+                                scheduleViewerReconnect(false);
+                            }
+                        };
+                    } catch(e) {
+                        console.warn('ICE state listener error:', e);
+                    }
                 }
 
+                peerConnectionStatus.className = 'w-2 h-2 rounded-full bg-emerald-400';
+                peerStatusText.textContent = s.peerConnected;
+
+                const placeholder = document.getElementById('captionPlaceholder');
+                if (placeholder) {
+                    placeholder.innerHTML = `
+                        <i class="fa-solid fa-circle-check text-3xl mb-3 block text-emerald-400"></i>
+                        ${escapeHtml(s.connectedStream)}
+                    `;
+                }
             });
 
 
@@ -12277,7 +12518,20 @@ ${existingKeys.slice(0, 100).join(', ')}
 
 
 
-            hostConnection.on('data', function(data) {
+            conn.on('data', function(data) {
+                if (currentGen !== viewerConnectionGeneration) return;
+
+                // フェーズC修正: ホストからデータが届いたため最新接触時刻を更新
+                lastHostContactTime = Date.now();
+
+                // フェーズC修正: ホストからのpingを受信した場合は即座にpongを返送して終了（字幕キューはバイパス）
+                if (data && data.type === 'ping') {
+                    try {
+                        conn.send({ type: 'pong', t: data.t });
+                    } catch(e){}
+                    return;
+                }
+
                 if (data.type === 'caption') {
                     if (data.sectionType) {
                         updateViewerSectionBadge(data.sectionType);
@@ -12387,55 +12641,62 @@ ${existingKeys.slice(0, 100).join(', ')}
 
 
 
-            hostConnection.on('error', function(err) {
-
-                console.warn('Viewer DataConnection error:', err);
-
+            conn.on('error', function(err) {
+                if (currentGen !== viewerConnectionGeneration) return;
+                console.warn(`[世代#${currentGen}] Viewer DataConnection error:`, err);
+                if (viewerHeartbeatWatchdogTimer) {
+                    clearInterval(viewerHeartbeatWatchdogTimer);
+                    viewerHeartbeatWatchdogTimer = null;
+                }
+                if (activeViewerConnectionTimeout) {
+                    clearTimeout(activeViewerConnectionTimeout);
+                    activeViewerConnectionTimeout = null;
+                }
                 scheduleViewerReconnect(false);
-
             });
 
-
-
-            hostConnection.on('close', function() {
-
-                console.warn('Host connection closed. Attempting auto reconnect...');
-
+            conn.on('close', function() {
+                if (currentGen !== viewerConnectionGeneration) return;
+                console.warn(`[世代#${currentGen}] Host connection closed. Attempting auto reconnect...`);
+                if (viewerHeartbeatWatchdogTimer) {
+                    clearInterval(viewerHeartbeatWatchdogTimer);
+                    viewerHeartbeatWatchdogTimer = null;
+                }
+                if (activeViewerConnectionTimeout) {
+                    clearTimeout(activeViewerConnectionTimeout);
+                    activeViewerConnectionTimeout = null;
+                }
                 scheduleViewerReconnect(false);
-
             });
 
         }
 
-
-
         let lastViewerReconnectTrigger = 0;
 
         function scheduleViewerReconnect(recreatePeer) {
-            const now = Date.now();
-            // 連続発火（error直後のclose等）による重複カウントアップ防止ガード
-            if (viewerReconnectTimer && (now - lastViewerReconnectTrigger < 1000) && !recreatePeer) {
-                console.log('重複再接続リクエストを抑制（既存タイマー待機中）');
+            // H3修正: recreatePeer が true の場合、次回実行フラグを昇格
+            if (recreatePeer) {
+                pendingViewerRecreatePeer = true;
+            }
+
+            // H3修正: 既に再接続タイマーが待機中なら、タイマーを重複発火・二重カウントアップさせずに待つ
+            if (viewerReconnectTimer) {
+                console.log(`[Viewer] 再接続タイマー待機中のため既存スケジュールを維持 (recreatePeer: ${pendingViewerRecreatePeer})`);
                 return;
             }
+
+            const now = Date.now();
             lastViewerReconnectTrigger = now;
 
             reconnectAttemptCount++;
 
             const delay = Math.min(30000, 3000 * Math.pow(2, reconnectAttemptCount - 1));
-
             const delaySec = Math.round(delay / 1000);
 
-
-
             const lang = targetLangSelect ? targetLangSelect.value : 'en';
-
             const s = VIEWER_UI_STRINGS[lang] || VIEWER_UI_STRINGS['en'];
 
-
-
             peerConnectionStatus.className = 'w-2 h-2 rounded-full bg-amber-400 animate-pulse';
-
             peerStatusText.textContent = `${s.peerReconnecting} (${reconnectAttemptCount} / ${delaySec}s)`;
 
             // 未接続が長引いた場合（2回目以降の再試行時）、画面に分かりやすいトラブルシューティングヒントを表示
@@ -12464,36 +12725,23 @@ ${existingKeys.slice(0, 100).join(', ')}
                 `;
             }
 
-            if (viewerReconnectTimer) clearTimeout(viewerReconnectTimer);
-
-
-
             viewerReconnectTimer = setTimeout(() => {
-
+                viewerReconnectTimer = null;
                 if (!currentRoomId) return;
 
+                const shouldRecreate = pendingViewerRecreatePeer || !peer || peer.destroyed;
+                pendingViewerRecreatePeer = false;
 
-
-                if (recreatePeer || !peer || peer.destroyed) {
-
+                if (shouldRecreate) {
                     // Peerインスタンスを完全再生成してから接続
-
                     if (peer && !peer.destroyed) {
-
                         try { peer.destroy(); } catch(e){ console.warn('peer.destroy error:', e.message); }
-
                     }
-
                     initPeerViewer(currentRoomId);
-
                 } else {
-
                     connectToHost(currentRoomId);
-
                 }
-
             }, delay);
-
         }
 
 
