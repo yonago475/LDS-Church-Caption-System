@@ -8104,12 +8104,19 @@ function isIncompletePhrase(text) {
 
         let last429CooldownUntil = 0;
 
+        // サーキットブレーカー（モデル別クールダウン管理: タイムアウト/503/429を検知したモデルを3分間一時除外）
+        const modelCooldownMap = new Map(); // modelName -> timestamp (クールダウン終了時刻)
+        function isModelCoolingDown(name) {
+            const until = modelCooldownMap.get(name);
+            return !!(until && Date.now() < until);
+        }
+
         let lastModelDiscoveryDiagnostics = { attempted: false, success: false, models: [], error: '', selected: null };
 
         // 利用可能モデルの全自動検出（APIキーに割り当てられた公式最新Flashモデルを動的に特定）
         async function discoverAvailableGeminiModel(cleanKey, forceRefresh = false) {
 
-            if (cachedWorkingGeminiModel && !forceRefresh) return cachedWorkingGeminiModel;
+            if (cachedWorkingGeminiModel && !forceRefresh && !isModelCoolingDown(cachedWorkingGeminiModel)) return cachedWorkingGeminiModel;
 
             if (!cleanKey) return null;
 
@@ -8137,35 +8144,37 @@ function isIncompletePhrase(text) {
 
                     const models = data.models || [];
 
-const validModels = models
+                    const validModels = models
                         .filter(m => (m.supportedGenerationMethods || []).includes('generateContent'))
                         .map(m => m.name.replace(/^models\//, ''))
                         .filter(m => m.toLowerCase().startsWith('gemini') && !m.toLowerCase().includes('gemma') && !m.toLowerCase().includes('latest') && !m.toLowerCase().includes('2.5-flash-lite') && !m.toLowerCase().includes('omni') && !m.toLowerCase().includes('tts') && !m.toLowerCase().includes('image'));
 
+                    // サーキットブレーカー: クールダウン中でない稼働可能モデルを優先選定
+                    const activeValidModels = validModels.filter(m => !isModelCoolingDown(m));
+                    const candidatePool = activeValidModels.length > 0 ? activeValidModels : validModels;
+
                     // 実在するFlashモデルの中から優先順位をつけて選択（モードに応じて高速優先/品質優先）
                     let preferred = null;
                     if (preferredGeminiModelMode === 'speed') {
-                        preferred = validModels.find(m => m.includes('3.1-flash-lite')) ||
-                                          validModels.find(m => m === 'gemini-2.5-flash') ||
-                                          validModels.find(m => m.includes('2.5-flash') && !m.includes('2.5-flash-lite')) ||
-                                          validModels.find(m => m === 'gemini-2.0-flash') ||
-                                          validModels.find(m => m.includes('2.0-flash')) ||
-                                          validModels.find(m => m === 'gemini-1.5-flash') ||
-                                          validModels.find(m => m.includes('1.5-flash')) ||
-                                          validModels.find(m => m.includes('3-flash')) ||
-                                          validModels.find(m => m.includes('flash')) ||
-                                          validModels[0];
+                        preferred = candidatePool.find(m => m.includes('3.1-flash-lite')) ||
+                                    candidatePool.find(m => m === 'gemini-2.5-flash') ||
+                                    candidatePool.find(m => m.includes('2.5-flash') && !m.includes('2.5-flash-lite')) ||
+                                    candidatePool.find(m => m === 'gemini-2.0-flash') ||
+                                    candidatePool.find(m => m.includes('2.0-flash')) ||
+                                    candidatePool.find(m => m.includes('3-flash')) ||
+                                    candidatePool.find(m => m === 'gemini-1.5-flash') ||
+                                    candidatePool.find(m => m.includes('flash')) ||
+                                    candidatePool[0];
                     } else {
-                        preferred = validModels.find(m => m === 'gemini-2.5-flash') ||
-                                          validModels.find(m => m.includes('2.5-flash') && !m.includes('2.5-flash-lite')) ||
-                                          validModels.find(m => m.includes('3.1-flash-lite')) ||
-                                          validModels.find(m => m === 'gemini-2.0-flash') ||
-                                          validModels.find(m => m.includes('2.0-flash')) ||
-                                          validModels.find(m => m === 'gemini-1.5-flash') ||
-                                          validModels.find(m => m.includes('1.5-flash')) ||
-                                          validModels.find(m => m.includes('3-flash')) ||
-                                          validModels.find(m => m.includes('flash')) ||
-                                          validModels[0];
+                        preferred = candidatePool.find(m => m.includes('3.1-flash-lite')) ||
+                                    candidatePool.find(m => m === 'gemini-2.5-flash') ||
+                                    candidatePool.find(m => m.includes('2.5-flash') && !m.includes('2.5-flash-lite')) ||
+                                    candidatePool.find(m => m === 'gemini-2.0-flash') ||
+                                    candidatePool.find(m => m.includes('2.0-flash')) ||
+                                    candidatePool.find(m => m.includes('3-flash')) ||
+                                    candidatePool.find(m => m === 'gemini-1.5-flash') ||
+                                    candidatePool.find(m => m.includes('flash')) ||
+                                    candidatePool[0];
                     }
 
                     lastModelDiscoveryDiagnostics = { attempted: true, success: true, models: validModels, selected: preferred || null, error: '' };
@@ -8383,8 +8392,8 @@ const validModels = models
 
 
 
-            // 全体タイムアウト（接続テスト時は45秒、本番バッチは最大35秒。15秒での誤タイムアウトを防止）
-            const overallTimeoutMs = isTest ? 45000 : Math.min(20000 + (items.length - 1) * 3000, 35000);
+            // 全体タイムアウト（接続テスト時は45秒、本番バッチは最大32秒。個別8.5秒のフォールバックを複数回許容）
+            const overallTimeoutMs = isTest ? 45000 : Math.min(22000 + (items.length - 1) * 3000, 32000);
             const overallController = new AbortController();
             const overallTimeoutId = setTimeout(() => {
                 overallController.abort(new Error(`通信タイムアウト (${overallTimeoutMs / 1000}秒)`));
@@ -8402,37 +8411,33 @@ const validModels = models
                 return lower.startsWith('gemini') && lower.includes('flash') && !lower.includes('latest') && !lower.includes('2.5-flash-lite') && !lower.includes('omni') && !lower.includes('tts') && !lower.includes('image');
             });
 
-            // 実在するFlashモデルのみを優先度順に整理（高速モード時は 3.1-flash-lite 最優先、品質モード時は 2.5-flash 最優先）
-            const priorityOrder = (preferredGeminiModelMode === 'speed')
-                ? [
-                    'gemini-3.1-flash-lite',
-                    'gemini-2.5-flash',
-                    'gemini-2.0-flash',
-                    'gemini-1.5-flash',
-                    'gemini-3-flash-preview'
-                ]
-                : [
-                    'gemini-2.5-flash',
-                    'gemini-3.1-flash-lite',
-                    'gemini-2.0-flash',
-                    'gemini-1.5-flash',
-                    'gemini-3-flash-preview'
-                ];
+            // 実在するFlashモデルのみを優先度順に整理（最速の 3.1-flash-lite を最優先維持）
+            const priorityOrder = [
+                'gemini-3.1-flash-lite',
+                'gemini-2.5-flash',
+                'gemini-2.0-flash',
+                'gemini-3-flash-preview',
+                'gemini-1.5-flash'
+            ];
 
             let candidateModels = [];
             if (validDiscoveredFlash.length > 0) {
-                candidateModels = [...validDiscoveredFlash].sort((a, b) => {
-                    const idxA = priorityOrder.findIndex(p => a === p || a.includes(p));
-                    const idxB = priorityOrder.findIndex(p => b === p || b.includes(p));
-                    return (idxA === -1 ? 999 : idxA) - (idxB === -1 ? 999 : idxB);
-                });
+                candidateModels = [...validDiscoveredFlash];
             } else {
-                candidateModels = (preferredGeminiModelMode === 'speed')
-                    ? ['gemini-3.1-flash-lite', 'gemini-2.5-flash', 'gemini-2.0-flash']
-                    : ['gemini-2.5-flash', 'gemini-3.1-flash-lite', 'gemini-2.0-flash'];
+                candidateModels = ['gemini-3.1-flash-lite', 'gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-3-flash-preview'];
             }
 
-            if (cachedWorkingGeminiModel && candidateModels.includes(cachedWorkingGeminiModel)) {
+            // サーキットブレーカー判定: クールダウン中（3分以内に過負荷/タイムアウト発生）のモデルは末尾に回す
+            candidateModels.sort((a, b) => {
+                const coolA = isModelCoolingDown(a) ? 1 : 0;
+                const coolB = isModelCoolingDown(b) ? 1 : 0;
+                if (coolA !== coolB) return coolA - coolB;
+                const idxA = priorityOrder.findIndex(p => a === p || a.includes(p));
+                const idxB = priorityOrder.findIndex(p => b === p || b.includes(p));
+                return (idxA === -1 ? 999 : idxA) - (idxB === -1 ? 999 : idxB);
+            });
+
+            if (cachedWorkingGeminiModel && !isModelCoolingDown(cachedWorkingGeminiModel) && candidateModels.includes(cachedWorkingGeminiModel)) {
                 candidateModels = [cachedWorkingGeminiModel, ...candidateModels.filter(m => m !== cachedWorkingGeminiModel)];
             }
             candidateModels = Array.from(new Set(candidateModels));
@@ -8514,11 +8519,11 @@ const validModels = models
                     const modelName = candidateModels[i];
                     let modelSuccess = false;
 
-                    // モデル単位の個別タイムアウト（テスト時は15秒、本番時は18秒）
+                    // モデル単位の個別タイムアウト（テスト時は15秒、本番時は8.5秒: 混雑時は素早く次モデルへバトンタッチ）
                     const modelController = new AbortController();
-                    const perModelTimeoutMs = isTest ? 15000 : 18000;
+                    const perModelTimeoutMs = isTest ? 15000 : 8500;
                     const modelTimeoutId = setTimeout(() => {
-                        modelController.abort(new Error(`モデル ${modelName} タイムアウト`));
+                        modelController.abort(new Error(`モデル ${modelName} タイムアウト (${perModelTimeoutMs / 1000}秒)`));
                     }, perModelTimeoutMs);
 
                     const abortForwarder = () => {
@@ -8564,6 +8569,7 @@ const validModels = models
                                 successData = resJson;
                                 successfulModel = `${modelName} (${apiVer})`;
                                 cachedWorkingGeminiModel = modelName;
+                                modelCooldownMap.delete(modelName); // 成功時はクールダウン解除
                                 modelSuccess = true;
                                 break;
                             } else {
@@ -8585,14 +8591,20 @@ const validModels = models
                             attemptHistory.push(`${modelName}: ${response.status}`);
 
                             if (response.status === 404) {
+                                // 存在しないモデルは長期クールダウン（1時間）
+                                modelCooldownMap.set(modelName, Date.now() + 3600000);
+                                if (cachedWorkingGeminiModel === modelName) cachedWorkingGeminiModel = null;
                                 continue;
                             } else if (response.status === 503) {
-                                // Googleサーバー過負荷時はキャッシュを解除して即座に別モデルへフォールバック
+                                // Googleサーバー過負荷時: 3分間サーキットブレーカー発動
+                                console.warn(`[サーキットブレーカー] モデル ${modelName} の過負荷(HTTP 503)を検知。3分間クールダウンします。`);
+                                modelCooldownMap.set(modelName, Date.now() + 180000);
                                 if (cachedWorkingGeminiModel === modelName) cachedWorkingGeminiModel = null;
                                 continue;
                             } else if (response.status === 429) {
-                                // Googleの無料枠はモデル個別（limit: 20, model: ...）に割り当てられているため、
-                                // 当該モデルが一時上限に達した場合はキャッシュを解除し、別モデル（gemini-3-flash-preview等）へ即時フォールバック
+                                // レート制限: 3分間サーキットブレーカー発動
+                                console.warn(`[サーキットブレーカー] モデル ${modelName} のレート制限(HTTP 429)を検知。3分間クールダウンします。`);
+                                modelCooldownMap.set(modelName, Date.now() + 180000);
                                 if (cachedWorkingGeminiModel === modelName) cachedWorkingGeminiModel = null;
                                 lastDetailError = `[${modelName}] ${detailMsg}`;
                                 attemptHistory.push(`${modelName}: 429レート制限`);
@@ -8608,6 +8620,11 @@ const validModels = models
                         if (overallController.signal.aborted) {
                             throw new Error(`通信全体タイムアウト (${overallTimeoutMs / 1000}秒)`);
                         }
+
+                        // 個別モデルのタイムアウトまたは通信切断時: 3分間サーキットブレーカー発動
+                        console.warn(`[サーキットブレーカー] モデル ${modelName} のタイムアウト/通信切断を検知 (${fetchErr.message})。3分間クールダウンします。`);
+                        modelCooldownMap.set(modelName, Date.now() + 180000);
+                        if (cachedWorkingGeminiModel === modelName) cachedWorkingGeminiModel = null;
 
                         lastDetailError = `[${modelName}] ${fetchErr.message}`;
                         attemptHistory.push(`${modelName}: ${fetchErr.message}`);
