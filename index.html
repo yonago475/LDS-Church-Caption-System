@@ -611,6 +611,19 @@
 
                         </div>
 
+                        <!-- 聖餐の祈り クイック配信パネル -->
+                        <div class="flex items-center gap-2 mb-3 bg-amber-50/70 border border-amber-200/80 rounded-xl px-3 py-2">
+                            <span class="text-xs font-bold text-amber-900 flex items-center gap-1 shrink-0">
+                                <i class="fa-solid fa-scroll text-amber-700"></i> 聖餐の祈り:
+                            </span>
+                            <button id="quickSacramentBreadBtn" type="button" class="inline-flex items-center justify-center px-3 py-1.5 bg-white hover:bg-amber-100 text-amber-900 border border-amber-300 font-semibold rounded-lg shadow-2xs transition-all text-xs cursor-pointer">
+                                🍞 パンの祈り
+                            </button>
+                            <button id="quickSacramentWaterBtn" type="button" class="inline-flex items-center justify-center px-3 py-1.5 bg-white hover:bg-blue-100 text-blue-900 border border-blue-300 font-semibold rounded-lg shadow-2xs transition-all text-xs cursor-pointer">
+                                💧 水の祈り
+                            </button>
+                        </div>
+
 
 
                         <!-- 配信モード切替スイッチ (自動配信 / 手動確認配信) -->
@@ -5781,6 +5794,9 @@ function isIncompletePhrase(text) {
                     });
                 }
 
+                // 既存カードの本文・訳文を選択言語へ即座に一括再描画
+                rerenderExistingViewerCards(newLang);
+
                 // ホストへ言語選択変更を通知（オンデマンド他言語翻訳を自動起動）
                 if (hostConnection && hostConnection.open) {
                     try {
@@ -7614,7 +7630,43 @@ function isIncompletePhrase(text) {
 
 
 
-                // ==================== 賛美歌 1〜200番 データベース & 動的ヒント注入 ====================
+                // ==================== 聖餐の祈り（Sacrament Prayers）公式聖典データ & クイック配信 ====================
+        const SACRAMENT_PRAYERS = {
+            bread: {
+                ja: "永遠の父なる神よ、わたしたちは御子イエス・キリストの御名によってあなたに願い求めます。このパンを頂くすべての人々が、御子の体の記念にこれを頂けるように、また、進んで御子の御名を受け、いつも御子を覚え、御子が与えてくださった戒めを守ることを、永遠の父なる神よ、あなたに証明して、いつも御子の御霊を受けられるように、このパンを祝福し、聖めてください。アーメン。",
+                en: "O God, the Eternal Father, we ask thee in the name of thy Son, Jesus Christ, to bless and sanctify this bread to the souls of all those who partake of it, that they may eat in remembrance of the body of thy Son, and witness unto thee, O God, the Eternal Father, that they are willing to take upon them the name of thy Son, and always remember him and keep his commandments which he has given them; that they may always have his Spirit to be with them. Amen.",
+                tl: "O Diyos, ang Amang Walang Hanggan, kami ay humihiling sa inyo sa pangalan ng inyong Anak na si Jesucristo, na basbasan at gawing banal ang tinapay na ito sa mga kaluluwa ng lahat ng yaong kakain nito, nang sila ay makakain bilang pag-alaala sa katawan ng inyong Anak, at mapatunayan sa inyo, O Diyos, ang Amang Walang Hanggan, na sila ay nakahandang taglayin sa kanilang sarili ang pangalan ng inyong Anak, at lagi siyang alalahanin at susundin ang kanyang mga kautusan na ibinigay niya sa kanila; nang sa tuwina ay mapasakanila ang kanyang Espiritu upang makasama nila. Amen."
+            },
+            water: {
+                ja: "永遠の父なる神よ、わたしたちは御子イエス・キリストの御名によってあなたに願い求めます。この水を頂くすべての人々が、この人々のために流された御子の血の記念にこれを頂けるように、また、いつも御子を覚えていることを、永遠の父なる神よ、あなたに証明して、御子の御霊を受けられるように、この水を祝福し、聖めてください。アーメン。",
+                en: "O God, the Eternal Father, we ask thee in the name of thy Son, Jesus Christ, to bless and sanctify this water to the souls of all those who partake of it, that they may do it in remembrance of the blood of thy Son, which was shed for them; that they may witness unto thee, O God, the Eternal Father, that they do always remember him, that they may have his Spirit to be with them. Amen.",
+                tl: "O Diyos, ang Amang Walang Hanggan, kami ay humihiling sa inyo sa pangalan ng inyong Anak na si Jesucristo, na basbasan at gawing banal ang tubig na ito sa mga kaluluwa ng lahat ng yaong iinom nito, nang ito ay kanilang magawa bilang pag-alaala sa dugo ng inyong Anak, na ibinuhos para sa kanila; nang sila ay makapagpatunay sa inyo, O Diyos, ang Amang Walang Hanggan, na sila ay laging nakaaalala sa kanya, nang mapasakanila ang kanyang Espiritu upang makasama nila. Amen."
+            }
+        };
+
+        function dispatchSacramentPrayer(type) {
+            const prayer = SACRAMENT_PRAYERS[type];
+            if (!prayer) return;
+            const name = type === 'bread' ? 'パンの祈り' : '水の祈り';
+            if (!confirm(`聖典公式テキスト「${name}」を聴講者へ即座に配信しますか？\n（※日本語・英語・タガログ語の公式定型文が即座に配信されます）`)) return;
+
+            // 場面判定を聖餐の祈りに同期
+            currentSectionType = 'sacrament_prayer';
+            const sectionSelect = document.getElementById('sectionSelect');
+            if (sectionSelect) sectionSelect.value = 'sacrament_prayer';
+
+            dispatchCaption(prayer.ja, {
+                englishText: prayer.en,
+                translations: { tl: prayer.tl },
+                force: true,
+                isManual: true,
+                sectionType: 'sacrament_prayer'
+            });
+
+            console.log(`[Host] 🍞 聖餐の祈り（${name}）を即時クイック配信しました。`);
+        }
+
+        // ==================== 賛美歌 1〜200番 データベース & 動的ヒント注入 ====================
         const HYMN_DATABASE = {
     1: {"ja":"夜明けだ，朝明けだ","en":"The Morning Breaks","enNum":"#1"},
     2: {"ja":"山の上に","en":"High on the Mountain Top","enNum":"#5"},
@@ -10220,6 +10272,7 @@ ${existingKeys.slice(0, 100).join(', ')}
                     id: item.id,
                     text: item.text,
                     englishText: item.englishText,
+                    translations: item.translations || null,
                     timestamp: item.time,
                     isAiApplied: item.isAi,
                     sourceLang: 'ja'
@@ -11618,7 +11671,7 @@ ${existingKeys.slice(0, 100).join(', ')}
                                 translations: translations,
                                 isAiApplied: isAi
                             });
-                            updateHostTranscript(item.id, processedChunk, englishText, isAi);
+                            updateHostTranscript(item.id, processedChunk, englishText, isAi, translations);
                             finalAction = 'UPDATE_BROADCAST';
                         } else if (isManualMode) {
                             // フェーズ62: 手動配信モードのAI推敲スマート同期
@@ -11635,7 +11688,7 @@ ${existingKeys.slice(0, 100).join(', ')}
                                     translations: translations,
                                     isAiApplied: isAi
                                 });
-                                updateHostTranscript(item.id, finalJa, englishText, isAi);
+                                updateHostTranscript(item.id, finalJa, englishText, isAi, translations);
                                 manualBroadcastSentMap.delete(item.id);
                                 finalAction = 'UPDATE_BROADCAST';
                             } else if (currentManualCaptionId === item.id && manualCaptionInput) {
@@ -12282,6 +12335,11 @@ ${existingKeys.slice(0, 100).join(', ')}
 
             };
 
+            const quickBreadBtn = document.getElementById('quickSacramentBreadBtn');
+            const quickWaterBtn = document.getElementById('quickSacramentWaterBtn');
+            if (quickBreadBtn) quickBreadBtn.onclick = () => dispatchSacramentPrayer('bread');
+            if (quickWaterBtn) quickWaterBtn.onclick = () => dispatchSacramentPrayer('water');
+
         }
 
 
@@ -12349,6 +12407,7 @@ ${existingKeys.slice(0, 100).join(', ')}
             const captionId = (meta && meta.id) ? meta.id : null;
             const isProvisional = !!(meta && meta.isProvisional);
 
+            const translations = (meta && meta.translations && typeof meta.translations === 'object') ? meta.translations : null;
             transcriptHistory.push({
                 id: captionId,
                 time: timeStr,
@@ -12358,7 +12417,8 @@ ${existingKeys.slice(0, 100).join(', ')}
                 isAi: isAi,
                 isProvisional: isProvisional,
                 paused: wasPaused,
-                englishText: englishText
+                englishText: englishText,
+                translations: translations
             });
 
             // メモリ肥大化防止: 上限を超えた古い履歴を削除
@@ -12369,6 +12429,11 @@ ${existingKeys.slice(0, 100).join(', ')}
             const item = document.createElement('div');
             if (captionId) {
                 item.dataset.captionId = captionId;
+            }
+            item.dataset.jaText = (rawJaText !== null && rawJaText !== undefined) ? rawJaText : (sourceLang === 'ja' ? (originalText || translatedText) : translatedText);
+            item.dataset.enText = (rawEnText !== null && rawEnText !== undefined) ? rawEnText : (sourceLang === 'en' ? (originalText || translatedText) : '');
+            if (rawTranslations && typeof rawTranslations === 'object') {
+                item.dataset.translations = JSON.stringify(rawTranslations);
             }
             const safeText = escapeHtml(text);
             const safeOriginal = rawOriginal ? escapeHtml(rawOriginal) : '';
@@ -12420,7 +12485,7 @@ ${existingKeys.slice(0, 100).join(', ')}
         }
 
         // ホスト側ログの差分上書き更新（AI補正結果が届いた際にカードを格調高く更新）
-        function updateHostTranscript(id, text, englishText, isAi) {
+        function updateHostTranscript(id, text, englishText, isAi, translations = null) {
             if (!id || !hostTranscriptLog) return;
             const item = hostTranscriptLog.querySelector(`[data-caption-id="${id}"]`);
             if (item) {
@@ -12449,6 +12514,7 @@ ${existingKeys.slice(0, 100).join(', ')}
             if (histItem) {
                 if (text) histItem.text = text;
                 if (englishText) histItem.englishText = englishText.trim();
+                if (translations && typeof translations === 'object') histItem.translations = translations;
                 if (isAi !== undefined) histItem.isAi = isAi;
             }
         }
@@ -12817,10 +12883,10 @@ ${existingKeys.slice(0, 100).join(', ')}
 
                         if (targetLang === 'ja') {
                             const subText = (sourceLang !== 'ja') ? refinedSubText : '';
-                            appendViewerCaption(data.text, subText, data.timestamp, sourceLang, data.id, !!data.isProvisional);
+                            appendViewerCaption(data.text, subText, data.timestamp, sourceLang, data.id, !!data.isProvisional, data.text, data.englishText || null, data.translations || null);
                         } else if (directTranslation) {
                             const subText = (targetLang !== sourceLang) ? refinedSubText : '';
-                            appendViewerCaption(directTranslation, subText, data.timestamp, sourceLang, data.id, !!data.isProvisional);
+                            appendViewerCaption(directTranslation, subText, data.timestamp, sourceLang, data.id, !!data.isProvisional, data.text, data.englishText || null, data.translations || null);
                         } else {
                             // フォールバック: スマホ側の機械翻訳(gtx) + ローカル教会用語置換
                             await handleIncomingCaption(data.text, data.timestamp, sourceLang, data.id, !!data.isProvisional);
@@ -12868,6 +12934,9 @@ ${existingKeys.slice(0, 100).join(', ')}
                             return;
                         }
 
+                        card.dataset.jaText = data.text || card.dataset.jaText || '';
+                        if (data.englishText) card.dataset.enText = data.englishText;
+                        if (data.translations) card.dataset.translations = JSON.stringify(data.translations);
                         const jaTextEl = card.querySelector('.caption-ja-text');
                         const enTextEl = card.querySelector('.caption-en-text');
                         const badgeEl = card.querySelector('.caption-status-badge');
@@ -12937,6 +13006,9 @@ ${existingKeys.slice(0, 100).join(', ')}
                             } else if (targetLang === 'en' && item.englishText) {
                                 mainText = item.englishText;
                                 subText = item.text || '';
+                            } else if (item.translations && item.translations[targetLang]) {
+                                mainText = item.translations[targetLang];
+                                subText = item.text || '';
                             } else if (item.text) {
                                 try {
                                     mainText = await translateText(item.text, targetLang);
@@ -12946,7 +13018,7 @@ ${existingKeys.slice(0, 100).join(', ')}
                                 }
                             }
 
-                            appendViewerCaption(mainText, subText, item.timestamp || '', item.sourceLang || 'ja', item.id, false);
+                            appendViewerCaption(mainText, subText, item.timestamp || '', item.sourceLang || 'ja', item.id, false, item.text, item.englishText, item.translations);
                             const cardEl = viewerCaptionFeed ? viewerCaptionFeed.querySelector(`[data-caption-id="${item.id}"]`) : null;
                             if (cardEl && item.isAiApplied) {
                                 const badgeEl = cardEl.querySelector('.caption-status-badge');
@@ -13603,9 +13675,92 @@ ${existingKeys.slice(0, 100).join(', ')}
             }
         }
 
+        
+        // 聴講者画面: 言語切替時に画面内の既存カードを選択言語へ一括再描画
+        async function rerenderExistingViewerCards(newLang) {
+            if (!viewerCaptionFeed) return;
+            const cards = viewerCaptionFeed.querySelectorAll('.caption-card');
+            if (cards.length === 0) return;
+
+            const langLabel = (targetLangSelect && targetLangSelect.selectedIndex >= 0 && targetLangSelect.options[targetLangSelect.selectedIndex]) 
+                ? targetLangSelect.options[targetLangSelect.selectedIndex].text 
+                : '言語';
+
+            for (const card of cards) {
+                const ja = card.dataset.jaText || '';
+                const en = card.dataset.enText || '';
+                let trans = null;
+                if (card.dataset.translations) {
+                    try { trans = JSON.parse(card.dataset.translations); } catch(e){}
+                }
+
+                let main = '';
+                let sub = '';
+
+                if (newLang === 'ja') {
+                    main = ja || en || '';
+                    sub = (en && normalizeCaption(en) !== normalizeCaption(main)) ? en : '';
+                } else if (newLang === 'en') {
+                    main = en || '';
+                    if (!main && ja) {
+                        try { main = await translateText(ja, 'en'); } catch(e){ main = ja; }
+                    }
+                    sub = (ja && normalizeCaption(ja) !== normalizeCaption(main)) ? ja : '';
+                } else {
+                    if (trans && trans[newLang]) {
+                        main = trans[newLang];
+                        sub = ja || en || '';
+                    } else if (ja) {
+                        try {
+                            main = await translateText(ja, newLang);
+                        } catch(e) {
+                            main = ja;
+                        }
+                        sub = ja;
+                    } else if (en) {
+                        try {
+                            main = await translateText(en, newLang);
+                        } catch(e) {
+                            main = en;
+                        }
+                        sub = en;
+                    }
+                }
+
+                const jaTextEl = card.querySelector('.caption-ja-text');
+                const enTextEl = card.querySelector('.caption-en-text');
+                const headerGlobeSpan = card.querySelector('.border-b span span');
+
+                if (headerGlobeSpan) {
+                    headerGlobeSpan.innerHTML = `<i class="fa-solid fa-globe mr-1 text-indigo-400"></i> ${escapeHtml(langLabel)}`;
+                }
+
+                if (jaTextEl && main) {
+                    if (newLang === 'ja') {
+                        jaTextEl.innerHTML = formatJapaneseWithBudouX(main);
+                    } else {
+                        jaTextEl.textContent = main;
+                    }
+                }
+
+                if (enTextEl) {
+                    if (sub && normalizeCaption(sub) !== normalizeCaption(main)) {
+                        if (newLang === 'ja') {
+                            enTextEl.textContent = sub;
+                        } else {
+                            enTextEl.innerHTML = formatJapaneseWithBudouX(sub);
+                        }
+                        enTextEl.classList.remove('hidden');
+                    } else {
+                        enTextEl.classList.add('hidden');
+                    }
+                }
+            }
+        }
+
         // ==================== Viewer 字幕表示 ====================
 
-        function appendViewerCaption(translatedText, originalText, timestamp, sourceLang = 'ja', captionId = null, isProvisional = false) {
+        function appendViewerCaption(translatedText, originalText, timestamp, sourceLang = 'ja', captionId = null, isProvisional = false, rawJaText = null, rawEnText = null, rawTranslations = null) {
             const placeholder = document.getElementById('captionPlaceholder');
             if (placeholder) {
                 placeholder.remove();
