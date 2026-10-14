@@ -4812,6 +4812,8 @@ function isIncompletePhrase(text) {
 
         const fontClasses = ["text-base", "text-xl", "text-3xl", "text-5xl"];
 
+        const subFontClasses = ["text-xs", "text-sm", "text-base", "text-lg"];
+
         const fontSizeNames = ["文字サイズ: 小", "文字サイズ: 中", "文字サイズ: 大", "文字サイズ: 特大"];
 
         if (isNaN(currentFontSizeIndex) || currentFontSizeIndex < 0 || currentFontSizeIndex >= fontClasses.length) {
@@ -13176,7 +13178,7 @@ ${existingKeys.slice(0, 100).join(', ')}
                             let subText = '';
                             if (targetLang === 'ja') {
                                 mainText = data.text || '';
-                                subText = (data.sourceLang && data.sourceLang !== 'ja') ? (data.originalText || '') : '';
+                                subText = data.englishText || ((data.sourceLang && data.sourceLang !== 'ja') ? (data.originalText || '') : '');
                             } else if (directTranslation) {
                                 mainText = directTranslation;
                                 subText = data.text || data.originalText || '';
@@ -13188,7 +13190,7 @@ ${existingKeys.slice(0, 100).join(', ')}
                                     mainText = data.text;
                                 }
                             }
-                            appendViewerCaption(mainText, subText, data.timestamp || new Date().toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', second: '2-digit' }), data.sourceLang || 'ja', data.id, false);
+                            appendViewerCaption(mainText, subText, data.timestamp || new Date().toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', second: '2-digit' }), data.sourceLang || 'ja', data.id, false, data.text, data.englishText, data.translations);
                             const newCard = viewerCaptionFeed ? viewerCaptionFeed.querySelector(`[data-caption-id="${data.id}"]`) : null;
                             if (newCard) {
                                 const newBadgeEl = newCard.querySelector('.caption-status-badge');
@@ -13205,6 +13207,7 @@ ${existingKeys.slice(0, 100).join(', ')}
                         const jaTextEl = card.querySelector('.caption-ja-text');
                         const enTextEl = card.querySelector('.caption-en-text');
                         const badgeEl = card.querySelector('.caption-status-badge');
+                        const refBadgeEl = card.querySelector('.caption-ref-badge');
 
                         if (targetLang === 'ja') {
                             if (jaTextEl && data.text) {
@@ -13238,6 +13241,11 @@ ${existingKeys.slice(0, 100).join(', ')}
                             }
                         }
 
+                        // 聖句・賛美歌ハイライトバッジの更新
+                        if (refBadgeEl) {
+                            refBadgeEl.innerHTML = getRefBadgeHtml(data.text, data.englishText);
+                        }
+
                         // バッジの更新（選択言語に応じた多言語バッジ表示）
                         if (badgeEl) {
                             if (data.isAiApplied) {
@@ -13267,7 +13275,7 @@ ${existingKeys.slice(0, 100).join(', ')}
                             let subText = '';
                             if (targetLang === 'ja') {
                                 mainText = item.text || '';
-                                subText = (item.sourceLang && item.sourceLang !== 'ja') ? (item.originalText || '') : '';
+                                subText = item.englishText || ((item.sourceLang && item.sourceLang !== 'ja') ? (item.originalText || '') : '');
                             } else if (targetLang === 'en' && item.englishText) {
                                 mainText = item.englishText;
                                 subText = item.text || '';
@@ -13941,6 +13949,102 @@ ${existingKeys.slice(0, 100).join(', ')}
         }
 
         
+        // ==================== 聖句・賛美歌番号 自動ハイライト抽出 ====================
+        function extractScriptureOrHymnBadge(text, englishText) {
+            if (!text && !englishText) return null;
+            const combined = `${text || ''} ${englishText || ''}`;
+
+            // 1. 賛美歌番号の抽出（例: 賛美歌107番, さんびか2番, 讃美歌15番, Hymn 85, 第107番の賛美歌）
+            const hymnMatch = combined.match(/(?:賛美歌|さんびか|讃美歌|Hymn|hymn)\s*(?:第)?\s*(\d{1,3})\s*(?:番)?/i) ||
+                              combined.match(/(?:第)?\s*(\d{1,3})\s*番の(?:賛美歌|さんびか|讃美歌)/i);
+            if (hymnMatch) {
+                const num = hymnMatch[1];
+                return {
+                    type: 'hymn',
+                    icon: 'fa-music',
+                    label: `🎵 賛美歌${num}番`,
+                    badgeClass: 'bg-emerald-950/80 text-emerald-300 border-emerald-600/50'
+                };
+            }
+
+            // 2. 聖句の抽出（モルモン書、教義と聖約、高価な真珠、新約・旧約聖書）
+            const bookPatterns = [
+                // モルモン書
+                '(?:第?[1-4１-４]\\s*ニーファイ|ニーファイ(?:\\s*[1-4１-４])?|[1-4]\\s*Nephi|Nephi)',
+                '(?:モーサヤ(?:書)?|Mosiah)',
+                '(?:アルマ(?:書)?|Alma)',
+                '(?:ヒラマン(?:書)?|Helaman)',
+                '(?:エテル(?:書)?|Ether)',
+                '(?:モロナイ(?:書)?|Moroni)',
+                '(?:ヤコブ書?|Jacob)',
+                '(?:エノス(?:書)?|Enos)',
+                '(?:オムナイ(?:書)?|Omni)',
+                '(?:モルモンの言葉|Words of Mormon)',
+                '(?:モルモン書?|Mormon)',
+                // 教義と聖約・高価な真珠
+                '(?:教義と聖約|教義および聖約|D&C|Doctrine and Covenants)',
+                '(?:モーセ書?|Moses)',
+                '(?:アブラハム書?|Abraham)',
+                '(?:信仰箇条|Articles of Faith)',
+                // 新約聖書
+                '(?:マタイ(?:による福音書)?|Matthew)',
+                '(?:マルコ(?:による福音書)?|Mark)',
+                '(?:ルカ(?:による福音書)?|Luke)',
+                '(?:ヨハネ(?:による福音書)?|John)',
+                '(?:使徒行伝|使徒の働き|Acts)',
+                '(?:ローマ(?:人への手紙)?|Romans)',
+                '(?:第?[1-2１-２]\\s*コリント|コリント(?:人への手紙)?|[1-2]\\s*Corinthians)',
+                '(?:ガラテヤ(?:人への手紙)?|Galatians)',
+                '(?:エペソ(?:人への手紙)?|Ephesians)',
+                '(?:ピリピ(?:人への手紙)?|Philippians)',
+                '(?:コロサイ(?:人への手紙)?|Colossians)',
+                '(?:ヘブル(?:人への手紙)?|Hebrews)',
+                '(?:ヤコブの手紙|James)',
+                '(?:第?[1-2１-２]\\s*ペテロ|ペテロ|[1-2]\\s*Peter)',
+                '(?:ヨハネの黙示録|黙示録|Revelation)',
+                // 旧約聖書
+                '(?:創世記|Genesis)',
+                '(?:出エジプト記|Exodus)',
+                '(?:詩篇|Psalms?)',
+                '(?:箴言|Proverbs)',
+                '(?:イザヤ(?:書)?|Isaiah)',
+                '(?:マラキ(?:書)?|Malachi)'
+            ];
+
+            const bookRegexStr = `(${bookPatterns.join('|')})`;
+            const scriptureRegex = new RegExp(
+                `${bookRegexStr}\\s*(?:第)?\\s*(\\d{1,3})\\s*(?:章|:|ch(?:apter)?\\.?)\\s*(?:(?:第)?\\s*(\\d{1,3}(?:[〜\\-]\\d{1,3})?)\\s*(?:節|v(?:erse)?\\.?)?)?`,
+                'i'
+            );
+
+            const scripMatch = combined.match(scriptureRegex);
+            if (scripMatch) {
+                const bookRaw = scripMatch[1].trim();
+                const chapter = scripMatch[2];
+                const verse = scripMatch[3];
+
+                let refStr = `${bookRaw} ${chapter}章`;
+                if (verse) {
+                    refStr += `${verse}節`;
+                }
+
+                return {
+                    type: 'scripture',
+                    icon: 'fa-book-bible',
+                    label: `📖 ${refStr}`,
+                    badgeClass: 'bg-indigo-950/80 text-indigo-300 border-indigo-600/50'
+                };
+            }
+
+            return null;
+        }
+
+        function getRefBadgeHtml(text, englishText) {
+            const badge = extractScriptureOrHymnBadge(text, englishText);
+            if (!badge) return '';
+            return `<span class="inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-semibold border ${badge.badgeClass} shadow-xs ml-1 animate-fadeIn"><i class="fa-solid ${badge.icon} mr-1 text-[9px]"></i>${escapeHtml(badge.label)}</span>`;
+        }
+        
         // 聴講者画面: 言語切替時に画面内の既存カードを選択言語へ一括再描画
         async function rerenderExistingViewerCards(newLang) {
             if (!viewerCaptionFeed) return;
@@ -13995,9 +14099,14 @@ ${existingKeys.slice(0, 100).join(', ')}
                 const jaTextEl = card.querySelector('.caption-ja-text');
                 const enTextEl = card.querySelector('.caption-en-text');
                 const headerGlobeSpan = card.querySelector('.border-b span span');
+                const refBadgeEl = card.querySelector('.caption-ref-badge');
 
                 if (headerGlobeSpan) {
                     headerGlobeSpan.innerHTML = `<i class="fa-solid fa-globe mr-1 text-indigo-400"></i> ${escapeHtml(langLabel)}`;
+                }
+
+                if (refBadgeEl) {
+                    refBadgeEl.innerHTML = getRefBadgeHtml(main, en || sub);
                 }
 
                 if (jaTextEl && main) {
@@ -14043,41 +14152,73 @@ ${existingKeys.slice(0, 100).join(', ')}
                 totalCardsCount.textContent = viewerCardCount;
             }
 
-            const currentSizeClass = fontClasses[currentFontSizeIndex];
+            const currentSizeClass = fontClasses[currentFontSizeIndex] || 'text-xl';
+            const currentSubSizeClass = subFontClasses[currentFontSizeIndex] || 'text-sm';
             const item = document.createElement('div');
             item.className = 'caption-card bg-slate-800/80 p-3.5 sm:p-4 rounded-xl border border-slate-700/60 shadow-md backdrop-blur-sm transition-all';
             if (captionId) {
                 item.dataset.captionId = captionId;
+            }
+
+            // 言語切替用の生データを dataset に完全保持
+            if (rawJaText) {
+                item.dataset.jaText = rawJaText;
+            } else if (sourceLang === 'ja') {
+                item.dataset.jaText = translatedText || originalText || '';
+            } else if (targetLangSelect && targetLangSelect.value === 'ja') {
+                item.dataset.jaText = translatedText || '';
+            }
+            if (rawEnText) {
+                item.dataset.enText = rawEnText;
+            } else if (sourceLang === 'en') {
+                item.dataset.enText = translatedText || originalText || '';
+            } else if (targetLangSelect && targetLangSelect.value === 'en') {
+                item.dataset.enText = translatedText || '';
+            }
+            if (rawTranslations && typeof rawTranslations === 'object') {
+                item.dataset.translations = JSON.stringify(rawTranslations);
             }
             
             const isJapaneseMode = targetLangSelect ? (targetLangSelect.value === 'ja') : false;
             const displayedMainText = isJapaneseMode ? formatJapaneseWithBudouX(translatedText) : escapeHtml(translatedText);
             
             // サブ原文（バイリンガル表示用）:
-            // originalText が存在し、かつメインテキストと同一でなければ小さく併記
+            // 日本語モード時: 英語訳（rawEnText）があればサブテキストとして優先表示
+            // 他言語モード時: 原文（originalText）がメインと異なれば表示
             let displayedOrigText = '';
-            if (originalText && originalText.trim() && normalizeCaption(originalText) !== normalizeCaption(translatedText)) {
-                displayedOrigText = (sourceLang === 'ja') ? formatJapaneseWithBudouX(originalText) : escapeHtml(originalText);
+            if (isJapaneseMode) {
+                if (rawEnText && rawEnText.trim() && normalizeCaption(rawEnText) !== normalizeCaption(translatedText)) {
+                    displayedOrigText = escapeHtml(rawEnText.trim());
+                } else if (originalText && originalText.trim() && normalizeCaption(originalText) !== normalizeCaption(translatedText)) {
+                    displayedOrigText = escapeHtml(originalText.trim());
+                }
+            } else {
+                if (originalText && originalText.trim() && normalizeCaption(originalText) !== normalizeCaption(translatedText)) {
+                    displayedOrigText = (sourceLang === 'ja') ? formatJapaneseWithBudouX(originalText) : escapeHtml(originalText);
+                }
             }
 
             const langLabel = (targetLangSelect && targetLangSelect.selectedIndex >= 0 && targetLangSelect.options[targetLangSelect.selectedIndex]) 
                 ? targetLangSelect.options[targetLangSelect.selectedIndex].text 
                 : '言語';
 
+            const refBadgeHtml = getRefBadgeHtml(translatedText, rawEnText || originalText);
+
             item.innerHTML = `
                 <div class="flex justify-between items-center text-[10px] text-slate-400 mb-1.5 border-b border-slate-700/40 pb-1">
-                    <span class="flex items-center gap-1.5">
+                    <span class="flex items-center gap-1.5 flex-wrap">
                         <span><i class="fa-solid fa-globe mr-1 text-indigo-400"></i> ${escapeHtml(langLabel)}</span>
                         <span class="caption-status-badge">
                             ${isProvisional ? getBadgeHtml('realtime', (targetLangSelect ? targetLangSelect.value : 'ja')) : ''}
                         </span>
+                        <span class="caption-ref-badge">${refBadgeHtml}</span>
                     </span>
-                    <span class="font-mono">${escapeHtml(timestamp || '')}</span>
+                    <span class="font-mono text-[10px] text-slate-400 shrink-0 ml-2">${escapeHtml(timestamp || '')}</span>
                 </div>
                 <div class="${currentSizeClass} font-semibold text-white leading-relaxed break-words caption-ja-text">
                     ${displayedMainText}
                 </div>
-                <div class="caption-en-text text-[11px] sm:text-xs text-slate-400 mt-2 italic font-normal break-words ${displayedOrigText ? '' : 'hidden'}">
+                <div class="caption-en-text ${currentSubSizeClass} text-slate-400 mt-2 italic font-normal break-words ${displayedOrigText ? '' : 'hidden'}">
                     ${displayedOrigText}
                 </div>
             `;
@@ -14235,16 +14376,17 @@ ${existingKeys.slice(0, 100).join(', ')}
 
                 
 
-                const captionTexts = viewerCaptionFeed.querySelectorAll('.font-semibold.text-white');
-
+                const captionTexts = viewerCaptionFeed.querySelectorAll('.caption-ja-text');
                 captionTexts.forEach(el => {
-
                     fontClasses.forEach(cls => el.classList.remove(cls));
-
                     el.classList.add(fontClasses[currentFontSizeIndex]);
-
                 });
 
+                const subTexts = viewerCaptionFeed.querySelectorAll('.caption-en-text');
+                subTexts.forEach(el => {
+                    subFontClasses.forEach(cls => el.classList.remove(cls));
+                    el.classList.add(subFontClasses[currentFontSizeIndex]);
+                });
             };
 
         }
