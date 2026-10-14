@@ -10834,52 +10834,82 @@ ${fullText}`;
 
 
 
-        // 未確定（interim）音声からすでに分割送信した文節プレフィックスを除外
+        // 文字 Bi-gram Dice 係数による超高速文字列類似度計算（0.0 〜 1.0）
+        function calculateTextSimilarity(str1, str2) {
+            if (!str1 || !str2) return 0;
+            const s1 = str1.replace(/[\s\u3000、。！？!?,.]+/g, '').toLowerCase();
+            const s2 = str2.replace(/[\s\u3000、。！？!?,.]+/g, '').toLowerCase();
+            if (s1 === s2) return 1.0;
+            if (s1.length === 0 || s2.length === 0) return 0;
+            if (s1.length === 1 || s2.length === 1) return s1 === s2 ? 1.0 : 0;
 
-        function stripCommittedChunks(fullText, currentCommittedChunks) {
-
-            if (!currentCommittedChunks || currentCommittedChunks.length === 0 || !fullText) return fullText;
-
-
-
-            let remaining = fullText.trim();
-
-            for (const chunk of currentCommittedChunks) {
-
-                const normChunk = chunk.replace(/[\s\u3000、。！？]+/g, '').toLowerCase();
-
-                if (!normChunk) continue;
-
-
-
-                const normRemaining = remaining.replace(/[\s\u3000、。！？]+/g, '').toLowerCase();
-
-                if (normRemaining.startsWith(normChunk)) {
-
-                    let normCount = 0;
-
-                    let rawIdx = 0;
-
-                    while (rawIdx < remaining.length && normCount < normChunk.length) {
-
-                        if (!/[\s\u3000、。！？]/.test(remaining[rawIdx])) {
-
-                            normCount++;
-
-                        }
-
-                        rawIdx++;
-
-                    }
-
-                    remaining = remaining.substring(rawIdx).trim();
-
-                }
-
+            const bigrams1 = new Map();
+            for (let i = 0; i < s1.length - 1; i++) {
+                const bg = s1.substr(i, 2);
+                bigrams1.set(bg, (bigrams1.get(bg) || 0) + 1);
             }
 
-            return remaining;
+            let intersection = 0;
+            for (let i = 0; i < s2.length - 1; i++) {
+                const bg = s2.substr(i, 2);
+                const count = bigrams1.get(bg) || 0;
+                if (count > 0) {
+                    intersection++;
+                    bigrams1.set(bg, count - 1);
+                }
+            }
 
+            const totalBigrams = (s1.length - 1) + (s2.length - 1);
+            return (2.0 * intersection) / totalBigrams;
+        }
+
+        // 未確定（interim）音声および確定（final）音声から、すでに分割送信した文節プレフィックスをファジー除外
+        function stripCommittedChunks(fullText, currentCommittedChunks) {
+            if (!currentCommittedChunks || currentCommittedChunks.length === 0 || !fullText) return fullText;
+
+            let remaining = fullText.trim();
+            for (const chunk of currentCommittedChunks) {
+                const normChunk = chunk.replace(/[\s\u3000、。！？]+/g, '').toLowerCase();
+                if (!normChunk) continue;
+
+                const normRemaining = remaining.replace(/[\s\u3000、。！？]+/g, '').toLowerCase();
+                if (!normRemaining) break;
+
+                let matchedLen = 0;
+                if (normRemaining.startsWith(normChunk)) {
+                    matchedLen = normChunk.length;
+                } else if (normChunk.length >= 6) {
+                    // Google Live API の ASR による確定時の表記ゆれ・助詞微差（おできになります➔できます等）のファジー一致判定
+                    let bestSim = 0;
+                    let bestLen = 0;
+                    const minLen = Math.max(4, normChunk.length - 6);
+                    const maxLen = Math.min(normRemaining.length, normChunk.length + 6);
+                    for (let len = minLen; len <= maxLen; len++) {
+                        const sub = normRemaining.substring(0, len);
+                        const sim = calculateTextSimilarity(normChunk, sub);
+                        if (sim > bestSim) {
+                            bestSim = sim;
+                            bestLen = len;
+                        }
+                    }
+                    if (bestSim >= 0.72) {
+                        matchedLen = bestLen;
+                    }
+                }
+
+                if (matchedLen > 0) {
+                    let normCount = 0;
+                    let rawIdx = 0;
+                    while (rawIdx < remaining.length && normCount < matchedLen) {
+                        if (!/[\s\u3000、。！？]/.test(remaining[rawIdx])) {
+                            normCount++;
+                        }
+                        rawIdx++;
+                    }
+                    remaining = remaining.substring(rawIdx).replace(/^[\s\u3000、。！？!?,.]+/, '').trim();
+                }
+            }
+            return remaining;
         }
 
 
@@ -11636,18 +11666,84 @@ ${fullText}`;
                 parts.forEach((p, idx) => {
                     const s = p.trim();
                     if (s && s.length >= 2) {
-                        liveCommittedChunks.push(s);
-                        if (liveCommittedChunks.length > 30) liveCommittedChunks.shift();
-                        console.log(`[Gemini 3.5 Live] 📥 Final確定コミット: "${s.slice(0, 30)}..."`);
-                        enqueueLiveSentenceOrDispatch(s, idx === 0);
-                        dispatchedAny = true;
+                        // 先行コミット済み文とのファジー重複判定（確定推敲テキストの検知）
+                        let isSimilarToCommitted = false;
+                        let matchedCommittedChunk = null;
+                        let maxSim = 0;
+                        for (let i = liveCommittedChunks.length - 1; i >= 0; i--) {
+                            const c = liveCommittedChunks[i];
+                            const sim = calculateTextSimilarity(s, c);
+                            if (sim > maxSim) {
+                                maxSim = sim;
+                                matchedCommittedChunk = c;
+                            }
+                            if (sim >= 0.72) {
+                                isSimilarToCommitted = true;
+                                break;
+                            }
+                        }
+
+                        if (isSimilarToCommitted) {
+                            // 先行排出済みの文と同一・推敲文のため二重発行は抑制し、テレメトリに訂正候補として記録
+                            console.log(`[Gemini 3.5 Live] 📝 ASR確定訂正候補（重複抑制）: 仮="${matchedCommittedChunk}" ➔ 確定="${s}" (類似度: ${(maxSim * 100).toFixed(1)}%)`);
+                            if (typeof diagnosticTelemetryLogs !== 'undefined' && Array.isArray(diagnosticTelemetryLogs)) {
+                                diagnosticTelemetryLogs.push({
+                                    timestamp: new Date().toLocaleTimeString('ja-JP', { hour12: false }),
+                                    type: 'ASR_CORRECTION_CANDIDATE',
+                                    interimText: matchedCommittedChunk,
+                                    finalText: s,
+                                    similarity: Number((maxSim * 100).toFixed(1))
+                                });
+                                if (diagnosticTelemetryLogs.length > 200) diagnosticTelemetryLogs.shift();
+                            }
+                            liveCommittedChunks.push(s);
+                            if (liveCommittedChunks.length > 30) liveCommittedChunks.shift();
+                        } else {
+                            liveCommittedChunks.push(s);
+                            if (liveCommittedChunks.length > 30) liveCommittedChunks.shift();
+                            console.log(`[Gemini 3.5 Live] 📥 Final確定コミット: "${s.slice(0, 30)}..."`);
+                            enqueueLiveSentenceOrDispatch(s, idx === 0);
+                            dispatchedAny = true;
+                        }
                     }
                 });
                 if (!dispatchedAny && uncommitted.trim().length >= 2) {
                     const s = uncommitted.trim();
-                    liveCommittedChunks.push(s);
-                    if (liveCommittedChunks.length > 30) liveCommittedChunks.shift();
-                    enqueueLiveSentenceOrDispatch(s, true);
+                    let isSimilarToCommitted = false;
+                    let matchedCommittedChunk = null;
+                    let maxSim = 0;
+                    for (let i = liveCommittedChunks.length - 1; i >= 0; i--) {
+                        const c = liveCommittedChunks[i];
+                        const sim = calculateTextSimilarity(s, c);
+                        if (sim > maxSim) {
+                            maxSim = sim;
+                            matchedCommittedChunk = c;
+                        }
+                        if (sim >= 0.72) {
+                            isSimilarToCommitted = true;
+                            break;
+                        }
+                    }
+                    if (isSimilarToCommitted) {
+                        console.log(`[Gemini 3.5 Live] 📝 ASR確定訂正候補（重複抑制）: 仮="${matchedCommittedChunk}" ➔ 確定="${s}" (類似度: ${(maxSim * 100).toFixed(1)}%)`);
+                        if (typeof diagnosticTelemetryLogs !== 'undefined' && Array.isArray(diagnosticTelemetryLogs)) {
+                            diagnosticTelemetryLogs.push({
+                                timestamp: new Date().toLocaleTimeString('ja-JP', { hour12: false }),
+                                type: 'ASR_CORRECTION_CANDIDATE',
+                                interimText: matchedCommittedChunk,
+                                finalText: s,
+                                similarity: Number((maxSim * 100).toFixed(1))
+                            });
+                            if (diagnosticTelemetryLogs.length > 200) diagnosticTelemetryLogs.shift();
+                        }
+                        liveCommittedChunks.push(s);
+                        if (liveCommittedChunks.length > 30) liveCommittedChunks.shift();
+                    } else {
+                        liveCommittedChunks.push(s);
+                        if (liveCommittedChunks.length > 30) liveCommittedChunks.shift();
+                        console.log(`[Gemini 3.5 Live] 📥 Final確定コミット: "${s.slice(0, 30)}..."`);
+                        enqueueLiveSentenceOrDispatch(s, true);
+                    }
                 }
             }
 
@@ -12198,6 +12294,11 @@ ${fullText}`;
                         if (item.norm.startsWith(normChunk) || item.norm.endsWith(normChunk)) return true;
                         if (normChunk.startsWith(item.norm) || normChunk.endsWith(item.norm)) return true;
                         if (Math.abs(lenA - lenB) <= 5 && (item.norm.includes(normChunk) || normChunk.includes(item.norm))) return true;
+                    }
+                    // 8文字以上の文におけるファジー類似度チェック（75%以上の一致で重複抑制）
+                    if (lenA >= 8 && lenB >= 8 && Math.abs(lenA - lenB) <= 8) {
+                        const sim = calculateTextSimilarity(item.norm, normChunk);
+                        if (sim >= 0.75) return true;
                     }
                     return false;
                 });
