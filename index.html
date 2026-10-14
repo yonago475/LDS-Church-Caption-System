@@ -7902,48 +7902,53 @@ function isIncompletePhrase(text) {
 
         // 発話テキスト（batchInput）から賛美歌番号を検出し、該当曲のプロンプトヒントを動的生成
         function getDynamicHymnHint(batchInput) {
-            if (!batchInput || typeof batchInput !== 'string') return '';
-            const hasKeyword = /賛美歌|さんびか|讃美歌|サンビカ|歌|開会|閉会|聖餐|中間/.test(batchInput);
-            if (!hasKeyword && !/番/.test(batchInput)) return '';
+            try {
+                if (!batchInput || typeof batchInput !== 'string') return '';
+                const hasKeyword = /賛美歌|さんびか|讃美歌|サンビカ|歌|開会|閉会|聖餐|中間/.test(batchInput);
+                if (!hasKeyword && !/番/.test(batchInput)) return '';
 
-            const foundNumbers = new Set();
-            const banRegex = /(?:賛美歌|さんびか|讃美歌|歌|開会|閉会|聖餐|中間)?\s*([0-9０-９一二三四五六七八九十百〇零]+)\s*番/g;
-            let m;
-            while ((m = banRegex.exec(batchInput)) !== null) {
-                const num = parseKanjiNumber(m[1]);
-                if (num && num >= 1 && num <= 200) foundNumbers.add(num);
-            }
-            const directRegex = /(?:賛美歌|さんびか|讃美歌|サンビカ)\s*([0-9０-９一二三四五六七八九十百〇零]+)/g;
-            while ((m = directRegex.exec(batchInput)) !== null) {
-                const num = parseKanjiNumber(m[1]);
-                if (num && num >= 1 && num <= 200) foundNumbers.add(num);
-            }
-            if (foundNumbers.size === 0 && hasKeyword) {
-                for (const [numStr, info] of Object.entries(HYMN_DATABASE)) {
-                    if (info.ja && info.ja.length >= 3 && batchInput.includes(info.ja)) {
-                        foundNumbers.add(parseInt(numStr, 10));
-                        if (foundNumbers.size >= 2) break;
+                const foundNumbers = new Set();
+                const banRegex = /(?:賛美歌|さんびか|讃美歌|歌|開会|閉会|聖餐|中間)?\s*([0-9０-９一二三四五六七八九十百〇零]+)\s*番/g;
+                let m;
+                while ((m = banRegex.exec(batchInput)) !== null) {
+                    const num = parseKanjiNumber(m[1]);
+                    if (num && num >= 1 && num <= 200) foundNumbers.add(num);
+                }
+                const directRegex = /(?:賛美歌|さんびか|讃美歌|サンビカ)\s*([0-9０-９一二三四五六七八九十百〇零]+)/g;
+                while ((m = directRegex.exec(batchInput)) !== null) {
+                    const num = parseKanjiNumber(m[1]);
+                    if (num && num >= 1 && num <= 200) foundNumbers.add(num);
+                }
+                if (foundNumbers.size === 0 && hasKeyword && typeof HYMN_DATABASE === 'object' && HYMN_DATABASE !== null) {
+                    for (const [numStr, info] of Object.entries(HYMN_DATABASE)) {
+                        if (info.ja && info.ja.length >= 3 && batchInput.includes(info.ja)) {
+                            foundNumbers.add(parseInt(numStr, 10));
+                            if (foundNumbers.size >= 2) break;
+                        }
                     }
                 }
+                if (foundNumbers.size === 0) return '';
+
+                const numList = Array.from(foundNumbers);
+                const hintLines = numList.map(num => {
+                    const h = (typeof HYMN_DATABASE === 'object' && HYMN_DATABASE !== null) ? HYMN_DATABASE[num] : null;
+                    if (!h) return null;
+                    let enNumFormatted = '';
+                    if (h.enNum) {
+                        if (h.enNum.startsWith('#')) enNumFormatted = 'English ' + h.enNum;
+                        else if (h.enNum === '旧版') enNumFormatted = 'English Hymnal';
+                        else if (h.enNum.startsWith('CS')) enNumFormatted = 'English ' + h.enNum;
+                        else enNumFormatted = 'English #' + h.enNum;
+                    }
+                    return '・賛美歌' + num + '番: 日本語曲名『' + h.ja + '』 = 英語曲名 \'' + h.en + '\' (' + enNumFormatted + ')';
+                }).filter(Boolean);
+
+                if (hintLines.length === 0) return '';
+                return '【該当する賛美歌の日英公式対照データ】\n' + hintLines.join('\n') + '\n※上記データに基づき、日本語は「開会（または聖餐・中間・閉会）の賛美歌は、賛美歌' + numList[0] + '番『日本語曲名』です。」、英語は "Our [opening/sacrament/intermediate/closing] hymn is Hymn No. ' + numList[0] + ', \'[英語曲名]\' (English #[英語版番号])." の指定形式で美しく出力してください。';
+            } catch (e) {
+                console.warn('[getDynamicHymnHint] 賛美歌ヒント抽出エラー (安全フォールバック):', e);
+                return '';
             }
-            if (foundNumbers.size === 0) return '';
-
-            const numList = Array.from(foundNumbers);
-            const hintLines = numList.map(num => {
-                const h = HYMN_DATABASE[num];
-                if (!h) return null;
-                let enNumFormatted = '';
-                if (h.enNum) {
-                    if (h.enNum.startsWith('#')) enNumFormatted = 'English ' + h.enNum;
-                    else if (h.enNum === '旧版') enNumFormatted = 'English Hymnal';
-                    else if (h.enNum.startsWith('CS')) enNumFormatted = 'English ' + h.enNum;
-                    else enNumFormatted = 'English #' + h.enNum;
-                }
-                return '・賛美歌' + num + '番: 日本語曲名『' + h.ja + '』 = 英語曲名 \'' + h.en + '\' (' + enNumFormatted + ')';
-            }).filter(Boolean);
-
-            if (hintLines.length === 0) return '';
-            return '【該当する賛美歌の日英公式対照データ】\n' + hintLines.join('\n') + '\n※上記データに基づき、日本語は「開会（または聖餐・中間・閉会）の賛美歌は、賛美歌' + numList[0] + '番『日本語曲名』です。」、英語は "Our [opening/sacrament/intermediate/closing] hymn is Hymn No. ' + numList[0] + ', \'[英語曲名]\' (English #[英語版番号])." の指定形式で美しく出力してください。';
         }
 
 
@@ -8676,8 +8681,7 @@ function isIncompletePhrase(text) {
                     overallController.signal.addEventListener('abort', abortForwarder, { once: true });
 
                     try {
-                        const url = `https://generativelanguage.googleapis.com/${apiVer}/models/${modelName}:generateContent`;
-                        const response = await fetch(url, {
+                        let response = await fetch(url, {
                             method: 'POST',
                             headers: {
                                 'Content-Type': 'application/json',
@@ -8701,6 +8705,34 @@ function isIncompletePhrase(text) {
                                 }
                             })
                         });
+
+                        // HTTP 400 (Bad Request) 時のフォールバック: responseMimeType を外して即時リトライ
+                        if (response.status === 400 && !modelController.signal.aborted) {
+                            console.warn(`[Gemini] モデル ${modelName} が responseMimeType に 400 を返したため、MIME指定を外して再試行します`);
+                            response = await fetch(url, {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                    'x-goog-api-key': cleanKey
+                                },
+                                signal: modelController.signal,
+                                body: JSON.stringify({
+                                    systemInstruction: {
+                                        parts: [{ text: GEMINI_SYSTEM_PROMPT }]
+                                    },
+                                    contents: [
+                                        {
+                                            role: 'user',
+                                            parts: [{ text: userPrompt }]
+                                        }
+                                    ],
+                                    generationConfig: {
+                                        temperature: 0.1,
+                                        maxOutputTokens: maxTokens
+                                    }
+                                })
+                            });
+                        }
 
                         clearTimeout(modelTimeoutId);
                         overallController.signal.removeEventListener('abort', abortForwarder);
@@ -11338,11 +11370,37 @@ ${existingKeys.slice(0, 100).join(', ')}
                     incompleteHoldTimer = null;
                 }
 
-                // 重複投入ガード
-                while (recentBatchInputHistory.length > 0 && (now - recentBatchInputHistory[0].time > 3500)) {
+                const isShortPhrase = normChunk.length <= 5;
+                const windowMs = isShortPhrase ? 4000 : 25000;
+
+                // 重複投入ガードのクリーンアップ（最大25秒）
+                while (recentBatchInputHistory.length > 0 && (now - recentBatchInputHistory[0].time > 25000)) {
                     recentBatchInputHistory.shift();
                 }
-                if (recentBatchInputHistory.some(item => item.norm === normChunk)) return;
+
+                // 重複判定（完全一致に加え、長文の包含・部分一致を抑制）
+                const isDuplicate = recentBatchInputHistory.some(item => {
+                    const elapsed = now - item.time;
+                    if (elapsed > windowMs) return false;
+                    if (item.norm === normChunk) return true;
+                    // 短文は完全一致のみ（「はい」「アーメン」等での誤判定を防止）
+                    if (isShortPhrase || item.norm.length <= 5) return false;
+
+                    // 10文字以上の文における前方一致・後方一致・または85%以上の部分一致（一方が他方を含み文字数差5文字以内）
+                    const lenA = item.norm.length;
+                    const lenB = normChunk.length;
+                    if (lenA >= 10 && lenB >= 10) {
+                        if (item.norm.startsWith(normChunk) || item.norm.endsWith(normChunk)) return true;
+                        if (normChunk.startsWith(item.norm) || normChunk.endsWith(item.norm)) return true;
+                        if (Math.abs(lenA - lenB) <= 5 && (item.norm.includes(normChunk) || normChunk.includes(item.norm))) return true;
+                    }
+                    return false;
+                });
+
+                if (isDuplicate) {
+                    console.log(`[重複ガード] 重複発話を抑制: "${normChunk}"`);
+                    return;
+                }
                 recentBatchInputHistory.push({ norm: normChunk, time: now });
 
                 // 【スマートアペンド: 未完フレーズの先行カード連結更新】
@@ -11389,15 +11447,24 @@ ${existingKeys.slice(0, 100).join(', ')}
                             }
                         }
 
-                        // バッチタイマーを更新（連結後4.5秒待機してGeminiへ送信）
+                        // デッドロック防止: 連結後テキストが60文字以上、または最初に入ってから6秒経過した場合は即時強制フラッシュ
+                        const itemAge = now - (lastItem.createdAt || now);
+                        const shouldForceFlush = (combinedRaw.length >= 60) || (itemAge >= 6000);
+
                         if (batchTimer) {
                             clearTimeout(batchTimer);
                             batchTimer = null;
                         }
-                        batchTimer = setTimeout(() => {
-                            batchTimer = null;
-                            flushBatchBuffer();
-                        }, 4500);
+
+                        if (shouldForceFlush) {
+                            flushBatchBuffer(true);
+                        } else {
+                            // バッチタイマーを更新（連結後4.5秒待機してGeminiへ送信）
+                            batchTimer = setTimeout(() => {
+                                batchTimer = null;
+                                flushBatchBuffer();
+                            }, 4500);
+                        }
 
                         return;
                     }
@@ -11461,7 +11528,8 @@ ${existingKeys.slice(0, 100).join(', ')}
                     rawChunk: trimmedRaw,
                     preCorrected: preCorrected,
                     dictChanged: dictChanged,
-                    isAlreadyBroadcast: !isManualMode
+                    isAlreadyBroadcast: !isManualMode,
+                    createdAt: now
                 });
 
                 // 文数が上限（MAX_BATCH_SENTENCES = 3）に達した場合は時間を待たずに即時フラッシュ！
@@ -11555,12 +11623,14 @@ ${existingKeys.slice(0, 100).join(', ')}
                         }
                     } else if (candidateCount === 1) {
                         const onlyItem = batchBuffer[0];
-                        if (isIncompletePhrase(onlyItem.rawChunk) || /[、，,]$/.test(onlyItem.rawChunk.trim())) {
+                        const itemAge = Date.now() - (onlyItem.createdAt || Date.now());
+                        const isShortEnough = (onlyItem.rawChunk || '').length < 60;
+                        if (itemAge < 6000 && isShortEnough && (isIncompletePhrase(onlyItem.rawChunk) || /[、，,]$/.test(onlyItem.rawChunk.trim()))) {
                             if (!incompleteHoldTimer) {
                                 incompleteHoldTimer = setTimeout(() => {
                                     incompleteHoldTimer = null;
                                     flushBatchBuffer(true);
-                                }, 7000);
+                                }, 6000);
                             }
                             return;
                         }
