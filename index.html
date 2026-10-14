@@ -5278,6 +5278,11 @@ function isIncompletePhrase(text) {
                     }, 300);
                 }
             }
+
+            if (selectedAsrEngine === 'gemini-live' && isLiveTranscribing && !isRefreshingLiveWs) {
+                console.log(`[Gemini 3.5 Live] 話者言語が ${lang} に変更されたため、セッションを即時リフレッシュします。`);
+                refreshGeminiLiveSession('LANG_CHANGE');
+            }
         }
 
         function setupInputLanguageControls() {
