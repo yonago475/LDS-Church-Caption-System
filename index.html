@@ -337,6 +337,11 @@
 
                                 <div class="flex items-center space-x-2">
 
+                                    <button id="toggleGeminiSettingsBtn" type="button" class="text-[11px] px-2 py-1 rounded-lg bg-indigo-900/80 hover:bg-indigo-800 text-indigo-200 border border-indigo-700/60 flex items-center gap-1 transition-colors cursor-pointer" title="AI詳細設定を開閉">
+                                        <i class="fa-solid fa-gear text-[10px]"></i>
+                                        <span id="geminiSettingsBtnText">詳細設定</span>
+                                    </button>
+
                                     <label class="relative inline-flex items-center cursor-pointer">
 
                                         <input type="checkbox" id="geminiAiToggle" class="sr-only peer">
@@ -351,115 +356,118 @@
 
                             </div>
 
+                            <!-- Gemini AI Settings Detail Container (折りたたみ可能) -->
+                            <div id="geminiSettingsDetailContainer" class="space-y-3 pt-2">
 
+                                <!-- API Key Masked Display (キー設定済み時に自動表示・漏洩防止) -->
 
-                            <!-- API Key Masked Display (キー設定済み時に自動表示・漏洩防止) -->
+                                <div id="apiKeyMaskedDisplay" class="hidden flex-col sm:flex-row items-center justify-between gap-2 p-2.5 bg-indigo-950/70 rounded-xl border border-purple-500/30 text-xs">
 
-                            <div id="apiKeyMaskedDisplay" class="hidden flex-col sm:flex-row items-center justify-between gap-2 p-2.5 bg-indigo-950/70 rounded-xl border border-purple-500/30 text-xs">
+                                    <div class="flex items-center space-x-2 min-w-0">
 
-                                <div class="flex items-center space-x-2 min-w-0">
+                                        <i class="fa-solid fa-lock text-purple-400 text-sm pl-1 shrink-0"></i>
 
-                                    <i class="fa-solid fa-lock text-purple-400 text-sm pl-1 shrink-0"></i>
+                                        <div class="truncate">
 
-                                    <div class="truncate">
+                                            <span class="font-bold text-white text-xs">APIキー保存済み (暗号化保護中)</span>
 
-                                        <span class="font-bold text-white text-xs">APIキー保存済み (暗号化保護中)</span>
+                                            <span id="maskedKeyText" class="font-mono text-[11px] text-purple-200 ml-2">AIzaSy••••••••••••••••</span>
 
-                                        <span id="maskedKeyText" class="font-mono text-[11px] text-purple-200 ml-2">AIzaSy••••••••••••••••</span>
+                                        </div>
+
+                                    </div>
+
+                                    <div class="flex gap-1.5 shrink-0">
+
+                                        <button id="toggleEditKeyBtn" type="button" class="px-2.5 py-1 bg-indigo-800/80 hover:bg-indigo-700 text-indigo-200 text-xs rounded-lg transition-colors border border-indigo-600/50 flex items-center">
+
+                                            <i class="fa-solid fa-pen-to-square mr-1"></i> キーを変更 / 削除
+
+                                        </button>
+
+                                        <button id="testGeminiBtn" type="button" class="px-3 py-1 bg-purple-600 hover:bg-purple-500 text-white font-semibold text-xs rounded-lg transition-colors shadow-sm flex items-center">
+
+                                            <i class="fa-solid fa-bolt mr-1 text-amber-300"></i> 接続テスト
+
+                                        </button>
 
                                     </div>
 
                                 </div>
 
-                                <div class="flex gap-1.5 shrink-0">
-
-                                    <button id="toggleEditKeyBtn" type="button" class="px-2.5 py-1 bg-indigo-800/80 hover:bg-indigo-700 text-indigo-200 text-xs rounded-lg transition-colors border border-indigo-600/50 flex items-center">
-
-                                        <i class="fa-solid fa-pen-to-square mr-1"></i> キーを変更 / 削除
-
-                                    </button>
-
-                                    <button id="testGeminiBtn" type="button" class="px-3 py-1 bg-purple-600 hover:bg-purple-500 text-white font-semibold text-xs rounded-lg transition-colors shadow-sm flex items-center">
-
-                                        <i class="fa-solid fa-bolt mr-1 text-amber-300"></i> 接続テスト
-
-                                    </button>
-
-                                </div>
-
-                            </div>
 
 
+                                <!-- API Key Input & Actions Row (未設定時または変更時に表示) -->
 
-                            <!-- API Key Input & Actions Row (未設定時または変更時に表示) -->
+                                <div id="apiKeyInputRow" class="flex flex-col sm:flex-row gap-2 pt-1">
 
-                            <div id="apiKeyInputRow" class="flex flex-col sm:flex-row gap-2 pt-1">
+                                    <div class="relative flex-1">
 
-                                <div class="relative flex-1">
+                                        <input type="password" id="geminiApiKeyInput" placeholder="Google AI Studio の APIキーを入力 (AQ... または AIzaSy...)" class="w-full px-3 py-1.5 text-xs bg-indigo-950/70 border border-indigo-500/50 rounded-lg text-white placeholder-indigo-300/50 focus:ring-2 focus:ring-purple-400 focus:outline-none font-mono">
 
-                                    <input type="password" id="geminiApiKeyInput" placeholder="Google AI Studio の APIキーを入力 (AQ... または AIzaSy...)" class="w-full px-3 py-1.5 text-xs bg-indigo-950/70 border border-indigo-500/50 rounded-lg text-white placeholder-indigo-300/50 focus:ring-2 focus:ring-purple-400 focus:outline-none font-mono">
+                                        <button id="toggleApiKeyVisibilityBtn" type="button" class="absolute right-2.5 top-1/2 -translate-y-1/2 text-indigo-300 hover:text-white text-xs" title="キーの表示/非表示">
 
-                                    <button id="toggleApiKeyVisibilityBtn" type="button" class="absolute right-2.5 top-1/2 -translate-y-1/2 text-indigo-300 hover:text-white text-xs" title="キーの表示/非表示">
+                                            <i class="fa-solid fa-eye" id="apiKeyEyeIcon"></i>
 
-                                        <i class="fa-solid fa-eye" id="apiKeyEyeIcon"></i>
+                                        </button>
 
-                                    </button>
+                                    </div>
 
-                                </div>
+                                    <div class="flex gap-1.5 shrink-0">
 
-                                <div class="flex gap-1.5 shrink-0">
+                                        <button id="saveApiKeyBtn" type="button" class="px-3 py-1.5 bg-purple-600 hover:bg-purple-500 text-white font-semibold text-xs rounded-lg transition-colors shadow-sm flex items-center">
 
-                                    <button id="saveApiKeyBtn" type="button" class="px-3 py-1.5 bg-purple-600 hover:bg-purple-500 text-white font-semibold text-xs rounded-lg transition-colors shadow-sm flex items-center">
+                                            <i class="fa-solid fa-floppy-disk mr-1"></i> 保存
 
-                                        <i class="fa-solid fa-floppy-disk mr-1"></i> 保存
+                                        </button>
 
-                                    </button>
+                                        <button id="cancelEditKeyBtn" type="button" class="hidden px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs rounded-lg transition-colors border border-slate-600">
 
-                                    <button id="cancelEditKeyBtn" type="button" class="hidden px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs rounded-lg transition-colors border border-slate-600">
+                                            キャンセル
 
-                                        キャンセル
+                                        </button>
 
-                                    </button>
+                                        <button id="testGeminiBtn2" type="button" class="px-3 py-1.5 bg-indigo-800 hover:bg-indigo-700 text-indigo-100 font-semibold text-xs rounded-lg transition-colors border border-indigo-600/60 flex items-center">
 
-                                    <button id="testGeminiBtn2" type="button" class="px-3 py-1.5 bg-indigo-800 hover:bg-indigo-700 text-indigo-100 font-semibold text-xs rounded-lg transition-colors border border-indigo-600/60 flex items-center">
+                                            <i class="fa-solid fa-bolt mr-1 text-amber-400"></i> 接続テスト
 
-                                        <i class="fa-solid fa-bolt mr-1 text-amber-400"></i> 接続テスト
+                                        </button>
 
-                                    </button>
+                                    </div>
 
                                 </div>
 
-                            </div>
-
-                            <!-- AI Model Preference Row -->
-                            <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-1.5 pt-2 border-t border-indigo-900/50 text-xs">
-                                <div class="flex items-center gap-1.5 text-indigo-200">
-                                    <i class="fa-solid fa-gauge-high text-amber-400 text-xs"></i>
-                                    <span class="font-semibold text-xs text-white">AIモデル優先度:</span>
-                                    <span id="geminiModelBadge" class="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-medium">高速 (3.1-flash-lite)</span>
-                                </div>
-                                <select id="geminiModelPreferenceSelect" class="bg-indigo-950/80 border border-indigo-500/60 rounded-lg px-2.5 py-1 text-xs text-indigo-100 focus:outline-none focus:ring-2 focus:ring-purple-400 font-sans cursor-pointer hover:border-indigo-400 transition-colors">
-                                    <option value="speed">⚡ 最速レスポンス最優先 (3.1-flash-lite / ~1.9秒)</option>
-                                    <option value="3.5-flash-lite">🧪 Gemini 3.5 Flash-Lite (最新世代・超軽量)</option>
-                                    <option value="3.8-flash">🧪 Gemini 3.8 Flash (最新世代・高度推論)</option>
-                                    <option value="3.5-flash">🧪 Gemini 3.5 Flash (最新世代・標準)</option>
-                                    <option value="quality">✨ 本番安定品質 (2.5-flash / ~3.0秒)</option>
-                                </select>
-                            </div>
-
-                            <!-- Test Result Box -->
-
-                            <div id="geminiTestResultBox" class="hidden p-2.5 bg-indigo-950/90 rounded-lg border border-purple-500/40 text-xs space-y-1 animate-fadeIn">
-
-                                <div class="flex justify-between items-center text-[11px] text-purple-200 font-bold">
-
-                                    <span><i class="fa-solid fa-circle-check text-emerald-400 mr-1"></i> AIテスト結果:</span>
-
-                                    <span id="geminiLatencyText" class="font-mono text-[10px] text-purple-300"></span>
-
+                                <!-- AI Model Preference Row -->
+                                <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-1.5 pt-2 border-t border-indigo-900/50 text-xs">
+                                    <div class="flex items-center gap-1.5 text-indigo-200">
+                                        <i class="fa-solid fa-gauge-high text-amber-400 text-xs"></i>
+                                        <span class="font-semibold text-xs text-white">AIモデル優先度:</span>
+                                        <span id="geminiModelBadge" class="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-medium">高速 (3.1-flash-lite)</span>
+                                    </div>
+                                    <select id="geminiModelPreferenceSelect" class="bg-indigo-950/80 border border-indigo-500/60 rounded-lg px-2.5 py-1 text-xs text-indigo-100 focus:outline-none focus:ring-2 focus:ring-purple-400 font-sans cursor-pointer hover:border-indigo-400 transition-colors">
+                                        <option value="speed">⚡ 最速レスポンス最優先 (3.1-flash-lite / ~1.9秒)</option>
+                                        <option value="3.5-flash-lite">🧪 Gemini 3.5 Flash-Lite (最新世代・超軽量)</option>
+                                        <option value="3.8-flash">🧪 Gemini 3.8 Flash (最新世代・高度推論)</option>
+                                        <option value="3.5-flash">🧪 Gemini 3.5 Flash (最新世代・標準)</option>
+                                        <option value="quality">✨ 本番安定品質 (2.5-flash / ~3.0秒)</option>
+                                    </select>
                                 </div>
 
-                                <div id="geminiTestOutput" class="text-xs text-white font-medium pl-1"></div>
+                                <!-- Test Result Box -->
+
+                                <div id="geminiTestResultBox" class="hidden p-2.5 bg-indigo-950/90 rounded-lg border border-purple-500/40 text-xs space-y-1 animate-fadeIn">
+
+                                    <div class="flex justify-between items-center text-[11px] text-purple-200 font-bold">
+
+                                        <span><i class="fa-solid fa-circle-check text-emerald-400 mr-1"></i> AIテスト結果:</span>
+
+                                        <span id="geminiLatencyText" class="font-mono text-[10px] text-purple-300"></span>
+
+                                    </div>
+
+                                    <div id="geminiTestOutput" class="text-xs text-white font-medium pl-1"></div>
+
+                                </div>
 
                             </div>
 
@@ -537,6 +545,21 @@
 
                             </div>
 
+                        </div>
+
+                        <!-- 本日の登壇者・固有名詞メモ（人名・特別語彙の認識率向上） -->
+                        <div class="bg-amber-50/70 p-2.5 rounded-xl border border-amber-200/80 mb-3">
+                            <div class="flex items-center justify-between mb-1.5">
+                                <label for="todayContextInput" class="text-xs font-bold text-amber-950 flex items-center gap-1.5 cursor-pointer">
+                                    <i class="fa-solid fa-clipboard-list text-amber-600"></i>
+                                    <span>📋 本日の登壇者・固有名詞</span>
+                                </label>
+                                <button id="clearTodayContextBtn" type="button" class="text-[11px] text-slate-400 hover:text-red-500 transition-colors flex items-center gap-0.5 cursor-pointer" title="メモをクリア">
+                                    <i class="fa-solid fa-eraser text-[10px]"></i>
+                                    <span>クリア</span>
+                                </button>
+                            </div>
+                            <input type="text" id="todayContextInput" placeholder="例: たなか兄弟, すずき姉妹, 岡山ステーク（カンマ区切り）" class="w-full px-2.5 py-1.5 text-xs bg-white border border-amber-300 rounded-lg text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-500 shadow-xs">
                         </div>
 
                         <!-- 話者の言語（入力音声認識）ワンタップ切替スイッチ -->
@@ -973,78 +996,90 @@
 
                     </p>
 
-
-
-                    <!-- Bulk & Backup Actions Panel -->
-
-                    <div class="flex flex-wrap gap-1.5 mb-4">
-
-                        <button id="loadPresetBtn" type="button" class="flex-1 py-1.5 px-2 bg-amber-50 hover:bg-amber-100 text-amber-800 font-medium text-xs rounded-lg transition-colors border border-amber-200 flex items-center justify-center">
-
-                            <i class="fa-solid fa-wand-magic-sparkles mr-1 text-amber-600"></i> 教会標準200語超を一括読み込み
-
+                    <!-- 一括管理・バックアップ 開閉トグルボタン -->
+                    <div class="mb-3">
+                        <button id="toggleDictToolsBtn" type="button" class="w-full py-1.5 px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs rounded-lg transition-colors border border-slate-200 flex items-center justify-between cursor-pointer">
+                            <span class="flex items-center gap-1.5">
+                                <i class="fa-solid fa-toolbox text-slate-500"></i>
+                                <span id="dictToolsBtnText">🛠️ 一括管理・バックアップ（開く）</span>
+                            </span>
+                            <i id="dictToolsChevron" class="fa-solid fa-chevron-down text-slate-400 text-xs transition-transform duration-200"></i>
                         </button>
-
-                        <button id="toggleBulkAreaBtn" type="button" class="py-1.5 px-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium text-xs rounded-lg transition-colors border border-slate-200">
-
-                            <i class="fa-solid fa-file-import mr-1"></i> テキスト一括
-
-                        </button>
-
                     </div>
 
+                    <!-- Bulk & Backup Actions Panel (折りたたみコンテナ) -->
+                    <div id="dictToolsContainer" class="hidden">
+                        <!-- Bulk & Backup Actions Panel -->
 
+                        <div class="flex flex-wrap gap-1.5 mb-4">
 
-                    <!-- JSON Backup & Restore Actions -->
+                            <button id="loadPresetBtn" type="button" class="flex-1 py-1.5 px-2 bg-amber-50 hover:bg-amber-100 text-amber-800 font-medium text-xs rounded-lg transition-colors border border-amber-200 flex items-center justify-center">
 
-                    <div class="flex gap-1.5 mb-4">
-
-                        <button id="exportJsonBtn" type="button" class="flex-1 py-1 px-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-semibold text-[11px] rounded-lg transition-colors border border-indigo-200 flex items-center justify-center">
-
-                            <i class="fa-solid fa-file-export mr-1"></i> 辞書JSON保存
-
-                        </button>
-
-                        <button id="importJsonBtn" type="button" class="flex-1 py-1 px-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-[11px] rounded-lg transition-colors border border-slate-200 flex items-center justify-center">
-
-                            <i class="fa-solid fa-file-arrow-up mr-1"></i> JSON読込
-
-                        </button>
-
-                        <input type="file" id="jsonFileInput" accept=".json" class="hidden">
-
-                    </div>
-
-
-
-                    <!-- Bulk Text Input Area -->
-
-                    <div id="bulkArea" class="hidden flex-col gap-2 mb-4 p-3 bg-slate-50 rounded-xl border border-slate-200">
-
-                        <label class="block text-[11px] font-semibold text-slate-600">
-
-                            一括入力（1行ごとに <code>誤変換,正しい表記</code> または <code>誤変換:正しい表記</code>）
-
-                        </label>
-
-                        <textarea id="bulkTextInput" rows="4" placeholder="せいさん,聖餐&#10;しんけん,神権&#10;かんちょう,管長" class="w-full p-2 text-xs font-mono border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none"></textarea>
-
-                        <div class="flex gap-2">
-
-                            <button id="applyBulkBtn" type="button" class="flex-1 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs rounded-lg transition-colors">
-
-                                一括登録を実行
+                                <i class="fa-solid fa-wand-magic-sparkles mr-1 text-amber-600"></i> 教会標準200語超を一括読み込み
 
                             </button>
 
-                            <button id="exportDictBtn" type="button" class="py-1.5 px-3 bg-slate-200 hover:bg-slate-300 text-slate-700 font-semibold text-xs rounded-lg transition-colors">
+                            <button id="toggleBulkAreaBtn" type="button" class="py-1.5 px-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium text-xs rounded-lg transition-colors border border-slate-200">
 
-                                テキスト抽出
+                                <i class="fa-solid fa-file-import mr-1"></i> テキスト一括
 
                             </button>
 
                         </div>
 
+
+
+                        <!-- JSON Backup & Restore Actions -->
+
+                        <div class="flex gap-1.5 mb-4">
+
+                            <button id="exportJsonBtn" type="button" class="flex-1 py-1 px-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-semibold text-[11px] rounded-lg transition-colors border border-indigo-200 flex items-center justify-center">
+
+                                <i class="fa-solid fa-file-export mr-1"></i> 辞書JSON保存
+
+                            </button>
+
+                            <button id="importJsonBtn" type="button" class="flex-1 py-1 px-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-[11px] rounded-lg transition-colors border border-slate-200 flex items-center justify-center">
+
+                                <i class="fa-solid fa-file-arrow-up mr-1"></i> JSON読込
+
+                            </button>
+
+                            <input type="file" id="jsonFileInput" accept=".json" class="hidden">
+
+                        </div>
+
+
+
+                        <!-- Bulk Text Input Area -->
+
+                        <div id="bulkArea" class="hidden flex-col gap-2 mb-4 p-3 bg-slate-50 rounded-xl border border-slate-200">
+
+                            <label class="block text-[11px] font-semibold text-slate-600">
+
+                                一括入力（1行ごとに <code>誤変換,正しい表記</code> または <code>誤変換:正しい表記</code>）
+
+                            </label>
+
+                            <textarea id="bulkTextInput" rows="4" placeholder="せいさん,聖餐&#10;しんけん,神権&#10;かんちょう,管長" class="w-full p-2 text-xs font-mono border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:outline-none"></textarea>
+
+                            <div class="flex gap-2">
+
+                                <button id="applyBulkBtn" type="button" class="flex-1 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs rounded-lg transition-colors">
+
+                                    一括登録を実行
+
+                                </button>
+
+                                <button id="exportDictBtn" type="button" class="py-1.5 px-3 bg-slate-200 hover:bg-slate-300 text-slate-700 font-semibold text-xs rounded-lg transition-colors">
+
+                                    テキスト抽出
+
+                                </button>
+
+                            </div>
+
+                        </div>
                     </div>
 
 
@@ -1160,6 +1195,12 @@
                     <option value="ko">한국語 (韓国語)</option>
                     <option value="ja">日本語 (補正済み原文)</option>
                 </select>
+
+                <!-- 字幕保存ボタン（現在表示されている言語の字幕一覧をテキスト保存） -->
+                <button id="viewerDownloadBtn" type="button" class="text-[10px] sm:text-xs text-slate-500 hover:text-indigo-600 px-2 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 border border-slate-200 flex items-center gap-1 transition-colors shrink-0 cursor-pointer shadow-xs" title="字幕をテキスト保存" aria-label="字幕をテキスト保存">
+                    <i class="fa-solid fa-download text-[9px] sm:text-[10px] text-indigo-500"></i>
+                    <span id="viewerDownloadBtnText">保存</span>
+                </button>
 
                 <!-- プライバシーポリシー & 免責事項ボタン（上部言語バーの右端へ移設） -->
                 <button id="viewerPrivacyBtn" type="button" class="text-[10px] sm:text-xs text-slate-500 hover:text-indigo-600 px-2 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 border border-slate-200 flex items-center gap-1 transition-colors shrink-0 cursor-pointer shadow-xs" title="プライバシーポリシー・免責事項" aria-label="利用規約とプライバシーポリシー">
@@ -4443,6 +4484,7 @@ function isIncompletePhrase(text) {
                 disclaimerBody: "This system is an independent open-source tool created by an individual church member/developer to assist in worship, and is not an official application of The Church of Jesus Christ of Latter-day Saints.",
                 privacyHeader: "Privacy Policy",
                 privacyBody: "Speech recognition and AI subtitle data are used solely for real-time caption generation. No voice or text data is permanently stored on servers or used for AI model training.",
+                downloadBtn: "Save",
                 closeModal: "Close"
             },
             "ja": {
@@ -4480,6 +4522,7 @@ function isIncompletePhrase(text) {
                 disclaimerBody: "本システムは個人の教会員・開発者によって礼拝支援のために作成された独立したオープンソースツールであり、末日聖徒イエス・キリスト教会の公式アプリケーションではありません。",
                 privacyHeader: "【プライバシー方針】データの保護",
                 privacyBody: "音声認識およびAI補正データはリアルタイム字幕生成のみに使用され、サーバー等への恒久保存やAIモデルの学習データとしての利用は一切行われません。",
+                downloadBtn: "保存",
                 closeModal: "閉じる"
             },
             "tl": {
@@ -4517,6 +4560,7 @@ function isIncompletePhrase(text) {
                 disclaimerBody: "Ang sistemang ito ay isang malayang open-source tool na ginawa ng isang miyembro ng simbahan/developer upang tumulong sa pagsamba, at hindi opisyal na app ng Ang Simbahan ni Jesucristo ng mga Banal sa mga Huling Araw.",
                 privacyHeader: "[Patakaran sa Pagkapribado] Proteksyon ng Datos",
                 privacyBody: "Ang speech recognition at AI caption data ay ginagamit lamang para sa real-time na mga subtitle. Walang datos na iniimbak sa mga server o ginagamit para sanayin ang AI.",
+                downloadBtn: "I-save",
                 closeModal: "Isara"
             },
             "zh-CN": {
@@ -4554,6 +4598,7 @@ function isIncompletePhrase(text) {
                 disclaimerBody: "本系统由教会成员/开发者个人为协助崇拜而创建的独立开源工具，并非耶稣基督后期圣徒教会的官方应用程序。",
                 privacyHeader: "【隐私政策】数据保护",
                 privacyBody: "语音识别及AI字幕数据仅用于实时字幕生成，绝不会在服务器上永久存储，亦不会用于AI模型训练。",
+                downloadBtn: "保存",
                 closeModal: "关闭"
             },
             "zh-TW": {
@@ -4591,6 +4636,7 @@ function isIncompletePhrase(text) {
                 disclaimerBody: "本系統由教會成員/開發者個人為協助崇拜而創建的獨立開源工具，並非耶穌基督後期聖徒教會的官方應用程式。",
                 privacyHeader: "【隱私政策】數據保護",
                 privacyBody: "語音識別及AI字幕數據僅用於即時字幕生成，絕不會在伺服器上永久存儲，亦不會用於AI模型訓練。",
+                downloadBtn: "儲存",
                 closeModal: "關閉"
             },
             "pt": {
@@ -4628,6 +4674,7 @@ function isIncompletePhrase(text) {
                 disclaimerBody: "Este sistema é uma ferramenta independente de código aberto criada por um membro/desenvolvedor para apoiar o culto, e não é um aplicativo oficial de A Igreja de Jesus Cristo dos Santos dos Últimos Dias.",
                 privacyHeader: "[Política de Privacidade] Proteção de Dados",
                 privacyBody: "Os dados de reconhecimento de voz e IA são usados exclusivamente para geração de legendas em tempo real. Nenhum dado é armazenado permanentemente ou usado para treinamento de IA.",
+                downloadBtn: "Salvar",
                 closeModal: "Fechar"
             },
             "es": {
@@ -4665,6 +4712,7 @@ function isIncompletePhrase(text) {
                 disclaimerBody: "Este sistema es una herramienta independiente de código abierto creada por un miembro/desarrollador para apoyar la adoración, y no es una aplicación oficial de La Iglesia de Jesucristo de los Santos de los Últimos Días.",
                 privacyHeader: "[Política de Privacidad] Protección de Datos",
                 privacyBody: "Los datos de reconocimiento de voz e IA se utilizan únicamente para la generación de subtítulos en tiempo real. Ningún dato se almacena permanentemente ni se utiliza para entrenar modelos de IA.",
+                downloadBtn: "Guardar",
                 closeModal: "Cerrar"
             },
             "ko": {
@@ -4702,6 +4750,7 @@ function isIncompletePhrase(text) {
                 disclaimerBody: "본 시스템은 예배를 돕기 위해 개인 교회 회원/개발자가 제작한 독립적인 오픈소스 도구이며, 예수 그리스도 후기 성도 교회의 공식 애플리케이션이 아닙니다.",
                 privacyHeader: "[개인정보 보호방침] 데이터 보호",
                 privacyBody: "음성 인식 및 AI 자막 보정 데이터는 실시간 자막 생성에만 사용되며, 서버에 영구 저장되거나 AI 모델 학습에 일절 사용되지 않습니다.",
+                downloadBtn: "저장",
                 closeModal: "닫기"
             }
         };
@@ -4774,6 +4823,14 @@ function isIncompletePhrase(text) {
             } catch (e) {
                 console.warn(`[LocalStorage] Failed to remove '${key}':`, e);
             }
+        }
+
+        // ==================== 本日の登壇者・固有名詞メモ 取得ユーティリティ ====================
+        function getTodayCustomVocabulary() {
+            const el = document.getElementById('todayContextInput');
+            const raw = el ? el.value : safeLocalStorageGet('lds_today_context', '');
+            if (!raw || !raw.trim()) return [];
+            return raw.split(/[,、\s\n]+/).map(s => s.trim()).filter(s => s.length > 0);
         }
 
         let churchDictionary = {};
@@ -5634,6 +5691,7 @@ function isIncompletePhrase(text) {
 
                 setupCardNavigation();
                 checkInAppBrowser();
+                setupViewerDownloadButton();
                 initPeerViewer(roomId);
 
             } else {
@@ -5682,10 +5740,137 @@ function isIncompletePhrase(text) {
                 // 前回のセッションバックアップ（誤F5リロード対策）を自動復元
                 restoreHostSessionBackup();
 
+                // 本日の登壇者メモ・設定パネル折りたたみ初期化
+                setupTodayContextInput();
+                initGeminiSettingsCollapsible();
+                initDictToolsCollapsible();
+
             }
 
             setupPrivacyModal();
 
+        }
+
+        // ==================== 本日の登壇者・固有名詞メモ初期化 ====================
+        function setupTodayContextInput() {
+            const input = document.getElementById('todayContextInput');
+            const clearBtn = document.getElementById('clearTodayContextBtn');
+            if (!input) return;
+
+            // 復元
+            const saved = safeLocalStorageGet('lds_today_context', '');
+            input.value = saved;
+
+            // 入力時自動保存
+            input.addEventListener('input', () => {
+                safeLocalStorageSet('lds_today_context', input.value);
+            });
+
+            // クリアボタン
+            if (clearBtn) {
+                clearBtn.onclick = () => {
+                    input.value = '';
+                    safeLocalStorageSet('lds_today_context', '');
+                };
+            }
+        }
+
+        // ==================== Gemini AI設定カード折りたたみ制御 ====================
+        function initGeminiSettingsCollapsible() {
+            const container = document.getElementById('geminiSettingsDetailContainer');
+            const toggleBtn = document.getElementById('toggleGeminiSettingsBtn');
+            const btnText = document.getElementById('geminiSettingsBtnText');
+            if (!container || !toggleBtn) return;
+
+            // APIキーが保存済みかつAI補正がONの場合、初期状態は折りたたむ
+            const hasKey = !!(geminiApiKey && geminiApiKey.trim());
+            const isAiOn = document.getElementById('geminiAiToggle')?.checked || false;
+
+            if (hasKey && isAiOn) {
+                container.classList.add('hidden');
+                if (btnText) btnText.textContent = '詳細設定';
+            } else {
+                container.classList.remove('hidden');
+                if (btnText) btnText.textContent = '閉じる';
+            }
+
+            toggleBtn.onclick = () => {
+                const isHidden = container.classList.toggle('hidden');
+                if (btnText) {
+                    btnText.textContent = isHidden ? '詳細設定' : '閉じる';
+                }
+            };
+        }
+
+        // ==================== 教会用語辞書ツール（一括・バックアップ）折りたたみ制御 ====================
+        function initDictToolsCollapsible() {
+            const btn = document.getElementById('toggleDictToolsBtn');
+            const container = document.getElementById('dictToolsContainer');
+            const chevron = document.getElementById('dictToolsChevron');
+            const btnText = document.getElementById('dictToolsBtnText');
+            if (!btn || !container) return;
+
+            btn.onclick = () => {
+                const isHidden = container.classList.toggle('hidden');
+                if (chevron) {
+                    chevron.style.transform = isHidden ? 'rotate(0deg)' : 'rotate(180deg)';
+                }
+                if (btnText) {
+                    btnText.textContent = isHidden ? '🛠️ 一括管理・バックアップ（開く）' : '🛠️ 一括管理・バックアップ（閉じる）';
+                }
+            };
+        }
+
+        // ==================== 聴講者画面 字幕ダウンロード制御 ====================
+        function setupViewerDownloadButton() {
+            const btn = document.getElementById('viewerDownloadBtn');
+            if (!btn) return;
+
+            btn.onclick = () => {
+                const container = document.getElementById('captionStream');
+                if (!container) return;
+                const cards = container.querySelectorAll('.caption-card');
+                if (!cards || cards.length === 0) {
+                    alert('保存できる字幕がまだありません。');
+                    return;
+                }
+
+                const lines = [];
+                const now = new Date();
+                const yyyy = now.getFullYear();
+                const mm = String(now.getMonth() + 1).padStart(2, '0');
+                const dd = String(now.getDate()).padStart(2, '0');
+                const dateStr = `${yyyy}-${mm}-${dd}`;
+
+                lines.push(`=== 字幕記録 (${dateStr} ${now.toLocaleTimeString('ja-JP')}) ===\n`);
+
+                cards.forEach((card, index) => {
+                    const timeEl = card.querySelector('time') || card.querySelector('.text-\\[10px\\]');
+                    const time = timeEl ? timeEl.textContent.trim() : '';
+                    const jaEl = card.querySelector('.caption-ja-text');
+                    const enEl = card.querySelector('.caption-en-text');
+
+                    const jaText = jaEl ? jaEl.textContent.trim() : '';
+                    const enText = enEl ? enEl.textContent.trim() : '';
+
+                    if (jaText || enText) {
+                        lines.push(`[${time || (index + 1)}]`);
+                        if (jaText) lines.push(jaText);
+                        if (enText && enText !== jaText) lines.push(`(${enText})`);
+                        lines.push('');
+                    }
+                });
+
+                const blob = new Blob([lines.join('\n')], { type: 'text/plain;charset=utf-8' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `Captions_${dateStr}.txt`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            };
         }
 
         // ==================== プライバシーポリシー & 免責事項 多言語モーダル制御 ====================
@@ -5901,6 +6086,10 @@ function isIncompletePhrase(text) {
             const closePrivacyModalText = document.getElementById('closePrivacyModalText');
             if (closePrivacyModalText && s.closeModal) {
                 closePrivacyModalText.textContent = s.closeModal;
+            }
+            const viewerDownloadBtnText = document.getElementById('viewerDownloadBtnText');
+            if (viewerDownloadBtnText && s.downloadBtn) {
+                viewerDownloadBtnText.textContent = s.downloadBtn;
             }
 
         }
@@ -8743,6 +8932,11 @@ function isIncompletePhrase(text) {
 
                 let userPrompt = langInstruction + sectionHint + '\n\n';
 
+                const todayVocab = getTodayCustomVocabulary();
+                if (todayVocab.length > 0) {
+                    userPrompt += `【本日の登壇者・固有名詞リスト（最優先で正確に表記すること）】: ${todayVocab.join(', ')}\n\n`;
+                }
+
                 const validContext = isTest ? [] : recentContextHistory.filter(c => c && c.trim());
 
                 if (validContext.length > 0) {
@@ -10345,6 +10539,11 @@ ${existingKeys.slice(0, 100).join(', ')}
 
 
 
+                    const todayVocab = getTodayCustomVocabulary();
+                    const contextClause = (todayVocab.length > 0)
+                        ? `\n【本日の登壇者・固有名詞リスト（最優先で正確に表記すること）】: ${todayVocab.join(', ')}\n`
+                        : '';
+
                     const prompt = `あなたは末日聖徒イエス・キリスト教会（モルモン書を信条に持つキリスト教会）の集会記録アシスタントです。
 以下は本日の集会（聖餐会・証会・大会等）で記録された日本語の文字起こし記録全文です。
 この記録を分析し、教会標準の温かく敬虔で礼儀正しい日本語（「兄弟姉妹」「天のお父様」「救い主イエス・キリスト」等の教会用語）を用いて、【話者ごと（登壇者・スピーチごと、または証者ごと）】に以下の3大項目を分かりやすく整理したサマリーを作成してください。
@@ -10366,7 +10565,7 @@ ${existingKeys.slice(0, 100).join(', ')}
 3. **全体のまとめ（結び）**:
    最後に集会全体の基調や共通するメッセージがあれば、2〜3行で温かく励ましとなる言葉で結んでください。
 
-【集会日付】: ${todayStr}
+【集会日付】: ${todayStr}${contextClause}
 【本日の文字起こし記録全文】:
 ${fullText}`;
 
@@ -11423,6 +11622,10 @@ ${fullText}`;
                     const langCodes = (currentInputLanguage === 'en')
                         ? ['en-US', 'ja-JP']
                         : (currentInputLanguage === 'tl' ? ['fil-PH', 'ja-JP', 'en-US'] : ['ja-JP', 'en-US']);
+                    const todayVocab = getTodayCustomVocabulary();
+                    const mergedVocabulary = todayVocab.length > 0
+                        ? [...CHURCH_CUSTOM_VOCABULARY, ...todayVocab]
+                        : CHURCH_CUSTOM_VOCABULARY;
                     const setupMessage = {
                         setup: {
                             model: 'models/gemini-3.5-transcribe-live',
@@ -11431,7 +11634,7 @@ ${fullText}`;
                             },
                             inputAudioTranscription: {
                                 languageCodes: langCodes,
-                                customVocabulary: CHURCH_CUSTOM_VOCABULARY
+                                customVocabulary: mergedVocabulary
                             }
                         }
                     };
