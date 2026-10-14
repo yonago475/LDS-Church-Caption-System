@@ -4968,6 +4968,8 @@ function isIncompletePhrase(text) {
 
             }
 
+            scheduleSaveHostSession();
+
         }
 
 
@@ -5065,6 +5067,115 @@ function isIncompletePhrase(text) {
         const downloadTranscriptBtn = document.getElementById('downloadTranscriptBtn');
 
         const downloadDiagnosticBtn = document.getElementById('downloadDiagnosticBtn');
+
+        // ==================== ホストセッション自動保護（Auto-Recovery） ====================
+        const HOST_SESSION_BACKUP_KEY = 'lds_host_session_backup';
+        let hostSessionSaveTimer = null;
+
+        // セッション保存の予約（デバウンス 500ms）
+        function scheduleSaveHostSession() {
+            if (!isHost) return;
+            if (hostSessionSaveTimer) clearTimeout(hostSessionSaveTimer);
+            hostSessionSaveTimer = setTimeout(() => {
+                saveHostSessionBackup();
+            }, 500);
+        }
+
+        // セッションバックアップの実行
+        function saveHostSessionBackup() {
+            if (!isHost) return;
+            try {
+                if (transcriptHistory.length === 0 && diagnosticTelemetryLogs.length === 0 && (!aiStats || aiStats.totalCaptions === 0)) {
+                    return;
+                }
+                const backupData = {
+                    savedAt: Date.now(),
+                    dateStr: new Date().toLocaleDateString('ja-JP'),
+                    transcriptHistory: transcriptHistory.slice(-500),
+                    diagnosticTelemetryLogs: diagnosticTelemetryLogs.slice(-500),
+                    aiStats: aiStats,
+                    telemetryCounter: telemetryCounter
+                };
+                sessionStorage.setItem(HOST_SESSION_BACKUP_KEY, JSON.stringify(backupData));
+            } catch (e) {
+                console.warn('[Auto-Recovery] sessionStorage 保存エラー:', e.message);
+            }
+        }
+
+        // 復元完了トースト表示
+        function showRestoreToast(msg) {
+            try {
+                const toast = document.createElement('div');
+                toast.className = 'fixed bottom-4 right-4 z-50 bg-indigo-900/95 text-white text-xs px-4 py-3 rounded-xl shadow-xl border border-indigo-400/50 backdrop-blur-md transition-all duration-300 flex items-center space-x-2.5';
+                toast.innerHTML = `<i class="fa-solid fa-clock-rotate-left text-amber-400 text-sm"></i><span class="font-medium">${escapeHtml(msg)}</span>`;
+                document.body.appendChild(toast);
+                setTimeout(() => {
+                    toast.style.opacity = '0';
+                    toast.style.transform = 'translateY(10px)';
+                    setTimeout(() => toast.remove(), 350);
+                }, 4000);
+            } catch(e){}
+        }
+
+        // セッションバックアップからの自動復元
+        function restoreHostSessionBackup() {
+            if (!isHost) return;
+            try {
+                const raw = sessionStorage.getItem(HOST_SESSION_BACKUP_KEY);
+                if (!raw) return;
+                const backup = JSON.parse(raw);
+                if (!backup) return;
+
+                // 当日のバックアップか確認
+                const todayStr = new Date().toLocaleDateString('ja-JP');
+                if (backup.dateStr && backup.dateStr !== todayStr) {
+                    console.log('[Auto-Recovery] 過去日のバックアップのため破棄します');
+                    sessionStorage.removeItem(HOST_SESSION_BACKUP_KEY);
+                    return;
+                }
+
+                // 1. aiStats の復元
+                if (backup.aiStats && typeof backup.aiStats === 'object') {
+                    Object.assign(aiStats, backup.aiStats);
+                    if (typeof updateAiStatsDisplay === 'function') {
+                        updateAiStatsDisplay();
+                    }
+                }
+
+                // 2. telemetryCounter & diagnosticTelemetryLogs の復元
+                if (backup.telemetryCounter) {
+                    telemetryCounter = backup.telemetryCounter;
+                }
+                if (Array.isArray(backup.diagnosticTelemetryLogs) && backup.diagnosticTelemetryLogs.length > 0) {
+                    diagnosticTelemetryLogs.length = 0;
+                    diagnosticTelemetryLogs.push(...backup.diagnosticTelemetryLogs);
+                }
+
+                // 3. transcriptHistory & hostTranscriptLog DOM の復元
+                if (Array.isArray(backup.transcriptHistory) && backup.transcriptHistory.length > 0) {
+                    transcriptHistory.length = 0;
+                    transcriptHistory.push(...backup.transcriptHistory);
+
+                    if (hostTranscriptLog) {
+                        hostTranscriptLog.innerHTML = '';
+                        backup.transcriptHistory.forEach(itemData => {
+                            try {
+                                const el = createHostTranscriptElement(itemData);
+                                hostTranscriptLog.appendChild(el);
+                            } catch (e) {
+                                console.warn('[Auto-Recovery] カード復元スキップ:', e.message);
+                            }
+                        });
+                        hostTranscriptLog.scrollTop = hostTranscriptLog.scrollHeight;
+                    }
+
+                    console.log(`[Auto-Recovery] 🔄 セッション復元完了: 文字起こし ${backup.transcriptHistory.length} 件, 診断ログ ${diagnosticTelemetryLogs.length} 件`);
+                    showRestoreToast(`前回セッションから文字起こし ${backup.transcriptHistory.length} 件、診断ログ ${diagnosticTelemetryLogs.length} 件を自動復元しました`);
+                }
+            } catch (e) {
+                console.warn('[Auto-Recovery] 復元エラー:', e.message);
+            }
+        }
 
 
 
@@ -5527,6 +5638,9 @@ function isIncompletePhrase(text) {
                 initAudioDeviceSelector();
 
                 initSpeechRecognition();
+
+                // 前回のセッションバックアップ（誤F5リロード対策）を自動復元
+                restoreHostSessionBackup();
 
             }
 
@@ -9827,6 +9941,8 @@ function isIncompletePhrase(text) {
 
             }
 
+            scheduleSaveHostSession();
+
         }
 
 
@@ -12458,6 +12574,12 @@ ${existingKeys.slice(0, 100).join(', ')}
 
                 currentUnhandledText = '';
 
+                diagnosticTelemetryLogs.length = 0;
+
+                try {
+                    sessionStorage.removeItem(HOST_SESSION_BACKUP_KEY);
+                } catch(e){}
+
             };
 
             const quickBreadBtn = document.getElementById('quickSacramentBreadBtn');
@@ -12501,7 +12623,72 @@ ${existingKeys.slice(0, 100).join(', ')}
 
 
 
-        // ログへの追加（ワンタップ辞書登録ボタン「➕ 辞書登録」付き & 手動修正差分表示）
+        // カードDOM要素の生成ヘルパー（新規描画およびセッション自動復元で共用）
+        function createHostTranscriptElement(meta) {
+            const timeStr = meta.time || '';
+            const wasPaused = !!meta.paused;
+            const isAi = !!meta.isAi;
+            const isEdited = !!(meta.isEdited && meta.original && meta.original.trim() !== (meta.text || '').trim());
+            const rawOriginal = isEdited ? meta.original.trim() : null;
+            const text = meta.text || '';
+            const englishText = (meta.englishText) ? meta.englishText.trim() : null;
+            const captionId = meta.id || null;
+            const isProvisional = !!meta.isProvisional;
+            const translations = (meta.translations && typeof meta.translations === 'object') ? meta.translations : null;
+
+            const item = document.createElement('div');
+            if (captionId) item.dataset.captionId = captionId;
+            if (text) item.dataset.jaText = text;
+            if (englishText) item.dataset.enText = englishText;
+            if (translations && typeof translations === 'object') {
+                item.dataset.translations = JSON.stringify(translations);
+            }
+            const safeText = escapeHtml(text);
+            const safeOriginal = rawOriginal ? escapeHtml(rawOriginal) : '';
+            const safeEnglish = englishText ? escapeHtml(englishText) : '';
+
+            if (wasPaused) {
+                item.className = 'bg-slate-200/70 p-3 rounded-lg border border-slate-300 shadow-sm opacity-70';
+                item.innerHTML = `
+                    <div class="flex justify-between items-center mb-1">
+                        <span class="text-[10px] text-slate-400">${timeStr}</span>
+                        <div class="flex items-center space-x-2">
+                            <button type="button" class="text-[10px] text-indigo-600 hover:text-indigo-800 font-semibold log-add-dict-btn" data-text="${safeText}" title="この単語を辞書登録">
+                                <i class="fa-solid fa-plus-circle"></i> 辞書登録
+                            </button>
+                            <span class="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 font-semibold border border-amber-200">⏸️ 未配信</span>
+                        </div>
+                    </div>
+                    <div class="text-sm text-slate-500 font-medium transcript-text">${safeText}</div>
+                    <div class="transcript-en-container mt-1 text-xs text-sky-700 font-medium pl-2 border-l-2 border-sky-400 bg-sky-50/70 py-0.5 rounded-r ${safeEnglish ? '' : 'hidden'}"><span class="text-sky-500 font-bold mr-1">🌐 英訳:</span><span class="transcript-en-text">${safeEnglish}</span></div>
+                `;
+            } else {
+                item.className = 'bg-white p-3 rounded-lg border border-slate-200 shadow-sm transition-all';
+                item.innerHTML = `
+                    <div class="flex justify-between items-center mb-1">
+                        <div class="flex items-center space-x-1.5">
+                            <span class="text-[10px] text-slate-400 font-mono">${timeStr}</span>
+                            <span class="transcript-badge">
+                                ${isProvisional ? `<span class="text-[10px] px-1.5 py-0.2 bg-amber-50 text-amber-700 font-medium rounded border border-amber-200">⚡ リアルタイム</span>` : (isEdited ? (isAi ? `<span class="text-[10px] px-1.5 py-0.2 bg-purple-100 text-purple-800 font-bold rounded border border-purple-300">✨ AI文脈補正</span>` : `<span class="text-[10px] px-1.5 py-0.2 bg-amber-100 text-amber-800 font-bold rounded border border-amber-300">✍️ 手動修正</span>`) : '')}
+                            </span>
+                        </div>
+                        <button type="button" class="text-[10px] text-indigo-600 hover:text-indigo-800 font-semibold log-add-dict-btn" data-text="${safeText}" title="この単語を辞書登録">
+                            <i class="fa-solid fa-plus-circle"></i> 辞書登録
+                        </button>
+                    </div>
+                    <div class="text-sm text-slate-800 font-medium transcript-text">${safeText}</div>
+                    <div class="transcript-en-container mt-1 text-xs text-sky-700 font-medium pl-2 border-l-2 border-sky-400 bg-sky-50/70 py-0.5 rounded-r ${safeEnglish ? '' : 'hidden'}"><span class="text-sky-500 font-bold mr-1">🌐 英訳:</span><span class="transcript-en-text">${safeEnglish}</span></div>
+                    ${isEdited ? `
+                    <div class="mt-1.5 p-2 bg-slate-50 rounded border border-slate-200 text-xs text-slate-700 flex items-start space-x-1.5">
+                        <span class="text-slate-500 font-bold shrink-0">認識原文:</span>
+                        <span class="line-through text-slate-400">${safeOriginal}</span>
+                        <span class="text-indigo-600 font-bold shrink-0">➔ 補正:</span>
+                        <span class="text-emerald-700 font-bold transcript-corrected-text">${safeText}</span>
+                    </div>` : ''}
+                `;
+            }
+            return item;
+        }
 
         // ログへの追加（ワンタップ辞書登録ボタン「➕ 辞書登録」付き & 手動修正差分表示）
         function appendHostTranscript(text, meta) {
@@ -12522,7 +12709,7 @@ ${existingKeys.slice(0, 100).join(', ')}
                 const isProvisional = !!(meta && meta.isProvisional);
                 const translations = (meta && meta.translations && typeof meta.translations === 'object') ? meta.translations : null;
 
-                transcriptHistory.push({
+                const itemData = {
                     id: captionId,
                     time: timeStr,
                     text: text,
@@ -12533,73 +12720,21 @@ ${existingKeys.slice(0, 100).join(', ')}
                     paused: wasPaused,
                     englishText: englishText,
                     translations: translations
-                });
+                };
+
+                transcriptHistory.push(itemData);
 
                 // メモリ肥大化防止: 上限を超えた古い履歴を削除
                 while (transcriptHistory.length > MAX_TRANSCRIPT_HISTORY) {
                     transcriptHistory.shift();
                 }
 
-                const item = document.createElement('div');
-                if (captionId) {
-                    item.dataset.captionId = captionId;
-                }
-                if (text) {
-                    item.dataset.jaText = text;
-                }
-                if (englishText) {
-                    item.dataset.enText = englishText;
-                }
-                if (translations && typeof translations === 'object') {
-                    item.dataset.translations = JSON.stringify(translations);
-                }
-                const safeText = escapeHtml(text);
-                const safeOriginal = rawOriginal ? escapeHtml(rawOriginal) : '';
-                const safeEnglish = englishText ? escapeHtml(englishText) : '';
-
-                if (wasPaused) {
-                    item.className = 'bg-slate-200/70 p-3 rounded-lg border border-slate-300 shadow-sm opacity-70';
-                    item.innerHTML = `
-                        <div class="flex justify-between items-center mb-1">
-                            <span class="text-[10px] text-slate-400">${timeStr}</span>
-                            <div class="flex items-center space-x-2">
-                                <button type="button" class="text-[10px] text-indigo-600 hover:text-indigo-800 font-semibold log-add-dict-btn" data-text="${safeText}" title="この単語を辞書登録">
-                                    <i class="fa-solid fa-plus-circle"></i> 辞書登録
-                                </button>
-                                <span class="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 font-semibold border border-amber-200">⏸️ 未配信</span>
-                            </div>
-                        </div>
-                        <div class="text-sm text-slate-500 font-medium transcript-text">${safeText}</div>
-                        <div class="transcript-en-container mt-1 text-xs text-sky-700 font-medium pl-2 border-l-2 border-sky-400 bg-sky-50/70 py-0.5 rounded-r ${safeEnglish ? '' : 'hidden'}"><span class="text-sky-500 font-bold mr-1">🌐 英訳:</span><span class="transcript-en-text">${safeEnglish}</span></div>
-                    `;
-                } else {
-                    item.className = 'bg-white p-3 rounded-lg border border-slate-200 shadow-sm transition-all';
-                    item.innerHTML = `
-                        <div class="flex justify-between items-center mb-1">
-                            <div class="flex items-center space-x-1.5">
-                                <span class="text-[10px] text-slate-400 font-mono">${timeStr}</span>
-                                <span class="transcript-badge">
-                                    ${isProvisional ? `<span class="text-[10px] px-1.5 py-0.2 bg-amber-50 text-amber-700 font-medium rounded border border-amber-200">⚡ リアルタイム</span>` : (isEdited ? (isAi ? `<span class="text-[10px] px-1.5 py-0.2 bg-purple-100 text-purple-800 font-bold rounded border border-purple-300">✨ AI文脈補正</span>` : `<span class="text-[10px] px-1.5 py-0.2 bg-amber-100 text-amber-800 font-bold rounded border border-amber-300">✍️ 手動修正</span>`) : '')}
-                                </span>
-                            </div>
-                            <button type="button" class="text-[10px] text-indigo-600 hover:text-indigo-800 font-semibold log-add-dict-btn" data-text="${safeText}" title="この単語を辞書登録">
-                                <i class="fa-solid fa-plus-circle"></i> 辞書登録
-                            </button>
-                        </div>
-                        <div class="text-sm text-slate-800 font-medium transcript-text">${safeText}</div>
-                        <div class="transcript-en-container mt-1 text-xs text-sky-700 font-medium pl-2 border-l-2 border-sky-400 bg-sky-50/70 py-0.5 rounded-r ${safeEnglish ? '' : 'hidden'}"><span class="text-sky-500 font-bold mr-1">🌐 英訳:</span><span class="transcript-en-text">${safeEnglish}</span></div>
-                        ${isEdited ? `
-                        <div class="mt-1.5 p-2 bg-slate-50 rounded border border-slate-200 text-xs text-slate-700 flex items-start space-x-1.5">
-                            <span class="text-slate-500 font-bold shrink-0">認識原文:</span>
-                            <span class="line-through text-slate-400">${safeOriginal}</span>
-                            <span class="text-indigo-600 font-bold shrink-0">➔ 補正:</span>
-                            <span class="text-emerald-700 font-bold transcript-corrected-text">${safeText}</span>
-                        </div>` : ''}
-                    `;
-                }
-
+                const item = createHostTranscriptElement(itemData);
                 hostTranscriptLog.appendChild(item);
                 hostTranscriptLog.scrollTop = hostTranscriptLog.scrollHeight;
+
+                // セッション自動保護保存（デバウンス 500ms）
+                scheduleSaveHostSession();
             } catch (err) {
                 console.error('[appendHostTranscript] 描画エラー (安全フォールバック):', err);
             }
@@ -12638,6 +12773,9 @@ ${existingKeys.slice(0, 100).join(', ')}
                 if (translations && typeof translations === 'object') histItem.translations = translations;
                 if (isAi !== undefined) histItem.isAi = isAi;
             }
+
+            // セッション自動保護保存
+            scheduleSaveHostSession();
         }
 
         // ホスト側ログの不要カード消去（Geminiが複数文を統合した際に断片カードを安全に消去）
@@ -12647,6 +12785,9 @@ ${existingKeys.slice(0, 100).join(', ')}
             if (item) item.remove();
             const histIdx = transcriptHistory.findIndex(h => h.id === id);
             if (histIdx !== -1) transcriptHistory.splice(histIdx, 1);
+
+            // セッション自動保護保存
+            scheduleSaveHostSession();
         }
 
         // スマホ側（Viewer）画面終了・リロード時の自律退店通知
@@ -12661,6 +12802,9 @@ ${existingKeys.slice(0, 100).join(', ')}
                 if (peer && !peer.destroyed) {
                     try { peer.destroy(); } catch(e){}
                 }
+            } else {
+                // ホスト側がリロード・閉じる際の同期セッションバックアップ保護
+                saveHostSessionBackup();
             }
         }
         window.addEventListener('beforeunload', handleViewerLeave);
