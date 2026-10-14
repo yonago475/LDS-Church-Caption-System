@@ -4859,7 +4859,9 @@ function isIncompletePhrase(text) {
         let liveScriptProcessor = null;
         let isLiveTranscribing = false;
         let liveInputAccumulator = '';
+        let liveAccumulatorStartTime = null; // 水色アキュムレータ蓄積開始時刻（最大経過時間監視用）
         let liveSilenceTimer = null;
+        let liveMaxCommitWatchdog = null; // 息継ぎなし超連続発話時の最大保留（4.5秒）強制コミット監視タイマー
         let handleRecognizedChunk = null;
         let triggerBatchFlush = null;
         let liveKeepAliveInterval = null; // 3分沈黙監視タイマー
@@ -11478,11 +11480,17 @@ ${fullText}`;
         function handleLiveTranscribeChunk(text) {
             if (!text) return;
 
-            lastLiveSpeechTimestamp = Date.now(); // 発話があったので最終発話検知時刻を更新
+            const now = Date.now();
+            lastLiveSpeechTimestamp = now; // 発話があったので最終発話検知時刻を更新
             // もしアーメン後の再接続待機中であれば、話が続いているので一旦キャンセル
             if (liveAmenReconnectTimeout) {
                 clearTimeout(liveAmenReconnectTimeout);
                 liveAmenReconnectTimeout = null;
+            }
+
+            // 初回文字蓄積時の開始時刻を記録（Web Speechの6秒タイマーを継承・4.5秒高速先行コミット）
+            if (!liveAccumulatorStartTime) {
+                liveAccumulatorStartTime = now;
             }
 
             liveInputAccumulator += text;
@@ -11517,7 +11525,6 @@ ${fullText}`;
                 }
 
                 // ✝️ アーメン検知ロジック（祈りや証、お話の結び）
-                // 文末が「アーメン」「アーメン。」「アーメン！」「amen.」等で終わるか、単独で発話された場合
                 const isAmen = /(アーメン|あーめん|amen)[。！？\.\!\?\s]*$/i.test(cleanS) ||
                                /(^|[\s、,])(アーメン|あーめん|amen)([。！？\.\!\?\s]|$)/i.test(cleanS);
                 if (isAmen && isLiveTranscribing && !isRefreshingLiveWs) {
@@ -11531,7 +11538,7 @@ ${fullText}`;
                 }
             };
 
-            // 複数文一括噴出防止: 1文目は遅延0ms即時配信、2文目以降はテンポ良い間隔（250ms）で順次排出
+            // 複数文一括噴出防止: 1文目は遅延0ms即時配信、2文目以降は順次排出（250ms）
             const enqueueSentenceOrDispatch = (s, isImmediate = false) => {
                 if (!s || !s.trim()) return;
                 if (isImmediate && liveSentenceDispatchQueue.length === 0) {
@@ -11553,40 +11560,55 @@ ${fullText}`;
                 }
             };
 
-            // 1. 日英両対応の文末記号（句点・ピリオド・感嘆符・疑問符）で文を切り出して即座に自律確定
-            // ※Mr. Mrs. Dr. Pres. 等の略称ピリオドは除外、スペース有無に関わらず大文字が続けば分割
-            const sentenceSplitRegex = /(?<=[。！？])\s*|(?<!\b(?:Mr|Mrs|Ms|Dr|vs|Pres|Sr|Jr|etc|[A-Z])\.)(?<=[.!?])\s*(?=[A-Z0-9"“'‘]|$)/i;
-            const parts = cleaned.split(sentenceSplitRegex);
-            if (parts.length > 1) {
-                for (let i = 0; i < parts.length - 1; i++) {
-                    const sentence = parts[i].trim();
-                    if (sentence) {
-                        // 最初の1文目（キューが空の場合）は即座（0ms）に先行配信、2文目以降は順次排出
-                        enqueueSentenceOrDispatch(sentence, i === 0);
+            // 【アキュムレータ先行切り出し判定ヘルパー（4.5〜5秒で確実に文字起こしログへ送出）】
+            const tryCommitAccumulator = (isForce = false) => {
+                if (!liveInputAccumulator || !liveInputAccumulator.trim()) return false;
+                const currentCleaned = cleanLiveTranscribeJapanese(liveInputAccumulator);
+                if (!currentCleaned || currentCleaned.length < 2) return false;
+
+                const elapsed = Date.now() - (liveAccumulatorStartTime || Date.now());
+
+                // 1. 日英両対応の文末記号（句点・ピリオド・感嘆符・疑問符）で文を切り出して即座に自律確定
+                const sentenceSplitRegex = /(?<=[。！？])\s*|(?<!\b(?:Mr|Mrs|Ms|Dr|vs|Pres|Sr|Jr|etc|[A-Z])\.)(?<=[.!?])\s*(?=[A-Z0-9"“'‘]|$)/i;
+                const parts = currentCleaned.split(sentenceSplitRegex);
+                if (parts.length > 1) {
+                    for (let i = 0; i < parts.length - 1; i++) {
+                        const sentence = parts[i].trim();
+                        if (sentence) {
+                            enqueueSentenceOrDispatch(sentence, i === 0);
+                        }
                     }
+                    const remainder = parts[parts.length - 1].trim();
+                    liveInputAccumulator = remainder;
+                    liveAccumulatorStartTime = remainder ? Date.now() : null;
+                    if (interimText) interimText.textContent = remainder || '（次の音声入力を待機中...）';
+                    return true;
                 }
-                liveInputAccumulator = parts[parts.length - 1].trim();
-            } else {
-                // 2. 句点・ピリオドがない長文の先行ストリーミング分割（早口・短間隔話者でもテンポ良くカードを先行送出）
-                const isEnglishDominant = /[a-zA-Z]{4,}/.test(cleaned);
+
+                // 2. 句点がない場合のスマート先行切り出し（Web Speech APIのPhase S「6秒タイマー」を継承・4.5秒高速化）
+                const isEnglishDominant = /[a-zA-Z]{4,}/.test(currentCleaned);
                 if (isEnglishDominant) {
-                    // 英語長文: 50文字（約8〜10単語）以上で、カンマまたは末尾から近い単語の境界スペースで先行分割
-                    if (cleaned.length >= 50) {
-                        const commaIdx = cleaned.slice(0, 45).lastIndexOf(',');
-                        const spaceIdx = cleaned.slice(0, 45).lastIndexOf(' ');
-                        const splitIdx = commaIdx > 15 ? (commaIdx + 1) : (spaceIdx > 20 ? spaceIdx : -1);
+                    // 英語長文: 45文字以上、または蓄積後4.5秒経過時
+                    if (currentCleaned.length >= 45 || (elapsed >= 4500 && currentCleaned.length >= 20)) {
+                        const commaIdx = currentCleaned.slice(0, 45).lastIndexOf(',');
+                        const spaceIdx = currentCleaned.slice(0, 45).lastIndexOf(' ');
+                        const splitIdx = commaIdx > 12 ? (commaIdx + 1) : (spaceIdx > 15 ? spaceIdx : -1);
                         if (splitIdx > 0) {
-                            const sentence = cleaned.slice(0, splitIdx).trim();
+                            const sentence = currentCleaned.slice(0, splitIdx).trim();
                             if (sentence) {
                                 enqueueSentenceOrDispatch(sentence, true);
                             }
-                            liveInputAccumulator = cleaned.slice(splitIdx).trim();
+                            const remainder = currentCleaned.slice(splitIdx).trim();
+                            liveInputAccumulator = remainder;
+                            liveAccumulatorStartTime = remainder ? Date.now() : null;
+                            if (interimText) interimText.textContent = remainder || '（次の音声入力を待機中...）';
+                            return true;
                         }
                     }
                 } else {
-                    // 日本語発話: 読点（、）または接続助詞・終止形による先行切り出し
-                    // (A) 読点（、）が含まれ、読点直後までが10文字以上ある場合は読点直後で先行送出
-                    const commaMatch = cleaned.match(/^(.{8,35}?[、，,])(.*)$/);
+                    // 日本語発話
+                    // (A) 読点（、）が含まれている場合: 8文字以上あれば読点直後で即座に先行切り出し
+                    const commaMatch = currentCleaned.match(/^(.{8,45}?[、，,])(.*)$/);
                     if (commaMatch && commaMatch[1]) {
                         const sentence = commaMatch[1].trim();
                         const remainder = commaMatch[2].trim();
@@ -11594,22 +11616,60 @@ ${fullText}`;
                             enqueueSentenceOrDispatch(sentence, true);
                         }
                         liveInputAccumulator = remainder;
-                    } else if (cleaned.length >= 22) {
-                        // (B) 読点がなくても22文字以上で文節の区切り（接続助詞・助動詞等）がある場合は先行切り出し
-                        const endingMatch = cleaned.slice(10).search(/(?:あります|ありません|なります|なりません|でしょうか|でした|ました|ですが|ですので|だから|けれど|そして|また|祈ります|証します|アーメン)(?=[一-龠ぁ-んァ-ヶ\s]|$)/);
+                        liveAccumulatorStartTime = remainder ? Date.now() : null;
+                        if (interimText) interimText.textContent = remainder || '（次の音声入力を待機中...）';
+                        return true;
+                    }
+
+                    // (B) 読点がなくても、4.5秒以上経過（elapsed >= 4500）または25文字以上蓄積されている場合:
+                    //     文末表現や接続助詞の直後で先行切り出し
+                    if (elapsed >= 4500 || currentCleaned.length >= 25 || isForce) {
+                        // findSmartSplitIndex が利用可能であれば優先
+                        const splitIdx = (typeof findSmartSplitIndex === 'function') ? findSmartSplitIndex(currentCleaned, false) : -1;
+                        if (splitIdx > 8 && splitIdx < currentCleaned.length) {
+                            const sentence = currentCleaned.slice(0, splitIdx).trim();
+                            const remainder = currentCleaned.slice(splitIdx).trim();
+                            if (sentence) enqueueSentenceOrDispatch(sentence, true);
+                            liveInputAccumulator = remainder;
+                            liveAccumulatorStartTime = remainder ? Date.now() : null;
+                            if (interimText) interimText.textContent = remainder || '（次の音声入力を待機中...）';
+                            return true;
+                        }
+
+                        // 接続助詞・助動詞での安全切り出し
+                        const endingMatch = currentCleaned.slice(8).search(/(?:あります|ありません|なります|なりません|でしょうか|でした|ました|ですが|ですので|だから|けれど|そして|また|祈ります|証します|アーメン)(?=[一-龠ぁ-んァ-ヶ\s]|$)/);
                         if (endingMatch !== -1) {
-                            const m = cleaned.slice(10).match(/(?:あります|ありません|なります|なりません|でしょうか|でした|ました|ですが|ですので|だから|けれど|そして|また|祈ります|証します|アーメン)/);
+                            const m = currentCleaned.slice(8).match(/(?:あります|ありません|なります|なりません|でしょうか|でした|ました|ですが|ですので|だから|けれど|そして|また|祈ります|証します|アーメン)/);
                             const matchLen = m ? m[0].length : 2;
-                            const splitIdx = 10 + endingMatch + matchLen;
-                            const sentence = cleaned.slice(0, splitIdx).trim();
-                            if (sentence) {
-                                enqueueSentenceOrDispatch(sentence, true);
-                            }
-                            liveInputAccumulator = cleaned.slice(splitIdx).trim();
+                            const splitPos = 8 + endingMatch + matchLen;
+                            const sentence = currentCleaned.slice(0, splitPos).trim();
+                            const remainder = currentCleaned.slice(splitPos).trim();
+                            if (sentence) enqueueSentenceOrDispatch(sentence, true);
+                            liveInputAccumulator = remainder;
+                            liveAccumulatorStartTime = remainder ? Date.now() : null;
+                            if (interimText) interimText.textContent = remainder || '（次の音声入力を待機中...）';
+                            return true;
+                        }
+
+                        // 6秒以上経過または強制時: 助詞止めや空白で安全切断
+                        if (elapsed >= 6000 || isForce) {
+                            const particleMatch = currentCleaned.slice(12).search(/(?:[はがをにへとでも])(?=[一-龠ぁ-んァ-ヶ])/);
+                            const cutPos = particleMatch !== -1 ? (12 + particleMatch + 1) : Math.min(30, currentCleaned.length);
+                            const sentence = currentCleaned.slice(0, cutPos).trim();
+                            const remainder = currentCleaned.slice(cutPos).trim();
+                            if (sentence) enqueueSentenceOrDispatch(sentence, true);
+                            liveInputAccumulator = remainder;
+                            liveAccumulatorStartTime = remainder ? Date.now() : null;
+                            if (interimText) interimText.textContent = remainder || '（次の音声入力を待機中...）';
+                            return true;
                         }
                     }
                 }
-            }
+                return false;
+            };
+
+            // まず今回のチャンクで先行切り出しを試行
+            tryCommitAccumulator(false);
 
             // 3. 話者の息継ぎ・無音（450ms）による自律確定タイマー（早口話者の短いブレスでもテンポ良くカード化）
             if (liveSilenceTimer) clearTimeout(liveSilenceTimer);
@@ -11620,9 +11680,26 @@ ${fullText}`;
                         enqueueSentenceOrDispatch(sentence, true);
                     }
                     liveInputAccumulator = '';
+                    liveAccumulatorStartTime = null;
                     if (interimText) interimText.textContent = '（次の音声入力を待機中...）';
                 }
             }, 450);
+
+            // 4. 最大保留ウォッチドッグ（4.5〜5秒で絶対に文字起こしログへ送出する安全タイマー）
+            if (!liveMaxCommitWatchdog) {
+                liveMaxCommitWatchdog = setInterval(() => {
+                    if (!isLiveTranscribing || isRefreshingLiveWs) return;
+                    if (liveInputAccumulator && liveAccumulatorStartTime) {
+                        const elapsed = Date.now() - liveAccumulatorStartTime;
+                        if (elapsed >= 4500) {
+                            console.log(`[Gemini 3.5 Live] ⏱️ 4.5秒タイマー発火: 先行コミットを実行 (${elapsed}ms経過, ${liveInputAccumulator.length}文字)`);
+                            tryCommitAccumulator(true);
+                        }
+                    } else if (!liveInputAccumulator) {
+                        liveAccumulatorStartTime = null;
+                    }
+                }, 1000);
+            }
         }
 
         // Gemini 3.5 Transcribe Live WebSocket 接続確立 & イベントバインドヘルパー
@@ -11726,6 +11803,7 @@ ${fullText}`;
                     handleRecognizedChunk(remaining);
                 }
                 liveInputAccumulator = '';
+                liveAccumulatorStartTime = null;
             }
 
             const oldWs = liveWs;
@@ -11789,6 +11867,7 @@ ${fullText}`;
                 isLiveTranscribing = true;
                 isRefreshingLiveWs = false;
                 liveInputAccumulator = '';
+                liveAccumulatorStartTime = null;
                 liveSpeakingDurationMs = 0;
                 liveSilenceDurationMs = 0;
                 liveSentenceDispatchQueue = [];
@@ -11949,6 +12028,10 @@ ${fullText}`;
                 clearInterval(liveSentenceDispatchTimer);
                 liveSentenceDispatchTimer = null;
             }
+            if (liveMaxCommitWatchdog) {
+                clearInterval(liveMaxCommitWatchdog);
+                liveMaxCommitWatchdog = null;
+            }
             while (liveSentenceDispatchQueue.length > 0) {
                 const queued = liveSentenceDispatchQueue.shift();
                 if (queued) {
@@ -11971,6 +12054,7 @@ ${fullText}`;
                     }
                 }
                 liveInputAccumulator = '';
+                liveAccumulatorStartTime = null;
             }
 
             // バッチバッファに溜まっている文を強制フラッシュして即座にログに出力
