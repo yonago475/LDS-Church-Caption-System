@@ -863,6 +863,12 @@
 
                             </button>
 
+                            <button id="generateSummaryBtn" class="inline-flex items-center px-2.5 py-1 bg-amber-50 hover:bg-amber-100 text-amber-700 font-semibold text-xs rounded-lg transition-colors border border-amber-200" title="本日の説教・証の要点・聖句・実践アクションを話者別にAIが要約">
+
+                                <i class="fa-solid fa-file-lines mr-1 text-amber-600"></i> 要点サマリー作成
+
+                            </button>
+
                             <span class="text-xs text-slate-400">配信中のログ</span>
 
                         </div>
@@ -909,7 +915,30 @@
 
                     </div>
 
-
+                    <!-- 集会要点サマリー AI作成結果パネル -->
+                    <div id="summaryPanel" class="hidden mb-3 p-3.5 bg-amber-50/90 border border-amber-200 rounded-xl space-y-2.5 max-h-80 overflow-y-auto">
+                        <div class="flex items-center justify-between border-b border-amber-200/60 pb-2">
+                            <h4 class="text-xs font-bold text-amber-900 flex items-center gap-1.5">
+                                <i class="fa-solid fa-file-lines text-amber-600"></i>
+                                本日の集会要点サマリー（話者別）
+                            </h4>
+                            <div class="flex items-center gap-1.5">
+                                <button id="copySummaryBtn" class="px-2.5 py-1 bg-white hover:bg-amber-100 text-amber-800 border border-amber-300 font-semibold text-[11px] rounded-md transition-colors flex items-center gap-1 shadow-xs cursor-pointer" title="クリップボードにコピー">
+                                    <i class="fa-regular fa-copy"></i> <span>コピー</span>
+                                </button>
+                                <button id="saveSummaryBtn" class="px-2.5 py-1 bg-amber-600 hover:bg-amber-500 text-white font-semibold text-[11px] rounded-md transition-colors flex items-center gap-1 shadow-xs cursor-pointer" title="テキストファイルとして保存">
+                                    <i class="fa-solid fa-floppy-disk"></i> <span>保存</span>
+                                </button>
+                                <button id="closeSummaryBtn" class="px-2 py-1 text-amber-700 hover:text-amber-900 hover:bg-amber-100 font-bold text-xs rounded-md transition-colors cursor-pointer" title="閉じる">
+                                    <i class="fa-solid fa-xmark"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <div id="summaryLoading" class="hidden py-4 text-center text-xs text-amber-700">
+                            <i class="fa-solid fa-spinner fa-spin mr-1.5 text-amber-600"></i> AIが本日の文字起こしログから話者ごとに要点を抽出・整理しています...
+                        </div>
+                        <div id="summaryContent" class="text-xs text-slate-800 leading-relaxed select-text font-sans whitespace-pre-wrap bg-white/80 p-3 rounded-lg border border-amber-200/50"></div>
+                    </div>
 
                     <div id="hostTranscriptLog" class="flex-1 overflow-y-auto caption-scroll bg-slate-50 rounded-xl p-4 space-y-3 border border-slate-200" aria-live="polite" aria-atomic="false">
 
@@ -5631,6 +5660,8 @@ function isIncompletePhrase(text) {
 
                 setupDictAnalysis();
 
+                setupSummaryGenerator();
+
                 setupDownloadButton();
 
                 initPeerHost();
@@ -10255,6 +10286,325 @@ ${existingKeys.slice(0, 100).join(', ')}
                 dictAnalysisCloseBtn.onclick = function() {
 
                     if (dictAnalysisPanel) dictAnalysisPanel.classList.add('hidden');
+
+                };
+
+            }
+
+        }
+
+
+
+        // ==================== 話者別集会要点サマリー作成（ステップ3.26） ====================
+
+        function setupSummaryGenerator() {
+
+            const generateSummaryBtn = document.getElementById('generateSummaryBtn');
+
+            const summaryPanel = document.getElementById('summaryPanel');
+
+            const summaryContent = document.getElementById('summaryContent');
+
+            const summaryLoading = document.getElementById('summaryLoading');
+
+            const copySummaryBtn = document.getElementById('copySummaryBtn');
+
+            const saveSummaryBtn = document.getElementById('saveSummaryBtn');
+
+            const closeSummaryBtn = document.getElementById('closeSummaryBtn');
+
+
+
+            if (!generateSummaryBtn) return;
+
+
+
+            let currentSummaryRawText = '';
+
+
+
+            generateSummaryBtn.onclick = async function() {
+
+                // 1. 文字起こし履歴の確認
+
+                const validLogs = transcriptHistory.filter(entry => !entry.paused && entry.text && entry.text.trim());
+
+                if (validLogs.length === 0) {
+
+                    alert('文字起こしログがありません。\n集会中の発話が記録された後に実行してください。');
+
+                    return;
+
+                }
+
+
+
+                // 2. Gemini APIキーの確認
+
+                const cleanKey = geminiApiKey ? geminiApiKey.trim() : '';
+
+                if (!cleanKey) {
+
+                    alert('Gemini APIキーが設定されていません。\nAI文脈補正カードからAPIキーを保存してください。');
+
+                    return;
+
+                }
+
+
+
+                // 3. UI表示を処理中状態へ更新
+
+                if (summaryPanel) summaryPanel.classList.remove('hidden');
+
+                if (summaryLoading) summaryLoading.classList.remove('hidden');
+
+                if (summaryContent) {
+
+                    summaryContent.textContent = '';
+
+                    summaryContent.classList.add('hidden');
+
+                }
+
+
+
+                generateSummaryBtn.disabled = true;
+
+                const originalBtnHtml = generateSummaryBtn.innerHTML;
+
+                generateSummaryBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i> 要約作成中...';
+
+
+
+                try {
+
+                    const fullText = validLogs.map(e => `[${e.time || ''}] ${e.text.trim()}`).join('\n');
+
+                    const todayStr = new Date().toLocaleDateString('ja-JP', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'short' });
+
+
+
+                    const prompt = `あなたは末日聖徒イエス・キリスト教会（モルモン書を信条に持つキリスト教会）の集会記録アシスタントです。
+以下は本日の集会（聖餐会・証会・大会等）で記録された日本語の文字起こし記録全文です。
+この記録を分析し、教会標準の温かく敬虔で礼儀正しい日本語（「兄弟姉妹」「天のお父様」「救い主イエス・キリスト」等の教会用語）を用いて、【話者ごと（登壇者・スピーチごと、または証者ごと）】に以下の3大項目を分かりやすく整理したサマリーを作成してください。
+
+### 【構成要件】
+1. **話者の識別**:
+   - 司会者からの紹介（「〜兄弟」「〜姉妹」等）や自己紹介、または文脈の切り替わりから登壇者を識別し、「【話者1: ○○兄弟（または青年スピーカー等）】」「【話者2: ○○姉妹】」のように見出しを立ててください。
+   - ※もし氏名が特定できない場合は「【第1話者】」「【第2話者】」「【証者A】」のように明記してください。
+
+2. **各話者ごとの整理項目**:
+   各話者のスピーチ・お話ごとに、以下の3項目を必ずまとめてください：
+   - **【主なテーマと霊的なメッセージ】**（箇条書き2〜4点）:
+     その話者が伝えた核となる霊的教義、体験談、証の要点を簡潔明瞭に整理。
+   - **【引用された聖句・預言者の言葉・賛美歌】**:
+     その話者が引用・言及した聖句（聖書、モルモン書、教義と聖約、高価な真珠等）、総大会の預言者・使徒の言葉、賛美歌番号や題名を一覧化（明確な引用がない場合は「特になし」）。
+   - **【今週の生活で実践できる具体的な招き（アクション）】**（箇条書き1〜3点）:
+     その話者が聴衆に呼びかけた、日々の祈り・聖典通読・奉仕・愛・神殿参入などの具体的な実践課題。
+
+3. **全体のまとめ（結び）**:
+   最後に集会全体の基調や共通するメッセージがあれば、2〜3行で温かく励ましとなる言葉で結んでください。
+
+【集会日付】: ${todayStr}
+【本日の文字起こし記録全文】:
+${fullText}`;
+
+
+
+                    const modelName = await discoverAvailableGeminiModel(cleanKey);
+
+                    const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent`;
+
+
+
+                    const response = await fetch(url, {
+
+                        method: 'POST',
+
+                        headers: {
+
+                            'Content-Type': 'application/json',
+
+                            'x-goog-api-key': cleanKey
+
+                        },
+
+                        body: JSON.stringify({
+
+                            contents: [{ role: 'user', parts: [{ text: prompt }] }],
+
+                            generationConfig: {
+
+                                temperature: 0.2,
+
+                                maxOutputTokens: 3500
+
+                            }
+
+                        })
+
+                    });
+
+
+
+                    if (!response.ok) {
+
+                        throw new Error(`HTTP ${response.status} (${response.statusText})`);
+
+                    }
+
+
+
+                    const data = await response.json();
+
+                    const cand0 = (data && data.candidates && data.candidates[0]) ? data.candidates[0] : null;
+
+                    const candText = (cand0 && cand0.content && cand0.content.parts && cand0.content.parts[0] && cand0.content.parts[0].text)
+
+                        || (cand0 && cand0.text) || '';
+
+
+
+                    if (!candText.trim()) {
+
+                        throw new Error('AIから空の応答が返されました');
+
+                    }
+
+
+
+                    currentSummaryRawText = candText.trim();
+
+                    if (summaryContent) {
+
+                        summaryContent.textContent = currentSummaryRawText;
+
+                        summaryContent.classList.remove('hidden');
+
+                    }
+
+                } catch (err) {
+
+                    console.error('要点サマリー作成エラー:', err);
+
+                    alert('要点サマリーの作成に失敗しました: ' + err.message);
+
+                    if (summaryContent) {
+
+                        summaryContent.textContent = '要約の生成に失敗しました: ' + err.message;
+
+                        summaryContent.classList.remove('hidden');
+
+                    }
+
+                } finally {
+
+                    if (summaryLoading) summaryLoading.classList.add('hidden');
+
+                    generateSummaryBtn.disabled = false;
+
+                    generateSummaryBtn.innerHTML = originalBtnHtml;
+
+                }
+
+            };
+
+
+
+            // クリップボードコピーボタン
+
+            if (copySummaryBtn) {
+
+                copySummaryBtn.onclick = async function() {
+
+                    if (!currentSummaryRawText) return;
+
+                    try {
+
+                        await navigator.clipboard.writeText(currentSummaryRawText);
+
+                        const origHtml = copySummaryBtn.innerHTML;
+
+                        copySummaryBtn.innerHTML = '<i class="fa-solid fa-check text-emerald-600"></i> <span class="text-emerald-700">コピー完了！</span>';
+
+                        setTimeout(() => {
+
+                            copySummaryBtn.innerHTML = origHtml;
+
+                        }, 2000);
+
+                    } catch (e) {
+
+                        console.warn('Clipboard write error:', e);
+
+                        alert('クリップボードへのコピーに失敗しました。');
+
+                    }
+
+                };
+
+            }
+
+
+
+            // テキストファイル保存ボタン
+
+            if (saveSummaryBtn) {
+
+                saveSummaryBtn.onclick = function() {
+
+                    if (!currentSummaryRawText) return;
+
+                    try {
+
+                        const now = new Date();
+
+                        const dateStr = now.getFullYear() +
+
+                            String(now.getMonth() + 1).padStart(2, '0') +
+
+                            String(now.getDate()).padStart(2, '0');
+
+                        const blob = new Blob([currentSummaryRawText], { type: 'text/plain;charset=utf-8' });
+
+                        const url = URL.createObjectURL(blob);
+
+                        const a = document.createElement('a');
+
+                        a.href = url;
+
+                        a.download = `LDS-Meeting-Summary_${dateStr}.txt`;
+
+                        document.body.appendChild(a);
+
+                        a.click();
+
+                        document.body.removeChild(a);
+
+                        URL.revokeObjectURL(url);
+
+                    } catch (e) {
+
+                        console.error('Summary file save error:', e);
+
+                        alert('ファイルの保存に失敗しました: ' + e.message);
+
+                    }
+
+                };
+
+            }
+
+
+
+            // パネル閉じるボタン
+
+            if (closeSummaryBtn) {
+
+                closeSummaryBtn.onclick = function() {
+
+                    if (summaryPanel) summaryPanel.classList.add('hidden');
 
                 };
 
