@@ -6904,13 +6904,21 @@ function isIncompletePhrase(text) {
 
 
 
-                audioDeviceSelect.onchange = function() {
-
-                    startAudioLevelMonitor(this.value);
-
+                audioDeviceSelect.onchange = async function() {
+                    const selectedId = this.value;
+                    console.log('[Host] マイク選択変更検知:', selectedId);
+                    if (isLiveTranscribing) {
+                        // Gemini Live 稼働中の場合は、停止してから新マイクでシームレスに再起動
+                        console.log('[Host] Gemini Live 稼働中のため、新マイクで再接続します');
+                        stopGeminiLiveTranscribe();
+                        // マイクハードウェア資源解放のため100ms待機
+                        await new Promise(r => setTimeout(r, 100));
+                        await startGeminiLiveTranscribe();
+                    } else {
+                        // 待機中の場合は、待機用モニターを新マイクで更新
+                        startAudioLevelMonitor(selectedId);
+                    }
                 };
-
-
 
             } catch (err) {
 
@@ -6922,55 +6930,56 @@ function isIncompletePhrase(text) {
 
         }
 
-
+        function stopAudioLevelMonitor() {
+            if (animFrameId) {
+                cancelAnimationFrame(animFrameId);
+                animFrameId = null;
+            }
+            if (currentMonitorStream) {
+                try {
+                    currentMonitorStream.getTracks().forEach(t => t.stop());
+                } catch (e) {
+                    console.warn('stopAudioLevelMonitor stream stop error:', e);
+                }
+                currentMonitorStream = null;
+            }
+            if (audioContext && audioContext.state !== 'closed') {
+                try {
+                    audioContext.close();
+                } catch(e) {}
+                audioContext = null;
+            }
+            analyser = null;
+            mediaStreamSource = null;
+        }
 
         async function startAudioLevelMonitor(deviceId) {
+            // Gemini Live 稼働中はマイク二重起動を防止するため待機モニターを起動しない（Gemini Live側で更新）
+            if (isLiveTranscribing) return;
 
             try {
-
-                if (animFrameId) cancelAnimationFrame(animFrameId);
-
-                // Bug-15修正: 前のMediaStreamトラックを停止してマイク資源を解放
-                if (currentMonitorStream) {
-                    try {
-                        currentMonitorStream.getTracks().forEach(t => t.stop());
-                    } catch (e) {
-                        console.warn('MediaStream stop error:', e);
-                    }
-                    currentMonitorStream = null;
-                }
-
-                if (audioContext) audioContext.close();
-
-
+                stopAudioLevelMonitor();
 
                 const stream = await navigator.mediaDevices.getUserMedia({
-
                     audio: deviceId ? { deviceId: { exact: deviceId } } : true
-
                 });
 
-                currentMonitorStream = stream; // Bug-15修正: 新しいストリームを保持
-
-
+                currentMonitorStream = stream; // 新しいストリームを保持
 
                 audioContext = new (window.AudioContext || window.webkitAudioContext)();
-
                 analyser = audioContext.createAnalyser();
-
                 analyser.fftSize = 256;
-
                 mediaStreamSource = audioContext.createMediaStreamSource(stream);
-
                 mediaStreamSource.connect(analyser);
-
-
 
                 const dataArray = new Uint8Array(analyser.frequencyBinCount);
 
-
-
                 function updateMeter() {
+                    // もしGemini Liveが起動されたら待機モニターのループは即停止
+                    if (isLiveTranscribing) {
+                        stopAudioLevelMonitor();
+                        return;
+                    }
 
                     analyser.getByteFrequencyData(dataArray);
 
@@ -11111,6 +11120,9 @@ ${existingKeys.slice(0, 100).join(', ')}
                 lastLiveSpeechTimestamp = Date.now();
                 if (interimText) interimText.textContent = '⚡ Gemini 3.5 Transcribe Live 接続中...';
 
+                // 待機用レベルモニターのストリームとAudioContextを完全に停止（二重起動による排他ロック・リサンプリング干渉防止）
+                stopAudioLevelMonitor();
+
                 // 1. マイク音声取得
                 const audioConstraints = {
                     echoCancellation: false,
@@ -11164,6 +11176,12 @@ ${existingKeys.slice(0, 100).join(', ')}
                     for (let i = 0; i < inputFloat32.length; i++) {
                         const abs = Math.abs(inputFloat32[i]);
                         if (abs > maxAmp) maxAmp = abs;
+                    }
+
+                    // レベルメーターを直接更新（二重のAudioContextを作らず、onaudioprocessのmaxAmpを直接反映）
+                    if (audioLevelBar) {
+                        const meterLevel = Math.min(100, Math.round(Math.min(1, maxAmp * 1.6) * 100));
+                        audioLevelBar.style.width = meterLevel + '%';
                     }
 
                     const chunkMs = (inputFloat32.length / liveAudioContext.sampleRate) * 1000;
@@ -11303,6 +11321,15 @@ ${existingKeys.slice(0, 100).join(', ')}
                 } catch(e){}
                 liveWs = null;
             }
+
+            // レベルメーターをリセット
+            if (audioLevelBar) {
+                audioLevelBar.style.width = '0%';
+            }
+
+            // Gemini Live 停止後、待機中のレベルモニターを再開して待機時のマイク確認を復元
+            const currentSelectedDevice = (audioDeviceSelect && audioDeviceSelect.value) ? audioDeviceSelect.value : null;
+            startAudioLevelMonitor(currentSelectedDevice);
         }
 
         // ==================== 音声認識エンジン（無音タイムアウト no-speech 自動継続対応） ====================
