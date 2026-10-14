@@ -8763,45 +8763,53 @@ function isIncompletePhrase(text) {
 
 
 
-                // 【保護: 15 RPM レートリミット保護ガード】
-
-                while (geminiCallTimestampsWindow.length > 0 && (now - geminiCallTimestampsWindow[0]) > 60000) {
-
+                // 【保護: 15 RPM レートリミット保護ガード（即スキップせず差分待機してAI補正を完遂）】
+                let currentNow = Date.now();
+                while (geminiCallTimestampsWindow.length > 0 && (currentNow - geminiCallTimestampsWindow[0]) > 60000) {
                     geminiCallTimestampsWindow.shift();
-
                 }
 
-                const isRateLimitRisk = geminiCallTimestampsWindow.length >= 10 || (now - lastGeminiCallTimestamp < 2000);
+                // 1. 直前呼び出しからの間隔ガード（2050ms）: 即スキップせず、差分ミリ秒（0.2〜0.8秒程度）だけ安全待機
+                const elapsedSinceLast = currentNow - lastGeminiCallTimestamp;
+                if (elapsedSinceLast < 2050) {
+                    const waitMs = 2050 - elapsedSinceLast;
+                    await new Promise(resolve => setTimeout(resolve, waitMs));
+                    currentNow = Date.now();
+                    while (geminiCallTimestampsWindow.length > 0 && (currentNow - geminiCallTimestampsWindow[0]) > 60000) {
+                        geminiCallTimestampsWindow.shift();
+                    }
+                }
 
+                // 2. 60秒以内の呼び出し回数ガード（1分間13回以内）:
+                if (geminiCallTimestampsWindow.length >= 13) {
+                    const oldestTimestamp = geminiCallTimestampsWindow[0];
+                    const waitMsForSlot = 60000 - (currentNow - oldestTimestamp) + 100;
+                    if (waitMsForSlot > 0 && waitMsForSlot <= 3500) {
+                        await new Promise(resolve => setTimeout(resolve, waitMsForSlot));
+                        currentNow = Date.now();
+                        while (geminiCallTimestampsWindow.length > 0 && (currentNow - geminiCallTimestampsWindow[0]) > 60000) {
+                            geminiCallTimestampsWindow.shift();
+                        }
+                    }
+                }
+
+                // 3. それでもなお1分間14回以上の極限超過リスクがある場合のみ安全スキップ
+                const isRateLimitRisk = geminiCallTimestampsWindow.length >= 14;
                 if (isRateLimitRisk) {
-
                     const rateLimitSentences = items.map(item => {
-
                         aiStats.dictFallbacks++;
-
                         aiStats.rateLimitedCount = (aiStats.rateLimitedCount || 0) + 1;
-
                         recentContextHistory.push(item.preCorrected);
-
                         if (recentContextHistory.length > 3) recentContextHistory.shift();
-
                         detectSectionSync(item.preCorrected);
-
                         return { ja: item.preCorrected, en: null, isAiSuccess: false, status: 'スキップ（15RPM保護ガード作動）', model: '-', latency: 0, preCorrected: item.preCorrected, dictChanged: item.dictChanged, rawChunk: item.rawChunk };
-
                     });
-
                     updateAiStatsDisplay();
-
                     return { sentences: rateLimitSentences };
-
                 }
 
-
-
-                lastGeminiCallTimestamp = now;
-
-                geminiCallTimestampsWindow.push(now);
+                lastGeminiCallTimestamp = currentNow;
+                geminiCallTimestampsWindow.push(currentNow);
 
             }
 
@@ -11553,44 +11561,57 @@ ${fullText}`;
                 for (let i = 0; i < parts.length - 1; i++) {
                     const sentence = parts[i].trim();
                     if (sentence) {
-                        // 最初の1文目（キューが空の場合）は即座（0ms）に先行配信、2文目以降は700ms間隔で順次排出
+                        // 最初の1文目（キューが空の場合）は即座（0ms）に先行配信、2文目以降は順次排出
                         enqueueSentenceOrDispatch(sentence, i === 0);
                     }
                 }
                 liveInputAccumulator = parts[parts.length - 1].trim();
             } else {
-                // 2. 句点・ピリオドがない長文のスマート分割（息継ぎなしの早口対策）
+                // 2. 句点・ピリオドがない長文の先行ストリーミング分割（早口・短間隔話者でもテンポ良くカードを先行送出）
                 const isEnglishDominant = /[a-zA-Z]{4,}/.test(cleaned);
                 if (isEnglishDominant) {
-                    // 英語長文: 90文字（約12〜15単語）以上で、末尾から近い単語の境界スペースで分割
-                    if (cleaned.length >= 90) {
-                        const spaceIdx = cleaned.slice(0, 80).lastIndexOf(' ');
-                        if (spaceIdx > 30) {
-                            const sentence = cleaned.slice(0, spaceIdx).trim();
+                    // 英語長文: 50文字（約8〜10単語）以上で、カンマまたは末尾から近い単語の境界スペースで先行分割
+                    if (cleaned.length >= 50) {
+                        const commaIdx = cleaned.slice(0, 45).lastIndexOf(',');
+                        const spaceIdx = cleaned.slice(0, 45).lastIndexOf(' ');
+                        const splitIdx = commaIdx > 15 ? (commaIdx + 1) : (spaceIdx > 20 ? spaceIdx : -1);
+                        if (splitIdx > 0) {
+                            const sentence = cleaned.slice(0, splitIdx).trim();
                             if (sentence) {
                                 enqueueSentenceOrDispatch(sentence, true);
                             }
-                            liveInputAccumulator = cleaned.slice(spaceIdx + 1).trim();
+                            liveInputAccumulator = cleaned.slice(splitIdx).trim();
                         }
                     }
-                } else if (cleaned.length >= 40) {
-                    // 日本語連続発話（40文字以上で息継ぎが途切れない場合の先行安全切り出し）:
-                    // 単語の途中や読点でぶった切らず、明確な終止形（です/ます/ました等）の直後でのみ安全に分割
-                    const endingMatch = cleaned.slice(15).search(/(?:あります|ありません|なります|なりません|でしょうか|でした|ました|です|ます|祈ります|証します|アーメン)(?=[、\s]|(?=[一-龠ぁ-んァ-ヶ]))/);
-                    if (endingMatch !== -1) {
-                        const m = cleaned.slice(15).match(/(?:あります|ありません|なります|なりません|でしょうか|でした|ました|です|ます|祈ります|証します|アーメン)/);
-                        const matchLen = m ? m[0].length : 2;
-                        const splitIdx = 15 + endingMatch + matchLen;
-                        const sentence = cleaned.slice(0, splitIdx).trim();
+                } else {
+                    // 日本語発話: 読点（、）または接続助詞・終止形による先行切り出し
+                    // (A) 読点（、）が含まれ、読点直後までが10文字以上ある場合は読点直後で先行送出
+                    const commaMatch = cleaned.match(/^(.{8,35}?[、，,])(.*)$/);
+                    if (commaMatch && commaMatch[1]) {
+                        const sentence = commaMatch[1].trim();
+                        const remainder = commaMatch[2].trim();
                         if (sentence) {
                             enqueueSentenceOrDispatch(sentence, true);
                         }
-                        liveInputAccumulator = cleaned.slice(splitIdx).trim();
+                        liveInputAccumulator = remainder;
+                    } else if (cleaned.length >= 22) {
+                        // (B) 読点がなくても22文字以上で文節の区切り（接続助詞・助動詞等）がある場合は先行切り出し
+                        const endingMatch = cleaned.slice(10).search(/(?:あります|ありません|なります|なりません|でしょうか|でした|ました|ですが|ですので|だから|けれど|そして|また|祈ります|証します|アーメン)(?=[一-龠ぁ-んァ-ヶ\s]|$)/);
+                        if (endingMatch !== -1) {
+                            const m = cleaned.slice(10).match(/(?:あります|ありません|なります|なりません|でしょうか|でした|ました|ですが|ですので|だから|けれど|そして|また|祈ります|証します|アーメン)/);
+                            const matchLen = m ? m[0].length : 2;
+                            const splitIdx = 10 + endingMatch + matchLen;
+                            const sentence = cleaned.slice(0, splitIdx).trim();
+                            if (sentence) {
+                                enqueueSentenceOrDispatch(sentence, true);
+                            }
+                            liveInputAccumulator = cleaned.slice(splitIdx).trim();
+                        }
                     }
                 }
             }
 
-            // 3. 話者の息継ぎ・無音（850ms）による自律確定タイマー（子供の短いポーズでも確実に確定）
+            // 3. 話者の息継ぎ・無音（450ms）による自律確定タイマー（早口話者の短いブレスでもテンポ良くカード化）
             if (liveSilenceTimer) clearTimeout(liveSilenceTimer);
             liveSilenceTimer = setTimeout(() => {
                 if (liveInputAccumulator && liveInputAccumulator.trim()) {
@@ -11601,7 +11622,7 @@ ${fullText}`;
                     liveInputAccumulator = '';
                     if (interimText) interimText.textContent = '（次の音声入力を待機中...）';
                 }
-            }, 850);
+            }, 450);
         }
 
         // Gemini 3.5 Transcribe Live WebSocket 接続確立 & イベントバインドヘルパー
@@ -12026,7 +12047,7 @@ ${fullText}`;
 
             let batchTimer = null;         // バッチタイマーID
 
-            const BATCH_INTERVAL_MS = 4000; // バッチ最大待機間隔（4秒）
+            const BATCH_INTERVAL_MS = 3000; // バッチ最大待機間隔（3秒）
             const MAX_BATCH_SENTENCES = 3;  // 1回のGeminiバッチ上限文数（3文で即時発射 ＆ 応答2秒台を死守）
 
             let provisionalIdCounter = 0;  // 仮表示ID管理用
@@ -12156,9 +12177,9 @@ ${fullText}`;
                             }
                         }
 
-                        // デッドロック防止: 連結後テキストが60文字以上、または最初に入ってから6秒経過した場合は即時強制フラッシュ
+                        // デッドロック防止: 連結後テキストが38文字以上、または最初に入ってから3.5秒経過した場合は即時強制フラッシュ
                         const itemAge = now - (lastItem.createdAt || now);
-                        const shouldForceFlush = (combinedRaw.length >= 60) || (itemAge >= 6000);
+                        const shouldForceFlush = (combinedRaw.length >= 38) || (itemAge >= 3500);
 
                         if (batchTimer) {
                             clearTimeout(batchTimer);
@@ -12168,11 +12189,11 @@ ${fullText}`;
                         if (shouldForceFlush) {
                             flushBatchBuffer(true);
                         } else {
-                            // バッチタイマーを更新（連結後4.5秒待機してGeminiへ送信）
+                            // バッチタイマーを更新（連結後2.5秒待機してGeminiへ送信）
                             batchTimer = setTimeout(() => {
                                 batchTimer = null;
                                 flushBatchBuffer();
-                            }, 4500);
+                            }, 2500);
                         }
 
                         return;
