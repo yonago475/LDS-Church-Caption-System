@@ -1196,12 +1196,6 @@
                     <option value="ja">日本語 (補正済み原文)</option>
                 </select>
 
-                <!-- 字幕保存ボタン（現在表示されている言語の字幕一覧をテキスト保存） -->
-                <button id="viewerDownloadBtn" type="button" class="text-[10px] sm:text-xs text-slate-500 hover:text-indigo-600 px-2 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 border border-slate-200 flex items-center gap-1 transition-colors shrink-0 cursor-pointer shadow-xs" title="字幕をテキスト保存" aria-label="字幕をテキスト保存">
-                    <i class="fa-solid fa-download text-[9px] sm:text-[10px] text-indigo-500"></i>
-                    <span id="viewerDownloadBtnText">保存</span>
-                </button>
-
                 <!-- プライバシーポリシー & 免責事項ボタン（上部言語バーの右端へ移設） -->
                 <button id="viewerPrivacyBtn" type="button" class="text-[10px] sm:text-xs text-slate-500 hover:text-indigo-600 px-2 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 border border-slate-200 flex items-center gap-1 transition-colors shrink-0 cursor-pointer shadow-xs" title="プライバシーポリシー・免責事項" aria-label="利用規約とプライバシーポリシー">
                     <i class="fa-solid fa-shield-halved text-[9px] sm:text-[10px] text-indigo-500"></i>
@@ -1284,8 +1278,14 @@
                             <span id="viewerSectionBadge" class="hidden text-[10px] px-2 py-0.5 rounded-full font-bold bg-slate-700 text-slate-200 border border-slate-600/60 transition-all shrink-0 whitespace-nowrap shadow-xs">🎤 一般</span>
 
                             <span class="text-[10px] sm:text-[11px] text-slate-400 px-1.5 py-0.5 rounded bg-slate-800/80 border border-slate-700/60 shrink-0">
-                                <i class="fa-solid fa-layer-group mr-1 text-slate-500"></i><span id="totalCardsLabel">カード</span>: <span id="totalCardsCount" class="font-mono text-indigo-300 font-bold">0</span> <span class="ml-1 text-[9px] px-1 py-0.5 rounded bg-indigo-900/60 text-indigo-300 font-mono border border-indigo-700/50">v2.11</span>
+                                <i class="fa-solid fa-layer-group mr-1 text-slate-500"></i><span id="totalCardsLabel">カード</span>: <span id="totalCardsCount" class="font-mono text-indigo-300 font-bold">0</span>
                             </span>
+
+                            <!-- 字幕保存ボタン（下部ステータスバーの v2.11 の位置へ移設） -->
+                            <button id="viewerDownloadBtn" type="button" class="px-2 py-0.5 bg-indigo-900/80 hover:bg-indigo-800 text-indigo-200 rounded text-[10px] font-bold shrink-0 transition-colors cursor-pointer flex items-center gap-1 border border-indigo-700/50 shadow-xs" title="字幕をテキスト保存" aria-label="字幕をテキスト保存">
+                                <i class="fa-solid fa-download text-[9px] text-indigo-400"></i>
+                                <span id="viewerDownloadBtnText">保存</span>
+                            </button>
                         </div>
                     </div>
 
@@ -12695,13 +12695,16 @@ ${fullText}`;
                     // Bug-03修正: 排他ロック解放（必ず実行）
                     isBatchFlushing = false;
 
-                    // 処理中に蓄積された新規バッファがあれば即座に自動再フラッシュ（残余文を3文ずつ連続消化）
+                    // 処理中に蓄積された新規バッファがあれば安全間隔を確保して自動再フラッシュ（残余文を3文ずつ連続消化）
+                    // 15RPM保護ガード（直前API呼び出しから2000ms以内）への誤衝突を防ぐため、安全待機時間（2100ms）を確保
                     if (batchBuffer.length > 0) {
                         if (batchTimer) clearTimeout(batchTimer);
+                        const elapsedSinceLastCall = Date.now() - (lastGeminiCallTimestamp || 0);
+                        const waitMs = Math.max(250, 2100 - elapsedSinceLastCall);
                         batchTimer = setTimeout(() => {
                             batchTimer = null;
                             flushBatchBuffer();
-                        }, 250);
+                        }, waitMs);
                     }
                 }
 
