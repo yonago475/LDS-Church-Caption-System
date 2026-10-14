@@ -8681,6 +8681,7 @@ function isIncompletePhrase(text) {
                     overallController.signal.addEventListener('abort', abortForwarder, { once: true });
 
                     try {
+                        const url = `https://generativelanguage.googleapis.com/${apiVer}/models/${modelName}:generateContent`;
                         let response = await fetch(url, {
                             method: 'POST',
                             headers: {
