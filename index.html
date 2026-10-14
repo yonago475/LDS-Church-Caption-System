@@ -4894,6 +4894,8 @@ function isIncompletePhrase(text) {
 
         let activeViewerConnectionTimeout = null; // 聴講者側: 現在試行中の接続タイムアウトID
 
+        let activeEarlyReconnectTimeout = null; // 聴講者側: 接続開始5秒後の手動再接続ボタン早期表示タイマー
+
         let pendingViewerRecreatePeer = false; // 聴講者側: 次回再試行時にPeer再生成が必要かどうかの昇格フラグ
 
         let viewerHeartbeatWatchdogTimer = null; // 聴講者側: ホスト無通信監視（ゾンビ検知）用タイマー
@@ -6020,34 +6022,6 @@ function isIncompletePhrase(text) {
             }
         }
 
-        // ==================== 聴講者側 ライフサイクル＆回線復帰監視 (H5修正) ====================
-        function checkViewerConnectionHealth() {
-            if (isHost || !currentRoomId) return;
-            // 画面復帰・BFCache復帰・回線回復時に、接続が切断中またはゾンビ状態であれば即座に再接続
-            if (!hostConnection || !hostConnection.open) {
-                console.warn('[Viewer Health] 画面復帰/回線回復を検知: 切断またはゾンビ状態のため自動再接続を開始します。');
-                scheduleViewerReconnect(true);
-            }
-        }
-
-        // 全端末・全ブラウザ（iOS 16.4未満を含む）で常時有効なライフサイクル監視
-        document.addEventListener('visibilitychange', () => {
-            if (document.visibilityState === 'visible') {
-                checkViewerConnectionHealth();
-            }
-        });
-        window.addEventListener('pageshow', (event) => {
-            // SafariなどのBFCache（戻る・進むキャッシュ）からの復帰時
-            if (event.persisted || document.visibilityState === 'visible') {
-                checkViewerConnectionHealth();
-            }
-        });
-        window.addEventListener('online', () => {
-            // 機内モード解除、Wi-Fi切替、電波回復時
-            console.log('[Viewer Health] 端末のオンライン復帰を検知');
-            checkViewerConnectionHealth();
-        });
-
         function setupWakeLock() {
             // 起動後 3.5秒間スリープ防止ボタンの上に吹き出し案内を表示し、その後自動フェードアウト
             setTimeout(() => {
@@ -6224,69 +6198,41 @@ function isIncompletePhrase(text) {
 
 
             captionSequenceId++;
-
+            const finalCaptionId = (meta && meta.id) ? meta.id : ('cap_seq_' + Date.now() + '_' + captionSequenceId);
+            const unifiedMeta = Object.assign({}, meta || {}, { id: finalCaptionId });
             const timeStr = new Date().toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
-
-
             recentSentHistory.push({
-
-                id: captionSequenceId,
-
+                id: finalCaptionId,
                 text: cleanText,
-
                 norm: normClean,
-
                 timestamp: now
-
             });
 
             if (recentSentHistory.length > 50) {
-
                 recentSentHistory.shift();
-
             }
 
-
-
             // 即時配信 & ホストログ追加（手動修正メタ情報付き）
-
-            appendHostTranscript(cleanText, meta);
-
-            const englishText = (meta && meta.englishText) ? meta.englishText : null;
-
-            const translations = (meta && meta.translations) ? meta.translations : null;
-
-            const sourceLang = (meta && meta.sourceLang) ? meta.sourceLang : (currentInputLanguage || 'ja');
-
-            const originalText = (meta && meta.original) ? meta.original : null;
+            appendHostTranscript(cleanText, unifiedMeta);
+            const englishText = (unifiedMeta && unifiedMeta.englishText) ? unifiedMeta.englishText : null;
+            const translations = (unifiedMeta && unifiedMeta.translations) ? unifiedMeta.translations : null;
+            const sourceLang = (unifiedMeta && unifiedMeta.sourceLang) ? unifiedMeta.sourceLang : (currentInputLanguage || 'ja');
+            const originalText = (unifiedMeta && unifiedMeta.original) ? unifiedMeta.original : null;
 
             broadcastToViewers({
-
                 type: 'caption',
-
-                id: captionSequenceId,
-
+                id: finalCaptionId,
                 text: cleanText,
-
                 timestamp: timeStr,
-
                 englishText: englishText,
-
                 translations: translations,
-
                 sectionType: currentSectionType,
-
                 sourceLang: sourceLang,
-
                 originalText: originalText
-
             });
 
-
-
-            return { action: 'BROADCAST', id: captionSequenceId };
-
+            return { action: 'BROADCAST', id: finalCaptionId };
         }
 
 
@@ -13347,6 +13293,10 @@ ${fullText}`;
                 clearTimeout(activeViewerConnectionTimeout);
                 activeViewerConnectionTimeout = null;
             }
+            if (activeEarlyReconnectTimeout) {
+                clearTimeout(activeEarlyReconnectTimeout);
+                activeEarlyReconnectTimeout = null;
+            }
             if (viewerHeartbeatWatchdogTimer) {
                 clearInterval(viewerHeartbeatWatchdogTimer);
                 viewerHeartbeatWatchdogTimer = null;
@@ -13416,13 +13366,25 @@ ${fullText}`;
                 return;
             }
 
-            // H1修正: 接続タイムアウト（25秒）
+            // 開始から5秒経過しても未接続（conn && !conn.open）の場合、手動「🔄 今すぐ再接続」ボタンを早期表示
+            activeEarlyReconnectTimeout = setTimeout(() => {
+                if (currentGen !== viewerConnectionGeneration) return;
+                if (conn && !conn.open) {
+                    const manualBtn = document.getElementById('viewerManualReconnectBtn');
+                    if (manualBtn) {
+                        manualBtn.classList.remove('hidden');
+                        manualBtn.onclick = () => scheduleViewerReconnect(true, true);
+                    }
+                }
+            }, 5000);
+
+            // 接続タイムアウト（10秒に短縮）
             // ローカルスコープの conn と currentGen に紐付け、最新世代かつ未openの時のみ発火
             activeViewerConnectionTimeout = setTimeout(() => {
                 if (currentGen !== viewerConnectionGeneration) return;
 
                 if (conn && !conn.open) {
-                    console.warn(`[世代#${currentGen}] 接続タイムアウト（25秒）。再接続を開始します。`);
+                    console.warn(`[世代#${currentGen}] 接続タイムアウト（10秒）。再接続を開始します。`);
                     try {
                         if (typeof conn.removeAllListeners === 'function') conn.removeAllListeners();
                         conn.close();
@@ -13430,7 +13392,7 @@ ${fullText}`;
                     if (hostConnection === conn) hostConnection = null;
                     scheduleViewerReconnect(true);
                 }
-            }, 25000);
+            }, 10000);
 
             conn.on('open', function() {
                 // 世代チェック: 既に新しい接続が試行されている場合は破棄
@@ -13444,6 +13406,10 @@ ${fullText}`;
                 if (activeViewerConnectionTimeout) {
                     clearTimeout(activeViewerConnectionTimeout);
                     activeViewerConnectionTimeout = null;
+                }
+                if (activeEarlyReconnectTimeout) {
+                    clearTimeout(activeEarlyReconnectTimeout);
+                    activeEarlyReconnectTimeout = null;
                 }
 
                 reconnectAttemptCount = 0;
@@ -13740,6 +13706,10 @@ ${fullText}`;
                     clearTimeout(activeViewerConnectionTimeout);
                     activeViewerConnectionTimeout = null;
                 }
+                if (activeEarlyReconnectTimeout) {
+                    clearTimeout(activeEarlyReconnectTimeout);
+                    activeEarlyReconnectTimeout = null;
+                }
                 scheduleViewerReconnect(false);
             });
 
@@ -13753,6 +13723,10 @@ ${fullText}`;
                 if (activeViewerConnectionTimeout) {
                     clearTimeout(activeViewerConnectionTimeout);
                     activeViewerConnectionTimeout = null;
+                }
+                if (activeEarlyReconnectTimeout) {
+                    clearTimeout(activeEarlyReconnectTimeout);
+                    activeEarlyReconnectTimeout = null;
                 }
                 scheduleViewerReconnect(false);
             });
