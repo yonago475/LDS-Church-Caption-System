@@ -10583,9 +10583,18 @@ ${existingKeys.slice(0, 100).join(', ')}
             const ratio = inputSampleRate / 16000;
             const newLength = Math.round(inputData.length / ratio);
             const result = new Float32Array(newLength);
-            for (let i = 0; i < newLength; i++) {
-                const srcIdx = Math.round(i * ratio);
-                result[i] = inputData[srcIdx] || 0;
+            let offsetResult = 0;
+            let offsetBuffer = 0;
+            while (offsetResult < result.length) {
+                const nextOffsetBuffer = Math.round((offsetResult + 1) * ratio);
+                let accum = 0, count = 0;
+                for (let i = offsetBuffer; i < nextOffsetBuffer && i < inputData.length; i++) {
+                    accum += inputData[i];
+                    count++;
+                }
+                result[offsetResult] = count > 0 ? accum / count : 0;
+                offsetResult++;
+                offsetBuffer = nextOffsetBuffer;
             }
             return result;
         }
