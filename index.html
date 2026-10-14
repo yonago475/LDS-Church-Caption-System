@@ -7614,7 +7614,288 @@ function isIncompletePhrase(text) {
 
 
 
-        // ==================== Gemini AI 文脈自動補正 ====================
+                // ==================== 賛美歌 1〜200番 データベース & 動的ヒント注入 ====================
+        const HYMN_DATABASE = {
+    1: {"ja":"夜明けだ，朝明けだ","en":"The Morning Breaks","enNum":"#1"},
+    2: {"ja":"山の上に","en":"High on the Mountain Top","enNum":"#5"},
+    3: {"ja":"主のみたまは火のごと燃え","en":"The Spirit of God","enNum":"#2"},
+    4: {"ja":"イスラエルの救い主","en":"Redeemer of Israel","enNum":"#6"},
+    5: {"ja":"いざ救いの日を楽しまん","en":"Now Let Us Rejoice","enNum":"#3"},
+    6: {"ja":"悩めるイスラエル","en":"Israel, Israel, God Is Calling","enNum":"#7"},
+    7: {"ja":"目覚めよ，起て","en":"Awake and Arise","enNum":"#8"},
+    8: {"ja":"来たれ，喜べや","en":"Come, Rejoice","enNum":"#9"},
+    9: {"ja":"何を天に見しか","en":"What Was Witnessed in the Heavens?","enNum":"#11"},
+    10: {"ja":"長き沈黙破りて出づ","en":"An Angel from on High","enNum":"#13"},
+    11: {"ja":"感謝を神に捧げん","en":"We Thank Thee, O God, for a Prophet","enNum":"#19"},
+    12: {"ja":"力の神よ","en":"God of Power, God of Right","enNum":"#20"},
+    13: {"ja":"来たれ，予言者より","en":"Come, Listen to a Prophet’s Voice","enNum":"#21"},
+    14: {"ja":"わが予言者に祝福あれ","en":"God Bless Our Prophet Dear","enNum":"#24"},
+    15: {"ja":"悩める旅人","en":"A Poor Wayfaring Man of Grief","enNum":"#29"},
+    16: {"ja":"たたえよ，主の召したまいし","en":"Praise to the Man","enNum":"#27"},
+    17: {"ja":"恐れず来たれ，聖徒","en":"Come, Come, Ye Saints","enNum":"#30"},
+    18: {"ja":"麗しき朝よ","en":"Joseph Smith’s First Prayer","enNum":"#26"},
+    19: {"ja":"ああ，神いつまでも","en":"O God, Our Help in Ages Past","enNum":"#31"},
+    20: {"ja":"楽しき日は来て","en":"The Happy Day at Last Has Come","enNum":"#32"},
+    21: {"ja":"山の家","en":"Our Mountain Home So Dear","enNum":"#33"},
+    22: {"ja":"高き山よ","en":"O Ye Mountains High","enNum":"#34"},
+    23: {"ja":"山の強さのため","en":"For the Strength of the Hills","enNum":"#35"},
+    24: {"ja":"国を造りたる","en":"They, the Builders of the Nation","enNum":"#36"},
+    25: {"ja":"シオンの朝は輝き","en":"Hail to the Brightness of Zion’s Glad Morning!","enNum":"#42"},
+    26: {"ja":"山に囲まれて","en":"Zion Stands with Hills Surrounded","enNum":"#43"},
+    27: {"ja":"み空に麗し","en":"Beautiful Zion, Built Above","enNum":"#44"},
+    28: {"ja":"明けゆく空","en":"The Day Dawn Is Breaking","enNum":"#52"},
+    29: {"ja":"来ませ，王の王","en":"Come, O Thou King of Kings","enNum":"#59"},
+    30: {"ja":"リパブリック賛歌","en":"Battle Hymn of the Republic","enNum":"#60"},
+    31: {"ja":"来たれ，主の子ら","en":"Come, Ye Children of the Lord","enNum":"#58"},
+    32: {"ja":"喜べ，主を","en":"Rejoice, the Lord Is King!","enNum":"#66"},
+    33: {"ja":"神に栄え","en":"Glory to God on High","enNum":"#67"},
+    34: {"ja":"神は造り主","en":"All Creatures of Our God and King","enNum":"#62"},
+    35: {"ja":"やさしき天の父よ","en":"Kind and Heavenly Father","enNum":"CS 4"},
+    36: {"ja":"神はわが砦","en":"A Mighty Fortress Is Our God","enNum":"#68"},
+    37: {"ja":"造り主の主を","en":"Praise to the Lord, the Almighty","enNum":"#72"},
+    38: {"ja":"たたえよ神を","en":"Praise the Lord with Heart and Voice","enNum":"#73"},
+    39: {"ja":"主をたたえん","en":"The Joy and the Song","enNum":"旧版"},
+    40: {"ja":"全能の父なる神よ","en":"God of Our Fathers, Whose Almighty Hand","enNum":"#78"},
+    41: {"ja":"導きたまえよ","en":"Guide Us, O Thou Great Jehovah","enNum":"#83"},
+    42: {"ja":"いにしえの聖徒の","en":"Faith of Our Fathers","enNum":"#84"},
+    43: {"ja":"父なる神のもとに","en":"God of Our Fathers, We Come unto Thee","enNum":"#76"},
+    44: {"ja":"わが主よ，わが神","en":"How Great Thou Art","enNum":"#86"},
+    45: {"ja":"神は愛なり","en":"God Is Love","enNum":"#87"},
+    46: {"ja":"主のみ言葉は","en":"How Firm a Foundation","enNum":"#85"},
+    47: {"ja":"主は光","en":"The Lord Is My Light","enNum":"#89"},
+    48: {"ja":"父よ，子らはうたう","en":"Father, Thy Children to Thee Now Raise","enNum":"#91"},
+    49: {"ja":"感謝の祈り","en":"Prayer of Thanksgiving","enNum":"#93"},
+    50: {"ja":"地は麗しく","en":"For the Beauty of the Earth","enNum":"#92"},
+    51: {"ja":"来たりてうたえ","en":"Come, Ye Thankful People","enNum":"#94"},
+    52: {"ja":"取り巻く闇の中を","en":"Lead, Kindly Light","enNum":"#97"},
+    53: {"ja":"絶えず頼り主求む","en":"I Need Thee Every Hour","enNum":"#98"},
+    54: {"ja":"主に近づかん","en":"Nearer, Dear Savior, to Thee","enNum":"#99"},
+    55: {"ja":"神よ，汝れに近寄らん","en":"Nearer, My God, to Thee","enNum":"#100"},
+    56: {"ja":"主よ，導きたまえや","en":"Guide Me to Thee","enNum":"#101"},
+    57: {"ja":"主イエスよ，愛もて","en":"Jesus, Lover of My Soul","enNum":"#102"},
+    58: {"ja":"尊き救い主","en":"Precious Savior, Dear Redeemer","enNum":"#103"},
+    59: {"ja":"主よ，嵐すさび","en":"Master, the Tempest Is Raging","enNum":"#105"},
+    60: {"ja":"正義を守れと主に祈る","en":"God Speed the Right","enNum":"#106"},
+    61: {"ja":"主よ，荒海を導きたまえ","en":"Jesus, Savior, Pilot Me","enNum":"#104"},
+    62: {"ja":"主よ，祈り受けて","en":"Lord, Accept Our True Devotion","enNum":"#107"},
+    63: {"ja":"主はわが飼い手","en":"The Lord Is My Shepherd","enNum":"#108"},
+    64: {"ja":"主よ，汝がみ手に","en":"Rock of Ages","enNum":"#111"},
+    65: {"ja":"飼い主はわれを","en":"The Lord My Pasture Will Prepare","enNum":"#109"},
+    66: {"ja":"われに来よ","en":"Come, Follow Me","enNum":"#116"},
+    67: {"ja":"主に来たれ","en":"Come unto Jesus","enNum":"#117"},
+    68: {"ja":"来たれ，友よ","en":"Come, We That Love the Lord","enNum":"#119"},
+    69: {"ja":"試しは多くも","en":"Though Deepening Trials","enNum":"#122"},
+    70: {"ja":"いともやさし","en":"How Gentle God’s Commands","enNum":"#125"},
+    71: {"ja":"高ぶりを慎み","en":"Be Thou Humble","enNum":"#130"},
+    72: {"ja":"救い主，われ信ず","en":"I Believe in Christ","enNum":"#134"},
+    73: {"ja":"贖いの主","en":"My Redeemer Lives","enNum":"#135"},
+    74: {"ja":"さらに聖くなお努めん","en":"More Holiness Give Me","enNum":"#131"},
+    75: {"ja":"主は生けりと知る","en":"I Know That My Redeemer Lives","enNum":"#136"},
+    76: {"ja":"天の御父","en":"Father in Heaven","enNum":"#133"},
+    77: {"ja":"証","en":"Testimony","enNum":"#137"},
+    78: {"ja":"部屋を出る前に","en":"Did You Think to Pray?","enNum":"#140"},
+    79: {"ja":"ひそかな祈り","en":"Secret Prayer","enNum":"#144"},
+    80: {"ja":"主イエスよ，わが胸","en":"Jesus, the Very Thought of Thee","enNum":"#141"},
+    81: {"ja":"祈りは楽しき","en":"Sweet Hour of Prayer","enNum":"#142"},
+    82: {"ja":"みたまはわれに","en":"Let the Holy Spirit Guide","enNum":"#143"},
+    83: {"ja":"祈りは魂の","en":"Prayer Is the Soul’s Sincere Desire","enNum":"#145"},
+    84: {"ja":"賛歌を捧げん","en":"Gently Raise the Sacred Strain","enNum":"#146"},
+    85: {"ja":"神よ，また逢うまで","en":"God Be with You Till We Meet Again","enNum":"#152"},
+    86: {"ja":"草の露は，主の","en":"As the Dew from Heaven Distilling","enNum":"#149"},
+    87: {"ja":"わが神，わが王","en":"Sweet Is the Work","enNum":"#147"},
+    88: {"ja":"わかれにまた","en":"Sing We Now at Parting","enNum":"#156"},
+    89: {"ja":"み前にぬかずき","en":"Before Thee, Lord, I Bow My Head","enNum":"#158"},
+    90: {"ja":"陽は暮れゆきて","en":"Softly Now the Light of Day","enNum":"#160"},
+    91: {"ja":"心に平和と","en":"Lord, Dismiss Us with Thy Blessing","enNum":"#163"},
+    92: {"ja":"日は暮れ","en":"Abide with Me!","enNum":"#166"},
+    93: {"ja":"わかれに願う","en":"Lord, We Ask Thee Ere We Part","enNum":"#153"},
+    94: {"ja":"主よ，われと共に","en":"Abide with Me; ’Tis Eventide","enNum":"#165"},
+    95: {"ja":"日は暮れゆき","en":"Now the Day Is Over","enNum":"#159"},
+    96: {"ja":"父なる神よ","en":"God, Our Father, Hear Us Pray","enNum":"#170"},
+    97: {"ja":"われら祈りまつる","en":"In Humility, Our Savior","enNum":"#172"},
+    98: {"ja":"聖餐受くとき","en":"While of These Emblems We Partake","enNum":"#174"},
+    99: {"ja":"天にまします永遠なる父","en":"O God, the Eternal Father","enNum":"#175"},
+    100: {"ja":"ナザレ出しわが主よ","en":"Jesus of Nazareth, Savior and King","enNum":"#181"},
+    101: {"ja":"たぐいなき愛を","en":"’Tis Sweet to Sing the Matchless Love","enNum":"#176"},
+    102: {"ja":"主よ，裂きしパンと","en":"O Lord of Hosts","enNum":"#178"},
+    103: {"ja":"罪人のために","en":"In Remembrance of Thy Suffering","enNum":"#183"},
+    104: {"ja":"敬い崇め","en":"Reverently and Meekly Now","enNum":"#185"},
+    105: {"ja":"主の御名をたたえん","en":"We’ll Sing All Hail to Jesus’ Name","enNum":"#182"},
+    106: {"ja":"カルバリに","en":"Upon the Cross of Calvary","enNum":"#184"},
+    107: {"ja":"神は世を愛し","en":"God Loved Us, So He Sent His Son","enNum":"#187"},
+    108: {"ja":"見よ，罪のために","en":"Behold the Great Redeemer Die","enNum":"#191"},
+    109: {"ja":"主イエスの愛に","en":"I Stand All Amazed","enNum":"#193"},
+    110: {"ja":"街を離れたる青き丘に","en":"There Is a Green Hill Far Away","enNum":"#194"},
+    111: {"ja":"十字架を覚え","en":"In Memory of the Crucified","enNum":"#190"},
+    112: {"ja":"高きに満ちたる","en":"How Great the Wisdom and the Love","enNum":"#195"},
+    113: {"ja":"いやしく生まれ","en":"Jesus, Once of Humble Birth","enNum":"#196"},
+    114: {"ja":"主はよみがえりぬ","en":"He Is Risen!","enNum":"#199"},
+    115: {"ja":"主はよみがえりぬ（アレルヤ）","en":"Christ the Lord Is Risen Today","enNum":"#200"},
+    116: {"ja":"もろびと，こぞりて","en":"Joy to the World","enNum":"#201"},
+    117: {"ja":"神の御子は今宵しも","en":"Oh, Come, All Ye Faithful","enNum":"#202"},
+    118: {"ja":"聖し，この夜","en":"Silent Night","enNum":"#204"},
+    119: {"ja":"み使い空に","en":"Angels We Have Heard on High","enNum":"#203"},
+    120: {"ja":"天を降りし神の御子","en":"Away in a Manger","enNum":"#206"},
+    121: {"ja":"天なる神には","en":"It Came upon the Midnight Clear","enNum":"#207"},
+    122: {"ja":"ああ，ベツレヘムよ","en":"O Little Town of Bethlehem","enNum":"#208"},
+    123: {"ja":"天には栄え","en":"Hark! The Herald Angels Sing","enNum":"#209"},
+    124: {"ja":"羊飼いらが","en":"While Shepherds Watched Their Flocks","enNum":"#211"},
+    125: {"ja":"奇しきあか星","en":"With Wondering Awe","enNum":"#210"},
+    126: {"ja":"昔，ユダヤの野辺に","en":"Far, Far Away on Judea’s Plains","enNum":"#212"},
+    127: {"ja":"牧人，羊を","en":"The First Noel","enNum":"#213"},
+    128: {"ja":"なつかしい鐘は鳴る","en":"I Heard the Bells on Christmas Day","enNum":"#214"},
+    129: {"ja":"若葉の春","en":"Verdant Spring and Rosy Summer","enNum":"旧版"},
+    130: {"ja":"天の装いの子羊，見よ","en":"Behold the Lamb of God","enNum":"旧版"},
+    131: {"ja":"やさしく交わらん","en":"Let Us Treat Each Other Kindly","enNum":"旧版"},
+    132: {"ja":"主のみ旨に従い行かん","en":"My Jesus, As Thou Wilt!","enNum":"旧版"},
+    133: {"ja":"日々によき種と","en":"We Are Sowing","enNum":"#216"},
+    134: {"ja":"われ主を愛して","en":"Lord, I Would Follow Thee","enNum":"#220"},
+    135: {"ja":"来たれ，旅を共に続けん","en":"Come, Let Us Anew","enNum":"#217"},
+    136: {"ja":"羊を守れる羊飼いの愛","en":"Dear to the Heart of the Shepherd","enNum":"#221"},
+    137: {"ja":"今日われ善きことせしか","en":"Have I Done Any Good?","enNum":"#223"},
+    138: {"ja":"主の恵み，人にも分かたん","en":"Because I Have Been Given Much","enNum":"#219"},
+    139: {"ja":"心に光あり","en":"There Is Sunshine in My Soul Today","enNum":"#227"},
+    140: {"ja":"親しく語り合わん","en":"Let Us Oft Speak Kind Words","enNum":"#232"},
+    141: {"ja":"心の中に光を持てば","en":"You Can Make the Pathway Bright","enNum":"#228"},
+    142: {"ja":"日の照る間に働け","en":"Today, While the Sun Shines","enNum":"#229"},
+    143: {"ja":"光を道にまけ","en":"Scatter Sunshine","enNum":"#230"},
+    144: {"ja":"愛の神，賛めよ","en":"Praise God, from Whom All Blessings Flow","enNum":"#242"},
+    145: {"ja":"陽の落ちぬ間に","en":"I Have Work Enough to Do","enNum":"#224"},
+    146: {"ja":"時を惜しみて","en":"Improve the Shining Moments","enNum":"#226"},
+    147: {"ja":"人の過ちを","en":"Should You Feel Inclined to Censure","enNum":"#235"},
+    148: {"ja":"この家，父なる神に捧ぐ","en":"This House We Dedicate to Thee","enNum":"#245"},
+    149: {"ja":"神のみ業に進みて","en":"Let Us All Press On","enNum":"#243"},
+    150: {"ja":"悪を言うな","en":"Nay, Speak No Ill","enNum":"#233"},
+    151: {"ja":"正しかれ","en":"Do What Is Right","enNum":"#237"},
+    152: {"ja":"選べ，正義を","en":"Choose the Right","enNum":"#239"},
+    153: {"ja":"み恵み数えあげ","en":"Count Your Blessings","enNum":"#241"},
+    154: {"ja":"来たれ，来たれ","en":"Come Along, Come Along","enNum":"#244"},
+    155: {"ja":"戦い進め","en":"Onward, Christian Soldiers","enNum":"#246"},
+    156: {"ja":"刈り手を待ちつつ","en":"Waiting for the Reapers","enNum":"旧版"},
+    157: {"ja":"われらは天の王に","en":"Called to Serve","enNum":"#249"},
+    158: {"ja":"いとまされる","en":"We Love Thy House, O God","enNum":"#247"},
+    159: {"ja":"シオンのつわもの","en":"Hope of Israel","enNum":"#259"},
+    160: {"ja":"見よ，王の軍は","en":"Behold! A Royal Army","enNum":"#251"},
+    161: {"ja":"世はよく働く人を求む","en":"Put Your Shoulder to the Wheel","enNum":"#252"},
+    162: {"ja":"戦い止むまで","en":"We Are All Enlisted","enNum":"#250"},
+    163: {"ja":"シオンの若者，真理を守り","en":"True to the Faith","enNum":"#254"},
+    164: {"ja":"力強き主よ","en":"O Thou Rock of Our Salvation","enNum":"#258"},
+    165: {"ja":"主の方には","en":"Who’s on the Lord’s Side?","enNum":"#260"},
+    166: {"ja":"天よりの声聞け","en":"Hark, All Ye Nations!","enNum":"#264"},
+    167: {"ja":"山のごとく強く","en":"Carry On","enNum":"#255"},
+    168: {"ja":"信仰もて行け","en":"Go Forth with Faith","enNum":"#263"},
+    169: {"ja":"時過ぎて","en":"The Time Is Far Spent","enNum":"#266"},
+    170: {"ja":"高き知恵もて","en":"Come, All Whose Souls Are Lighted","enNum":"#268"},
+    171: {"ja":"エホバ，天地の主","en":"Jehovah, Lord of Heaven and Earth","enNum":"#269"},
+    172: {"ja":"み旨のまま行かん","en":"I’ll Go Where You Want Me to Go","enNum":"#270"},
+    173: {"ja":"高きに導く","en":"Oh, Holy Words of Truth and Love","enNum":"#271"},
+    174: {"ja":"真理，胸に照り","en":"Truth Reflects upon Our Senses","enNum":"#273"},
+    175: {"ja":"真理は何と言えば","en":"Oh Say, What Is Truth?","enNum":"#272"},
+    176: {"ja":"鉄の棒","en":"The Iron Rod","enNum":"#274"},
+    177: {"ja":"われみ言葉読む","en":"As I Search the Holy Scriptures","enNum":"#277"},
+    178: {"ja":"楽し安息の日","en":"Welcome, Welcome, Sabbath Morning","enNum":"#280"},
+    179: {"ja":"われら天にまた会うとき","en":"Oh, What Songs of the Heart","enNum":"#286"},
+    180: {"ja":"高きに栄えて","en":"O My Father","enNum":"#292"},
+    181: {"ja":"家庭の愛","en":"Love at Home","enNum":"#294"},
+    182: {"ja":"主よ霊感もて","en":"Help Me Teach with Inspiration","enNum":"#281"},
+    183: {"ja":"起て，宮に入りて","en":"Rise, Ye Saints, and Temples Enter","enNum":"#287"},
+    184: {"ja":"母よ，われ美しき夢見ぬ","en":"Oh, I Had Such a Pretty Dream, Mamma","enNum":"旧版"},
+    185: {"ja":"神の聖徒の","en":"In Our Lovely Deseret","enNum":"#307"},
+    186: {"ja":"愛ある家は","en":"Home Can Be a Heaven on Earth","enNum":"#298"},
+    187: {"ja":"家族は永遠に","en":"Families Can Be Together Forever","enNum":"#300"},
+    188: {"ja":"光となるように","en":"Jesus Wants Me for a Sunbeam","enNum":"CS 285"},
+    189: {"ja":"神の子です","en":"I Am a Child of God","enNum":"#301"},
+    190: {"ja":"お父さまは生きています","en":"I Know My Father Lives","enNum":"#302"},
+    191: {"ja":"神の光受け","en":"The Light Divine","enNum":"#305"},
+    192: {"ja":"共に愛し合え","en":"Love One Another","enNum":"#308"},
+    193: {"ja":"戒めを守る人を","en":"Keep the Commandments","enNum":"#303"},
+    194: {"ja":"光の中進もう","en":"Teach Me to Walk in the Light","enNum":"#304"},
+    195: {"ja":"シオンの娘（女声用）","en":"As Sisters in Zion (Women)","enNum":"#309"},
+    196: {"ja":"イスラエルの長老たちよ（男声用）","en":"Ye Elders of Israel (Men)","enNum":"#319"},
+    197: {"ja":"み言葉により（男声用）","en":"Ye Who Are Called to Labor (Men)","enNum":"#321"},
+    198: {"ja":"心を抑えよ（男声用）","en":"School Thy Feelings (Men’s Choir)","enNum":"#336"},
+    199: {"ja":"神権持つ子らよ（男声用）","en":"Come, All Ye Sons of God (Men)","enNum":"#322"},
+    200: {"ja":"天父は灯台のごとく（男声聖歌隊用）","en":"Brightly Beams Our Father’s Mercy (Men’s Choir)","enNum":"#335"},
+};
+
+        // 全角数字・漢数字（1〜200）を半角数値にパースするヘルパー
+        function parseKanjiNumber(str) {
+            if (!str) return null;
+            const kanjiDigits = { '〇': 0, '零': 0, '一': 1, '二': 2, '三': 3, '四': 4, '五': 5, '六': 6, '七': 7, '八': 8, '九': 9 };
+            str = str.replace(/[０-９]/g, s => String.fromCharCode(s.charCodeAt(0) - 0xFEE0));
+            if (/^\d+$/.test(str)) return parseInt(str, 10);
+            if (/^[〇零一二三四五六七八九]+$/.test(str)) {
+                const numStr = str.split('').map(c => kanjiDigits[c]).join('');
+                return parseInt(numStr, 10);
+            }
+            let total = 0, current = 0, hasKanji = false;
+            for (let i = 0; i < str.length; i++) {
+                const char = str[i];
+                if (kanjiDigits[char] !== undefined) {
+                    current = kanjiDigits[char];
+                    hasKanji = true;
+                } else if (char === '十') {
+                    total += (current === 0 ? 1 : current) * 10;
+                    current = 0;
+                    hasKanji = true;
+                } else if (char === '百') {
+                    total += (current === 0 ? 1 : current) * 100;
+                    current = 0;
+                    hasKanji = true;
+                }
+            }
+            total += current;
+            return hasKanji ? total : null;
+        }
+
+        // 発話テキスト（batchInput）から賛美歌番号を検出し、該当曲のプロンプトヒントを動的生成
+        function getDynamicHymnHint(batchInput) {
+            if (!batchInput || typeof batchInput !== 'string') return '';
+            const hasKeyword = /賛美歌|さんびか|讃美歌|サンビカ|歌|開会|閉会|聖餐|中間/.test(batchInput);
+            if (!hasKeyword && !/番/.test(batchInput)) return '';
+
+            const foundNumbers = new Set();
+            const banRegex = /(?:賛美歌|さんびか|讃美歌|歌|開会|閉会|聖餐|中間)?\s*([0-9０-９一二三四五六七八九十百〇零]+)\s*番/g;
+            let m;
+            while ((m = banRegex.exec(batchInput)) !== null) {
+                const num = parseKanjiNumber(m[1]);
+                if (num && num >= 1 && num <= 200) foundNumbers.add(num);
+            }
+            const directRegex = /(?:賛美歌|さんびか|讃美歌|サンビカ)\s*([0-9０-９一二三四五六七八九十百〇零]+)/g;
+            while ((m = directRegex.exec(batchInput)) !== null) {
+                const num = parseKanjiNumber(m[1]);
+                if (num && num >= 1 && num <= 200) foundNumbers.add(num);
+            }
+            if (foundNumbers.size === 0 && hasKeyword) {
+                for (const [numStr, info] of Object.entries(HYMN_DATABASE)) {
+                    if (info.ja && info.ja.length >= 3 && batchInput.includes(info.ja)) {
+                        foundNumbers.add(parseInt(numStr, 10));
+                        if (foundNumbers.size >= 2) break;
+                    }
+                }
+            }
+            if (foundNumbers.size === 0) return '';
+
+            const numList = Array.from(foundNumbers);
+            const hintLines = numList.map(num => {
+                const h = HYMN_DATABASE[num];
+                if (!h) return null;
+                let enNumFormatted = '';
+                if (h.enNum) {
+                    if (h.enNum.startsWith('#')) enNumFormatted = 'English ' + h.enNum;
+                    else if (h.enNum === '旧版') enNumFormatted = 'English Hymnal';
+                    else if (h.enNum.startsWith('CS')) enNumFormatted = 'English ' + h.enNum;
+                    else enNumFormatted = 'English #' + h.enNum;
+                }
+                return '・賛美歌' + num + '番: 日本語曲名『' + h.ja + '』 = 英語曲名 \'' + h.en + '\' (' + enNumFormatted + ')';
+            }).filter(Boolean);
+
+            if (hintLines.length === 0) return '';
+            return '【該当する賛美歌の日英公式対照データ】\n' + hintLines.join('\n') + '\n※上記データに基づき、日本語は「開会（または聖餐・中間・閉会）の賛美歌は、賛美歌' + numList[0] + '番『日本語曲名』です。」、英語は "Our [opening/sacrament/intermediate/closing] hymn is Hymn No. ' + numList[0] + ', \'[英語曲名]\' (English #[英語版番号])." の指定形式で美しく出力してください。';
+        }
+
+
+// ==================== Gemini AI 文脈自動補正 ====================
 
         const GEMINI_SYSTEM_PROMPT = `あなたは末日聖徒イエス・キリスト教会（LDS Church）の礼拝堂・集会・ディボーショナル・証会・祈りの音声テキストを高度に校正・整形する専任AIアシスタントです。
 
@@ -7685,213 +7966,12 @@ function isIncompletePhrase(text) {
      【日本語全文】: 「永遠の父なる神よ、わたしたちは御子イエス・キリストの御名によってあなたに願い求めます。この水を頂くすべての人々が、この人々のために流された御子の血の記念にこれを頂けるように、また、いつも御子を覚えていることを、永遠の父なる神よ、あなたに証明して、御子の御霊を受けられるように、この水を祝福し、聖めてください。アーメン。」
      【公式英語訳】: "O God, the Eternal Father, we ask thee in the name of thy Son, Jesus Christ, to bless and sanctify this water to the souls of all those who partake of it, that they may do it in remembrance of the blood of thy Son, which was shed for them; that they may witness unto thee, O God, the Eternal Father, that they do always remember him, that they may have his Spirit to be with them. Amen."
 
-・賛美歌（Hymns）の日英完全対照知識ベース（日本語1番〜200番）:
-  聖餐会等で司会者（ビショップリック等）が開会・聖餐・中間・閉会の賛美歌を発表した際、音声認識の誤り（「神は要配信」等）を補正して日本語曲名を『』付きで正確に出力し、英語翻訳には教会の公式英語曲名および英語版賛美歌番号（English #XX）を必ず併記してください。
+・賛美歌（Hymns）の日英完全対照知識ベース:
+  聖餐会等で司会者（ビショップリック等）が開会・聖餐・中間・閉会の賛美歌を発表した際、音声認識の誤り（「神は要配信」等）を補正して日本語曲名を『』付きで正確に出力し、英語翻訳には教会の公式英語曲名および英語版賛美歌番号（English #XX）を必ず併記してください（※該当する曲の情報はユーザープロンプトに動的に提供されます）。
   【出力形式の指定】:
   - 日本語: 「開会（または聖餐・中間・閉会）の賛美歌は、賛美歌〔番号〕番『〔日本語曲名〕』です。」
   - 英語: "Our [opening/sacrament/intermediate/closing] hymn is Hymn No. [日本語番号], '[英語曲名]' (English #[英語版番号])."
     （※英語版番号が「子供の歌」の場合は (English CS #[番号])、「旧版」の場合は (English Hymnal) と表記）
-  【賛美歌1〜200番 日英対照リスト】:
-  1: 夜明けだ，朝明けだ = The Morning Breaks (#1)
-  2: 山の上に = High on the Mountain Top (#5)
-  3: 主のみたまは火のごと燃え = The Spirit of God (#2)
-  4: イスラエルの救い主 = Redeemer of Israel (#6)
-  5: いざ救いの日を楽しまん = Now Let Us Rejoice (#3)
-  6: 悩めるイスラエル = Israel, Israel, God Is Calling (#7)
-  7: 目覚めよ，起て = Awake and Arise (#8)
-  8: 来たれ，喜べや = Come, Rejoice (#9)
-  9: 何を天に見しか = What Was Witnessed in the Heavens? (#11)
-  10: 長き沈黙破りて出づ = An Angel from on High (#13)
-  11: 感謝を神に捧げん = We Thank Thee, O God, for a Prophet (#19)
-  12: 力の神よ = God of Power, God of Right (#20)
-  13: 来たれ，予言者より = Come, Listen to a Prophet’s Voice (#21)
-  14: わが予言者に祝福あれ = God Bless Our Prophet Dear (#24)
-  15: 悩める旅人 = A Poor Wayfaring Man of Grief (#29)
-  16: たたえよ，主の召したまいし = Praise to the Man (#27)
-  17: 恐れず来たれ，聖徒 = Come, Come, Ye Saints (#30)
-  18: 麗しき朝よ = Joseph Smith’s First Prayer (#26)
-  19: ああ，神いつまでも = O God, Our Help in Ages Past (#31)
-  20: 楽しき日は来て = The Happy Day at Last Has Come (#32)
-  21: 山の家 = Our Mountain Home So Dear (#33)
-  22: 高き山よ = O Ye Mountains High (#34)
-  23: 山の強さのため = For the Strength of the Hills (#35)
-  24: 国を造りたる = They, the Builders of the Nation (#36)
-  25: シオンの朝は輝き = Hail to the Brightness of Zion’s Glad Morning! (#42)
-  26: 山に囲まれて = Zion Stands with Hills Surrounded (#43)
-  27: み空に麗し = Beautiful Zion, Built Above (#44)
-  28: 明けゆく空 = The Day Dawn Is Breaking (#52)
-  29: 来ませ，王の王 = Come, O Thou King of Kings (#59)
-  30: リパブリック賛歌 = Battle Hymn of the Republic (#60)
-  31: 来たれ，主の子ら = Come, Ye Children of the Lord (#58)
-  32: 喜べ，主を = Rejoice, the Lord Is King! (#66)
-  33: 神に栄え = Glory to God on High (#67)
-  34: 神は造り主 = All Creatures of Our God and King (#62)
-  35: やさしき天の父よ = Kind and Heavenly Father (CS 4)
-  36: 神はわが砦 = A Mighty Fortress Is Our God (#68)
-  37: 造り主の主を = Praise to the Lord, the Almighty (#72)
-  38: たたえよ神を = Praise the Lord with Heart and Voice (#73)
-  39: 主をたたえん = The Joy and the Song (旧版)
-  40: 全能の父なる神よ = God of Our Fathers, Whose Almighty Hand (#78)
-  41: 導きたまえよ = Guide Us, O Thou Great Jehovah (#83)
-  42: いにしえの聖徒の = Faith of Our Fathers (#84)
-  43: 父なる神のもとに = God of Our Fathers, We Come unto Thee (#76)
-  44: わが主よ，わが神 = How Great Thou Art (#86)
-  45: 神は愛なり = God Is Love (#87)
-  46: 主のみ言葉は = How Firm a Foundation (#85)
-  47: 主は光 = The Lord Is My Light (#89)
-  48: 父よ，子らはうたう = Father, Thy Children to Thee Now Raise (#91)
-  49: 感謝の祈り = Prayer of Thanksgiving (#93)
-  50: 地は麗しく = For the Beauty of the Earth (#92)
-  51: 来たりてうたえ = Come, Ye Thankful People (#94)
-  52: 取り巻く闇の中を = Lead, Kindly Light (#97)
-  53: 絶えず頼り主求む = I Need Thee Every Hour (#98)
-  54: 主に近づかん = Nearer, Dear Savior, to Thee (#99)
-  55: 神よ，汝れに近寄らん = Nearer, My God, to Thee (#100)
-  56: 主よ，導きたまえや = Guide Me to Thee (#101)
-  57: 主イエスよ，愛もて = Jesus, Lover of My Soul (#102)
-  58: 尊き救い主 = Precious Savior, Dear Redeemer (#103)
-  59: 主よ，嵐すさび = Master, the Tempest Is Raging (#105)
-  60: 正義を守れと主に祈る = God Speed the Right (#106)
-  61: 主よ，荒海を導きたまえ = Jesus, Savior, Pilot Me (#104)
-  62: 主よ，祈り受けて = Lord, Accept Our True Devotion (#107)
-  63: 主はわが飼い手 = The Lord Is My Shepherd (#108)
-  64: 主よ，汝がみ手に = Rock of Ages (#111)
-  65: 飼い主はわれを = The Lord My Pasture Will Prepare (#109)
-  66: われに来よ = Come, Follow Me (#116)
-  67: 主に来たれ = Come unto Jesus (#117)
-  68: 来たれ，友よ = Come, We That Love the Lord (#119)
-  69: 試しは多くも = Though Deepening Trials (#122)
-  70: いともやさし = How Gentle God’s Commands (#125)
-  71: 高ぶりを慎み = Be Thou Humble (#130)
-  72: 救い主，われ信ず = I Believe in Christ (#134)
-  73: 贖いの主 = My Redeemer Lives (#135)
-  74: さらに聖くなお努めん = More Holiness Give Me (#131)
-  75: 主は生けりと知る = I Know That My Redeemer Lives (#136)
-  76: 天の御父 = Father in Heaven (#133)
-  77: 証 = Testimony (#137)
-  78: 部屋を出る前に = Did You Think to Pray? (#140)
-  79: ひそかな祈り = Secret Prayer (#144)
-  80: 主イエスよ，わが胸 = Jesus, the Very Thought of Thee (#141)
-  81: 祈りは楽しき = Sweet Hour of Prayer (#142)
-  82: みたまはわれに = Let the Holy Spirit Guide (#143)
-  83: 祈りは魂の = Prayer Is the Soul’s Sincere Desire (#145)
-  84: 賛歌を捧げん = Gently Raise the Sacred Strain (#146)
-  85: 神よ，また逢うまで = God Be with You Till We Meet Again (#152)
-  86: 草の露は，主の = As the Dew from Heaven Distilling (#149)
-  87: わが神，わが王 = Sweet Is the Work (#147)
-  88: わかれにまた = Sing We Now at Parting (#156)
-  89: み前にぬかずき = Before Thee, Lord, I Bow My Head (#158)
-  90: 陽は暮れゆきて = Softly Now the Light of Day (#160)
-  91: 心に平和と = Lord, Dismiss Us with Thy Blessing (#163)
-  92: 日は暮れ = Abide with Me! (#166)
-  93: わかれに願う = Lord, We Ask Thee Ere We Part (#153)
-  94: 主よ，われと共に = Abide with Me; ’Tis Eventide (#165)
-  95: 日は暮れゆき = Now the Day Is Over (#159)
-  96: 父なる神よ = God, Our Father, Hear Us Pray (#170)
-  97: われら祈りまつる = In Humility, Our Savior (#172)
-  98: 聖餐受くとき = While of These Emblems We Partake (#174)
-  99: 天にまします永遠なる父 = O God, the Eternal Father (#175)
-  100: ナザレ出しわが主よ = Jesus of Nazareth, Savior and King (#181)
-  101: たぐいなき愛を = ’Tis Sweet to Sing the Matchless Love (#176)
-  102: 主よ，裂きしパンと = O Lord of Hosts (#178)
-  103: 罪人のために = In Remembrance of Thy Suffering (#183)
-  104: 敬い崇め = Reverently and Meekly Now (#185)
-  105: 主の御名をたたえん = We’ll Sing All Hail to Jesus’ Name (#182)
-  106: カルバリに = Upon the Cross of Calvary (#184)
-  107: 神は世を愛し = God Loved Us, So He Sent His Son (#187)
-  108: 見よ，罪のために = Behold the Great Redeemer Die (#191)
-  109: 主イエスの愛に = I Stand All Amazed (#193)
-  110: 街を離れたる青き丘に = There Is a Green Hill Far Away (#194)
-  111: 十字架を覚え = In Memory of the Crucified (#190)
-  112: 高きに満ちたる = How Great the Wisdom and the Love (#195)
-  113: いやしく生まれ = Jesus, Once of Humble Birth (#196)
-  114: 主はよみがえりぬ = He Is Risen! (#199)
-  115: 主はよみがえりぬ（アレルヤ） = Christ the Lord Is Risen Today (#200)
-  116: もろびと，こぞりて = Joy to the World (#201)
-  117: 神の御子は今宵しも = Oh, Come, All Ye Faithful (#202)
-  118: 聖し，この夜 = Silent Night (#204)
-  119: み使い空に = Angels We Have Heard on High (#203)
-  120: 天を降りし神の御子 = Away in a Manger (#206)
-  121: 天なる神には = It Came upon the Midnight Clear (#207)
-  122: ああ，ベツレヘムよ = O Little Town of Bethlehem (#208)
-  123: 天には栄え = Hark! The Herald Angels Sing (#209)
-  124: 羊飼いらが = While Shepherds Watched Their Flocks (#211)
-  125: 奇しきあか星 = With Wondering Awe (#210)
-  126: 昔，ユダヤの野辺に = Far, Far Away on Judea’s Plains (#212)
-  127: 牧人，羊を = The First Noel (#213)
-  128: なつかしい鐘は鳴る = I Heard the Bells on Christmas Day (#214)
-  129: 若葉の春 = Verdant Spring and Rosy Summer (旧版)
-  130: 天の装いの子羊，見よ = Behold the Lamb of God (旧版)
-  131: やさしく交わらん = Let Us Treat Each Other Kindly (旧版)
-  132: 主のみ旨に従い行かん = My Jesus, As Thou Wilt! (旧版)
-  133: 日々によき種と = We Are Sowing (#216)
-  134: われ主を愛して = Lord, I Would Follow Thee (#220)
-  135: 来たれ，旅を共に続けん = Come, Let Us Anew (#217)
-  136: 羊を守れる羊飼いの愛 = Dear to the Heart of the Shepherd (#221)
-  137: 今日われ善きことせしか = Have I Done Any Good? (#223)
-  138: 主の恵み，人にも分かたん = Because I Have Been Given Much (#219)
-  139: 心に光あり = There Is Sunshine in My Soul Today (#227)
-  140: 親しく語り合わん = Let Us Oft Speak Kind Words (#232)
-  141: 心の中に光を持てば = You Can Make the Pathway Bright (#228)
-  142: 日の照る間に働け = Today, While the Sun Shines (#229)
-  143: 光を道にまけ = Scatter Sunshine (#230)
-  144: 愛の神，賛めよ = Praise God, from Whom All Blessings Flow (#242)
-  145: 陽の落ちぬ間に = I Have Work Enough to Do (#224)
-  146: 時を惜しみて = Improve the Shining Moments (#226)
-  147: 人の過ちを = Should You Feel Inclined to Censure (#235)
-  148: この家，父なる神に捧ぐ = This House We Dedicate to Thee (#245)
-  149: 神のみ業に進みて = Let Us All Press On (#243)
-  150: 悪を言うな = Nay, Speak No Ill (#233)
-  151: 正しかれ = Do What Is Right (#237)
-  152: 選べ，正義を = Choose the Right (#239)
-  153: み恵み数えあげ = Count Your Blessings (#241)
-  154: 来たれ，来たれ = Come Along, Come Along (#244)
-  155: 戦い進め = Onward, Christian Soldiers (#246)
-  156: 刈り手を待ちつつ = Waiting for the Reapers (旧版)
-  157: われらは天の王に = Called to Serve (#249)
-  158: いとまされる = We Love Thy House, O God (#247)
-  159: シオンのつわもの = Hope of Israel (#259)
-  160: 見よ，王の軍は = Behold! A Royal Army (#251)
-  161: 世はよく働く人を求む = Put Your Shoulder to the Wheel (#252)
-  162: 戦い止むまで = We Are All Enlisted (#250)
-  163: シオンの若者，真理を守り = True to the Faith (#254)
-  164: 力強き主よ = O Thou Rock of Our Salvation (#258)
-  165: 主の方には = Who’s on the Lord’s Side? (#260)
-  166: 天よりの声聞け = Hark, All Ye Nations! (#264)
-  167: 山のごとく強く = Carry On (#255)
-  168: 信仰もて行け = Go Forth with Faith (#263)
-  169: 時過ぎて = The Time Is Far Spent (#266)
-  170: 高き知恵もて = Come, All Whose Souls Are Lighted (#268)
-  171: エホバ，天地の主 = Jehovah, Lord of Heaven and Earth (#269)
-  172: み旨のまま行かん = I’ll Go Where You Want Me to Go (#270)
-  173: 高きに導く = Oh, Holy Words of Truth and Love (#271)
-  174: 真理，胸に照り = Truth Reflects upon Our Senses (#273)
-  175: 真理は何と言えば = Oh Say, What Is Truth? (#272)
-  176: 鉄の棒 = The Iron Rod (#274)
-  177: われみ言葉読む = As I Search the Holy Scriptures (#277)
-  178: 楽し安息の日 = Welcome, Welcome, Sabbath Morning (#280)
-  179: われら天にまた会うとき = Oh, What Songs of the Heart (#286)
-  180: 高きに栄えて = O My Father (#292)
-  181: 家庭の愛 = Love at Home (#294)
-  182: 主よ霊感もて = Help Me Teach with Inspiration (#281)
-  183: 起て，宮に入りて = Rise, Ye Saints, and Temples Enter (#287)
-  184: 母よ，われ美しき夢見ぬ = Oh, I Had Such a Pretty Dream, Mamma (旧版)
-  185: 神の聖徒の = In Our Lovely Deseret (#307)
-  186: 愛ある家は = Home Can Be a Heaven on Earth (#298)
-  187: 家族は永遠に = Families Can Be Together Forever (#300)
-  188: 光となるように = Jesus Wants Me for a Sunbeam (CS 285)
-  189: 神の子です = I Am a Child of God (#301)
-  190: お父さまは生きています = I Know My Father Lives (#302)
-  191: 神の光受け = The Light Divine (#305)
-  192: 共に愛し合え = Love One Another (#308)
-  193: 戒めを守る人を = Keep the Commandments (#303)
-  194: 光の中進もう = Teach Me to Walk in the Light (#304)
-  195: シオンの娘（女声用） = As Sisters in Zion (Women) (#309)
-  196: イスラエルの長老たちよ（男声用） = Ye Elders of Israel (Men) (#319)
-  197: み言葉により（男声用） = Ye Who Are Called to Labor (Men) (#321)
-  198: 心を抑えよ（男声用） = School Thy Feelings (Men’s Choir) (#336)
-  199: 神権持つ子らよ（男声用） = Come, All Ye Sons of God (Men) (#322)
-  200: 天父は灯台のごとく（男声聖歌隊用） = Brightly Beams Our Father’s Mercy (Men’s Choir) (#335)
 
 ・聖典・書名: モルモン書（モルモン賞/証→モルモン書）、第1/第2/第3/第4ニーファイ（第3ニーファイ）、ヤコブ書、エノス書、ジャロム書、オムナイ書、モーサヤ書、アルマ書、ヒラマン書、エテル書、モロナイ書、教義と聖約（協議と制約/教義と制約→教義と聖約）、高価な真珠、聖書、旧約聖書、新約聖書
 
@@ -8497,6 +8577,12 @@ function isIncompletePhrase(text) {
 
                 userPrompt += `【今回の発話（校正対象）】\n${batchInput}\n\n※最重要ルール:\n1. 出力の "sentences" 配列には【直前の発話文脈】を含めず、【今回の発話（校正対象）】の文だけを1対1で出力してください（出力配列の要素数は必ず入力と同じ ${items.length} 個にしてください）。\n2. 【英語翻訳の全要素必須】: 出力配列の全要素に必ず "ja"（完全な日本語校正文）と "en"（教会の公式英語用語を用いた格調高い英訳）の両方を100%揃えて出力してください。"en" の省略・空文字・nullは絶対に厳禁です。\n3. 文末が途中で切れないよう、完全な文として美しく完結させてください。`;
 
+                // 賛美歌の発表が含まれている場合、該当曲の日英対照データを動的注入
+                const hymnHint = getDynamicHymnHint(batchInput);
+                if (hymnHint) {
+                    userPrompt += `\n\n${hymnHint}`;
+                }
+
                 // 聴講者の選択言語に応じたオンデマンド他言語翻訳指示（タガログ語等）
                 const activeExtraLangs = isTest ? [] : getActiveViewerLanguages();
                 if (activeExtraLangs.length > 0) {
@@ -8558,7 +8644,8 @@ function isIncompletePhrase(text) {
                                 ],
                                 generationConfig: {
                                     temperature: 0.1,
-                                    maxOutputTokens: maxTokens
+                                    maxOutputTokens: maxTokens,
+                                    responseMimeType: "application/json"
                                 }
                             })
                         });
