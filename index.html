@@ -11764,10 +11764,15 @@ ${fullText}`;
                     return;
                 }
 
-                const it = sc.inputTranscription || sc.inputAudioTranscription || sc.input_transcription || sc.input_audio_transcription;
-                if (it && typeof it.text === 'string' && it.text) {
-                    console.log(`[Gemini 3.5 Live] 📥 Google ASRテキスト受信 (${it.text.length}文字): "${it.text.slice(0, 30)}..."`);
-                    handleLiveTranscribeChunk(it.text);
+                try {
+                    const sc = data.serverContent || data;
+                    const it = sc ? (sc.inputTranscription || sc.inputAudioTranscription || sc.input_transcription || sc.input_audio_transcription) : null;
+                    if (it && typeof it.text === 'string' && it.text) {
+                        console.log(`[Gemini 3.5 Live] 📥 Google ASRテキスト受信 (${it.text.length}文字): "${it.text.slice(0, 30)}..."`);
+                        handleLiveTranscribeChunk(it.text);
+                    }
+                } catch (msgErr) {
+                    console.error('[Gemini 3.5 Live] ws.onmessage 処理エラー:', msgErr);
                 }
             };
 
