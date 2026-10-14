@@ -1230,9 +1230,12 @@
 
                     <!-- 上段: 接続ステータス & カード枚数カウンター & 規約ボタン -->
                     <div class="flex justify-between items-center w-full">
-                        <div class="flex items-center space-x-2 min-w-0">
+                        <div class="flex items-center space-x-1.5 min-w-0">
                             <span id="peerConnectionStatus" class="w-2 h-2 rounded-full bg-amber-400 shrink-0"></span>
-                            <span id="peerStatusText" class="text-[11px] sm:text-xs truncate max-w-[130px] sm:max-w-[200px]">接続中...</span>
+                            <span id="peerStatusText" class="text-[11px] sm:text-xs truncate max-w-[120px] sm:max-w-[180px]">接続中...</span>
+                            <button id="viewerManualReconnectBtn" type="button" class="hidden px-1.5 py-0.5 bg-amber-600/90 hover:bg-amber-500 text-white rounded text-[10px] font-bold shrink-0 transition-colors cursor-pointer flex items-center gap-1 shadow-xs" title="今すぐ再接続">
+                                <i class="fa-solid fa-rotate-right text-[9px]"></i><span>再接続</span>
+                            </button>
                         </div>
 
                         <div class="flex items-center gap-1.5 shrink-0">
@@ -4711,6 +4714,7 @@ function isIncompletePhrase(text) {
 
         // WebRTC ICE サーバー設定（フェーズ65最適化: 教会Wi-Fi/NAT越え用TLS・TCP TURN最優先 + 厳選STUN）
         const PEER_CONFIG = {
+            pingInterval: 5000,
             config: {
                 iceServers: [
                     // 1. 最優先: 厳格な教会Wi-FiやSymmetric NAT越えのための暗号化TLS/TCP TURNリレー（HTTPSポート443偽装）
@@ -4809,6 +4813,7 @@ function isIncompletePhrase(text) {
         let liveSilenceDurationMs = 0;  // 連続沈黙時間（ミリ秒）
         let liveSentenceDispatchQueue = []; // 複数文一括噴出防止用ストリーミングキュー
         let liveSentenceDispatchTimer = null; // キュー消化タイマー
+        let lastDispatchedLiveSentence = ''; // 直前排出文の重複防止用変数
 
         // Gemini 3.5 Transcribe Live 用カスタム語彙（Speech Biasing / 日英バイリンガル対応）
         const CHURCH_CUSTOM_VOCABULARY = [
@@ -10072,7 +10077,9 @@ ${existingKeys.slice(0, 100).join(', ')}
 
                     const cleanDictKey = geminiApiKey.trim();
 
-                    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent`;
+                    const activeModel = (await discoverAvailableGeminiModel(cleanDictKey)) || 'gemini-2.5-flash';
+
+                    const url = `https://generativelanguage.googleapis.com/v1beta/models/${activeModel}:generateContent`;
 
                     const response = await fetch(url, {
 
@@ -10090,7 +10097,11 @@ ${existingKeys.slice(0, 100).join(', ')}
 
                             contents: [{ role: 'user', parts: [{ text: prompt }] }],
 
-                            generationConfig: { temperature: 0.1, maxOutputTokens: 1000 }
+                            generationConfig: {
+                                temperature: 0.1,
+                                maxOutputTokens: 1000,
+                                responseMimeType: "application/json"
+                            }
 
                         })
 
@@ -10113,7 +10124,10 @@ ${existingKeys.slice(0, 100).join(', ')}
 
                     try {
 
-                        candidates = JSON.parse(aiOutput);
+                        // マークダウン記法（```json ... ```）の安全除去
+                        const cleanOutput = aiOutput.replace(/^```json\s*/i, '').replace(/```\s*$/i, '').trim();
+
+                        candidates = JSON.parse(cleanOutput);
 
                         if (!Array.isArray(candidates)) candidates = [];
 
@@ -10412,7 +10426,7 @@ ${fullText}`;
 
 
 
-                    const modelName = await discoverAvailableGeminiModel(cleanKey);
+                    const modelName = (await discoverAvailableGeminiModel(cleanKey)) || 'gemini-2.5-flash';
 
                     const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent`;
 
@@ -10877,6 +10891,8 @@ ${fullText}`;
                     viewerLanguages.set(conn, msg.lang);
                     viewerLastPongMap.set(conn, Date.now());
                     updateViewerCount();
+                    // 言語切替時にもホスト保持の最新翻訳履歴（translations/englishText）を即時再同期
+                    sendRecentHistoryToViewer(conn);
                 }
             });
 
@@ -10936,7 +10952,7 @@ ${fullText}`;
                         updateHostSignalingUI('ready', '新規受付中');
                     }
                 }
-            }, 15000);
+            }, 5000);
         }
 
         function initPeerHost(customPeerId) {
@@ -11054,6 +11070,22 @@ ${fullText}`;
         window.addEventListener('pagehide', function() {
             if (isHost && peer && !peer.destroyed) {
                 try { peer.destroy(); } catch(e){}
+            }
+        });
+
+        // ホスト復帰時のシグナリング即時再接続（タブ復帰・電波回復時）
+        document.addEventListener('visibilitychange', function() {
+            if (isHost && !document.hidden && peer && peer.disconnected && !peer.destroyed) {
+                console.log('[Host] タブ復帰を検知。シグナリングサーバーへ即座に再接続します。');
+                updateHostSignalingUI('reconnecting', 'シグナリング復旧中...');
+                try { peer.reconnect(); } catch(e){}
+            }
+        });
+        window.addEventListener('online', function() {
+            if (isHost && peer && peer.disconnected && !peer.destroyed) {
+                console.log('[Host] ネットワークオンライン復帰を検知。シグナリングサーバーへ即座に再接続します。');
+                updateHostSignalingUI('reconnecting', 'シグナリング復旧中...');
+                try { peer.reconnect(); } catch(e){}
             }
         });
 
@@ -11313,19 +11345,28 @@ ${fullText}`;
             // 安全に handleRecognizedChunk を呼ぶヘルパー
             const dispatchSentence = (s) => {
                 if (!s || !s.trim()) return;
-                console.log('[Gemini 3.5 Live] Dispatching sentence:', s);
+                const cleanS = s.trim();
+
+                // 直前に排出した文と全く同一の文が連続した場合はスキップ（重複防止）
+                if (cleanS === lastDispatchedLiveSentence) {
+                    console.log('[Gemini 3.5 Live] 直前排出文と同一のためスキップ:', cleanS);
+                    return;
+                }
+                lastDispatchedLiveSentence = cleanS;
+
+                console.log('[Gemini 3.5 Live] Dispatching sentence:', cleanS);
                 if (typeof handleRecognizedChunk === 'function') {
-                    handleRecognizedChunk(s);
+                    handleRecognizedChunk(cleanS);
                 } else if (typeof window.handleRecognizedChunk === 'function') {
-                    window.handleRecognizedChunk(s);
+                    window.handleRecognizedChunk(cleanS);
                 } else {
                     console.warn('[Gemini 3.5 Live] handleRecognizedChunk is not yet ready');
                 }
 
                 // ✝️ アーメン検知ロジック（祈りや証、お話の結び）
                 // 文末が「アーメン」「アーメン。」「アーメン！」「amen.」等で終わるか、単独で発話された場合
-                const isAmen = /(アーメン|あーめん|amen)[。！？\.\!\?\s]*$/i.test(s.trim()) ||
-                               /(^|[\s、,])(アーメン|あーめん|amen)([。！？\.\!\?\s]|$)/i.test(s.trim());
+                const isAmen = /(アーメン|あーめん|amen)[。！？\.\!\?\s]*$/i.test(cleanS) ||
+                               /(^|[\s、,])(アーメン|あーめん|amen)([。！？\.\!\?\s]|$)/i.test(cleanS);
                 if (isAmen && isLiveTranscribing && !isRefreshingLiveWs) {
                     console.log('[Gemini 3.5 Live] ✝️ アーメンを検知しました。話者交代の沈黙（1.5秒後）にセッションをシームレス再接続します。');
                     if (liveAmenReconnectTimeout) clearTimeout(liveAmenReconnectTimeout);
@@ -11337,7 +11378,7 @@ ${fullText}`;
                 }
             };
 
-            // 複数文一括噴出防止: 1文目は遅延0ms即時配信、2文目以降は自然な間隔（700ms）で順次排出
+            // 複数文一括噴出防止: 1文目は遅延0ms即時配信、2文目以降はテンポ良い間隔（250ms）で順次排出
             const enqueueSentenceOrDispatch = (s, isImmediate = false) => {
                 if (!s || !s.trim()) return;
                 if (isImmediate && liveSentenceDispatchQueue.length === 0) {
@@ -11355,7 +11396,7 @@ ${fullText}`;
                             clearInterval(liveSentenceDispatchTimer);
                             liveSentenceDispatchTimer = null;
                         }
-                    }, 700);
+                    }, 250);
                 }
             };
 
@@ -13448,6 +13489,8 @@ ${fullText}`;
 
                 peerConnectionStatus.className = 'w-2 h-2 rounded-full bg-emerald-400';
                 peerStatusText.textContent = s.peerConnected;
+                const manualReconnectBtn = document.getElementById('viewerManualReconnectBtn');
+                if (manualReconnectBtn) manualReconnectBtn.classList.add('hidden');
 
                 const placeholder = document.getElementById('captionPlaceholder');
                 if (placeholder) {
@@ -13613,13 +13656,30 @@ ${fullText}`;
                         console.error('Viewer update_caption error:', err);
                     });
                 } else if (data.type === 'sync_history' && Array.isArray(data.history)) {
-                    // 途中参加・再接続時のバックログ自動補填同期
+                    // 途中参加・再接続時、および言語切替時のバックログ自動補填同期
                     viewerCaptionQueue = viewerCaptionQueue.then(async () => {
                         const targetLang = targetLangSelect ? targetLangSelect.value : 'en';
+                        let hasUpdatedExisting = false;
                         for (const item of data.history) {
                             if (!item || !item.id) continue;
                             const exists = viewerCaptionFeed ? viewerCaptionFeed.querySelector(`[data-caption-id="${item.id}"]`) : null;
-                            if (exists) continue; // 既に画面に存在する場合は二重追加しない
+                            if (exists) {
+                                // 既に画面に存在する場合でも、新しい言語の翻訳データがあればデータセットを更新
+                                let updated = false;
+                                if (item.englishText && exists.dataset.enText !== item.englishText) {
+                                    exists.dataset.enText = item.englishText;
+                                    updated = true;
+                                }
+                                if (item.translations && typeof item.translations === 'object') {
+                                    const newTransStr = JSON.stringify(item.translations);
+                                    if (exists.dataset.translations !== newTransStr) {
+                                        exists.dataset.translations = newTransStr;
+                                        updated = true;
+                                    }
+                                }
+                                if (updated) hasUpdatedExisting = true;
+                                continue; // 二重追加はしない
+                            }
 
                             let mainText = item.text || '';
                             let subText = '';
@@ -13647,6 +13707,10 @@ ${fullText}`;
                                 const badgeEl = cardEl.querySelector('.caption-status-badge');
                                 if (badgeEl) badgeEl.innerHTML = getBadgeHtml('ai', targetLang);
                             }
+                        }
+
+                        if (hasUpdatedExisting) {
+                            await rerenderExistingViewerCards(targetLang);
                         }
                     }).catch(err => {
                         console.error('Viewer sync_history error:', err);
@@ -13697,14 +13761,21 @@ ${fullText}`;
 
         let lastViewerReconnectTrigger = 0;
 
-        function scheduleViewerReconnect(recreatePeer) {
+        function scheduleViewerReconnect(recreatePeer, immediate = false) {
             // H3修正: recreatePeer が true の場合、次回実行フラグを昇格
             if (recreatePeer) {
                 pendingViewerRecreatePeer = true;
             }
 
-            // H3修正: 既に再接続タイマーが待機中なら、タイマーを重複発火・二重カウントアップさせずに待つ
-            if (viewerReconnectTimer) {
+            // immediate === true: 既存タイマーを破棄して0秒（100ms）リトライ
+            if (immediate) {
+                if (viewerReconnectTimer) {
+                    clearTimeout(viewerReconnectTimer);
+                    viewerReconnectTimer = null;
+                }
+                reconnectAttemptCount = 0;
+            } else if (viewerReconnectTimer) {
+                // 通常時: 既に再接続タイマーが待機中なら既存スケジュールを維持
                 console.log(`[Viewer] 再接続タイマー待機中のため既存スケジュールを維持 (recreatePeer: ${pendingViewerRecreatePeer})`);
                 return;
             }
@@ -13714,14 +13785,21 @@ ${fullText}`;
 
             reconnectAttemptCount++;
 
-            const delay = Math.min(30000, 3000 * Math.pow(2, reconnectAttemptCount - 1));
-            const delaySec = Math.round(delay / 1000);
+            // 短縮: 最大8秒 (1.5s, 2.25s, 3.375s, 5.06s, 7.59s, 8s...)
+            const delay = immediate ? 100 : Math.min(8000, Math.round(1500 * Math.pow(1.5, reconnectAttemptCount - 1)));
+            const delaySec = Math.max(1, Math.round(delay / 1000));
 
             const lang = targetLangSelect ? targetLangSelect.value : 'en';
             const s = VIEWER_UI_STRINGS[lang] || VIEWER_UI_STRINGS['en'];
 
             peerConnectionStatus.className = 'w-2 h-2 rounded-full bg-amber-400 animate-pulse';
             peerStatusText.textContent = `${s.peerReconnecting} (${reconnectAttemptCount} / ${delaySec}s)`;
+
+            const manualReconnectBtn = document.getElementById('viewerManualReconnectBtn');
+            if (manualReconnectBtn) {
+                manualReconnectBtn.classList.remove('hidden');
+                manualReconnectBtn.onclick = () => scheduleViewerReconnect(true, true);
+            }
 
             // 未接続が長引いた場合（2回目以降の再試行時）、画面に分かりやすいトラブルシューティングヒントを表示
             const placeholder = document.getElementById('captionPlaceholder');
@@ -13730,7 +13808,12 @@ ${fullText}`;
                 placeholder.innerHTML = `
                     <i class="fa-solid fa-tower-broadcast text-3xl mb-3 block text-amber-400 animate-pulse"></i>
                     <div class="text-sm font-bold text-amber-200 mb-1">ホスト（配信PC）に接続中...</div>
-                    <div class="text-xs text-slate-400 mb-3">${escapeHtml(s.peerReconnecting || '再接続試行中')} (${reconnectAttemptCount}回目)</div>
+                    <div class="text-xs text-slate-400 mb-2 flex items-center justify-center gap-2">
+                        <span>${escapeHtml(s.peerReconnecting || '再接続試行中')} (${reconnectAttemptCount}回目)</span>
+                        <button id="placeholderReconnectBtn" type="button" class="px-2 py-0.5 bg-amber-500 hover:bg-amber-400 text-slate-900 font-bold rounded text-xs shadow-xs cursor-pointer flex items-center gap-1">
+                            <i class="fa-solid fa-rotate-right"></i> 今すぐ再接続
+                        </button>
+                    </div>
                     <div class="text-xs text-slate-300 bg-slate-800/90 p-3.5 rounded-xl border border-amber-500/40 text-left space-y-2 max-w-sm mx-auto shadow-md">
                         <div class="font-bold text-amber-300 flex items-center gap-1.5 text-xs">
                             <i class="fa-solid fa-circle-question"></i>
@@ -13747,6 +13830,8 @@ ${fullText}`;
                         </div>
                     </div>
                 `;
+                const phBtn = document.getElementById('placeholderReconnectBtn');
+                if (phBtn) phBtn.onclick = () => scheduleViewerReconnect(true, true);
             }
 
             viewerReconnectTimer = setTimeout(() => {
@@ -13767,6 +13852,21 @@ ${fullText}`;
                 }
             }, delay);
         }
+
+        // スマホ画面スリープ復帰・回線回復時の健全性監視 ＆ 即時0秒リトライ
+        function checkViewerConnectionHealth() {
+            if (isHost) return;
+            const isDisconnected = !hostConnection || !hostConnection.open || (peer && (peer.disconnected || peer.destroyed));
+            if (isDisconnected) {
+                console.log('[Viewer Health] 画面復帰・オンライン時に切断状態を検知。即座に0秒再接続を実行します。');
+                scheduleViewerReconnect(true, true);
+            }
+        }
+        document.addEventListener('visibilitychange', function() {
+            if (!document.hidden) checkViewerConnectionHealth();
+        });
+        window.addEventListener('pageshow', checkViewerConnectionHealth);
+        window.addEventListener('online', checkViewerConnectionHealth);
 
 
 
@@ -14312,7 +14412,7 @@ ${fullText}`;
                 return {
                     type: 'hymn',
                     icon: 'fa-music',
-                    label: `🎵 賛美歌${num}番`,
+                    label: `賛美歌${num}番`,
                     badgeClass: 'bg-emerald-950/80 text-emerald-300 border-emerald-600/50'
                 };
             }
@@ -14381,7 +14481,7 @@ ${fullText}`;
                 return {
                     type: 'scripture',
                     icon: 'fa-book-bible',
-                    label: `📖 ${refStr}`,
+                    label: refStr,
                     badgeClass: 'bg-indigo-950/80 text-indigo-300 border-indigo-600/50'
                 };
             }
