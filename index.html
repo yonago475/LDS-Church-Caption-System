@@ -4870,6 +4870,7 @@ function isIncompletePhrase(text) {
         let liveAmenReconnectTimeout = null; // アーメン検知後の遅延再接続タイマー
         let liveSpeakingDurationMs = 0; // 連続発話時間（ミリ秒）
         let liveSilenceDurationMs = 0;  // 連続沈黙時間（ミリ秒）
+        let liveForceSilenceChunksRemaining = 0; // Google VAD強制確定用ブレス注入チャンク残数
         let liveSentenceDispatchQueue = []; // 複数文一括噴出防止用ストリーミングキュー
         let liveSentenceDispatchTimer = null; // キュー消化タイマー
         let lastDispatchedLiveSentence = ''; // 直前排出文の重複防止用変数
@@ -11763,9 +11764,9 @@ ${fullText}`;
                     return;
                 }
 
-                const sc = data.serverContent || data;
                 const it = sc.inputTranscription || sc.inputAudioTranscription || sc.input_transcription || sc.input_audio_transcription;
                 if (it && typeof it.text === 'string' && it.text) {
+                    console.log(`[Gemini 3.5 Live] 📥 Google ASRテキスト受信 (${it.text.length}文字): "${it.text.slice(0, 30)}..."`);
                     handleLiveTranscribeChunk(it.text);
                 }
             };
@@ -11870,6 +11871,7 @@ ${fullText}`;
                 liveAccumulatorStartTime = null;
                 liveSpeakingDurationMs = 0;
                 liveSilenceDurationMs = 0;
+                liveForceSilenceChunksRemaining = 0;
                 liveSentenceDispatchQueue = [];
                 if (liveSentenceDispatchTimer) {
                     clearInterval(liveSentenceDispatchTimer);
@@ -11921,9 +11923,9 @@ ${fullText}`;
                 // 4. リアルタイム音声送信 ＆ インテリジェントVAD（息継ぎアシスト）
                 const CHUNK_SIZE = 2048;
                 // 静寂（息継ぎ）検知閾値: ゲイン2.2倍後の暗騒音フロア（エアコン・環境ノイズ）をわずかに超える値
-                // 小さな声（通常0.05〜0.1以上）は通し、息継ぎの間の暗騒音（0.015〜0.03）を安全に無音化
-                const SILENCE_THRESHOLD = 0.032;
-                const BREATH_PAUSE_MS = 200; // フェーズ63調律: 200ms以上の静寂でGoogleに明確な沈黙（ゼロPCM）を伝達（子供の素早い息継ぎ対応）
+                // 小さな声（通常0.05〜0.1以上）は通し、息継ぎの間の暗騒音（0.015〜0.035）を安全に無音化
+                const SILENCE_THRESHOLD = 0.038;
+                const BREATH_PAUSE_MS = 180; // 180ms以上の静寂でGoogleに明確な沈黙（ゼロPCM）を伝達
 
                 liveScriptProcessor = liveAudioContext.createScriptProcessor(CHUNK_SIZE, 1, 1);
                 liveScriptProcessor.onaudioprocess = (event) => {
@@ -11958,21 +11960,28 @@ ${fullText}`;
                     const downsampled = downsampleTo16k(inputFloat32, liveAudioContext.sampleRate);
                     const pcm16 = new Int16Array(downsampled.length);
 
-                    // 【インテリジェント・ブレス検知（息継ぎアシスト）- フェーズ63調律】
-                    // 1. 話者が200ms以上息継ぎ（ポーズ）をしている場合:
+                    // 【インテリジェント・ブレス検知 & 4秒強制ブレス・インジェクション】
+                    // 1. 話者が180ms以上息継ぎ（ポーズ）をしている場合:
                     //    環境ノイズがGoogleのサーバーVADを妨害しないよう、完全無音（ゼロPCM）を送信してターン区切りを即座に確定
-                    // 2. 早口で3.8秒以上（3800ms）連続発話し、音の谷間（maxAmp < 0.09）が訪れた場合:
-                    //    元気な子供の大きな声でも言葉の隙間を確実に捉え、わずか1チャンク（約40〜50ms）無音を挟んでGoogleに文確定を促す
-                    // 3. 7秒以上一度も音の谷間がない超連続早口の場合（安全弁）:
-                    //    溜め込み防止のため強制的に1チャンク無音を挟む
                     const isBreathPause = (liveSilenceDurationMs >= BREATH_PAUSE_MS);
-                    const isForcePauseTrigger = (liveSpeakingDurationMs >= 3800 && maxAmp < 0.09) || (liveSpeakingDurationMs >= 7000);
 
-                    if (isBreathPause || isForcePauseTrigger) {
+                    // 2. 早口で連続発話が3.8秒（3800ms）を超え、音の谷間（maxAmp < 0.12）が訪れた場合、
+                    //    または4.5秒（4500ms）一度も途切れず連続発話した場合（安全限界）:
+                    //    たった1チャンク（42ms）ではなく、GoogleサーバーVADが確実に「息継ぎ（ターン終了）」と判定する
+                    //    約400ms（約9チャンク分）の完全無音（ゼロPCM）を連続注入してGoogleに文確定を強制発射させる！
+                    const shouldTriggerBreathInjection = (liveSpeakingDurationMs >= 3800 && maxAmp < 0.12) || (liveSpeakingDurationMs >= 4500);
+                    if (shouldTriggerBreathInjection && liveForceSilenceChunksRemaining <= 0) {
+                        const chunksFor400ms = Math.max(8, Math.round(400 / (chunkMs || 42.6)));
+                        liveForceSilenceChunksRemaining = chunksFor400ms;
+                        liveSpeakingDurationMs = 0;
+                        console.log(`[Gemini 3.5 Live] 🌬️ 4秒ブレス・インジェクション発動: Google VADへ ${chunksFor400ms} チャンク (~400ms) の無音PCMを注入して文確定を促進`);
+                    }
+
+                    if (liveForceSilenceChunksRemaining > 0) {
                         pcm16.fill(0);
-                        if (isForcePauseTrigger) {
-                            liveSpeakingDurationMs = 0;
-                        }
+                        liveForceSilenceChunksRemaining--;
+                    } else if (isBreathPause) {
+                        pcm16.fill(0);
                     } else {
                         for (let i = 0; i < downsampled.length; i++) {
                             const s = Math.max(-1, Math.min(1, downsampled[i]));
@@ -12032,6 +12041,7 @@ ${fullText}`;
                 clearInterval(liveMaxCommitWatchdog);
                 liveMaxCommitWatchdog = null;
             }
+            liveForceSilenceChunksRemaining = 0;
             while (liveSentenceDispatchQueue.length > 0) {
                 const queued = liveSentenceDispatchQueue.shift();
                 if (queued) {
