@@ -4761,38 +4761,28 @@ function isIncompletePhrase(text) {
 
 
 
-        // WebRTC ICE サーバー設定（フェーズ65最適化: 教会Wi-Fi/NAT越え用TLS・TCP TURN最優先 + 厳選STUN）
+        // WebRTC ICE サーバー設定（ステップ3.33: iOS WebKit 向け順序最適化）
+        // 重いTURNが先頭に複数あるとiOSでICE候補収集が詰まるため、①最速STUNを先頭 ②TURNは1エントリに集約 ③プールサイズ2
         const PEER_CONFIG = {
             pingInterval: 5000,
             config: {
                 iceServers: [
-                    // 1. 最優先: 厳格な教会Wi-FiやSymmetric NAT越えのための暗号化TLS/TCP TURNリレー（HTTPSポート443偽装）
-                    {
-                        urls: 'turns:openrelay.metered.ca:443?transport=tcp',
-                        username: 'openrelayproject',
-                        credential: 'openrelayproject'
-                    },
-                    {
-                        urls: 'turn:openrelay.metered.ca:443?transport=tcp',
-                        username: 'openrelayproject',
-                        credential: 'openrelayproject'
-                    },
-                    {
-                        urls: 'turn:openrelay.metered.ca:443',
-                        username: 'openrelayproject',
-                        credential: 'openrelayproject'
-                    },
-                    {
-                        urls: 'turn:openrelay.metered.ca:80',
-                        username: 'openrelayproject',
-                        credential: 'openrelayproject'
-                    },
-                    // 2. 高速直接P2Pのための主要STUNサーバー（探索遅延を防ぐため選りすぐりの3サーバーに厳選）
+                    // 1. 最速: 同一Wi-Fi内直接接続・4G回線のNAT越え用STUN
                     { urls: 'stun:stun.l.google.com:19302' },
-                    { urls: 'stun:stun1.l.google.com:19302' },
-                    { urls: 'stun:stun.cloudflare.com:3478' }
+                    { urls: 'stun:stun.cloudflare.com:3478' },
+                    // 2. 後続: 厳しい教会Wi-Fi/Symmetric NAT越え用TURN（UDP/TCP/TLS 443）
+                    {
+                        urls: [
+                            'turn:openrelay.metered.ca:80',
+                            'turn:openrelay.metered.ca:443',
+                            'turn:openrelay.metered.ca:443?transport=tcp',
+                            'turns:openrelay.metered.ca:443?transport=tcp'
+                        ],
+                        username: 'openrelayproject',
+                        credential: 'openrelayproject'
+                    }
                 ],
-                iceCandidatePoolSize: 4
+                iceCandidatePoolSize: 2
             }
         };
 
@@ -4953,6 +4943,16 @@ function isIncompletePhrase(text) {
         let reconnectAttemptCount = 0;
 
         let viewerConnectionGeneration = 0; // 聴講者側: 接続世代番号（競合・古いタイマーによる誤切断防止）
+
+        // ステップ3.33: 聴講者側 接続失敗原因のリアルタイム自己診断ステータス
+        const viewerDiagState = {
+            signaling: 'pending',      // 'pending' | 'ok' | 'ng'（peer.open 取得可否）
+            signalingErrType: null,    // open前に発生したPeerJSエラー種別
+            hostFound: 'pending',      // 'pending' | 'ok' | 'ng'（peer-unavailable 検知）
+            candidates: { host: 0, srflx: 0, prflx: 0, relay: 0 }, // 生成されたICE候補の種類別件数
+            gatheringDone: false,      // ICE候補収集の完了（または10秒時間切れ）
+            iceState: 'new'            // iceConnectionState
+        };
 
         let activeViewerConnectionTimeout = null; // 聴講者側: 現在試行中の接続タイムアウトID
 
@@ -13552,6 +13552,163 @@ ${fullText}`;
         window.addEventListener('beforeunload', handleViewerLeave);
         window.addEventListener('pagehide', handleViewerLeave);
 
+        // ==================== ステップ3.33: 接続失敗原因のリアルタイム自己診断 ====================
+
+        // シグナリング段階で通信遮断を示すPeerJSエラー種別
+        const VIEWER_SIGNALING_ERR_TYPES = ['network', 'server-error', 'socket-error', 'socket-closed', 'ssl-unavailable', 'unavailable-id'];
+
+        // Peerエラーを診断ステータスへ記録
+        function noteViewerPeerErrorForDiag(err) {
+            const type = err && err.type;
+            if (!type) return;
+            if (type === 'peer-unavailable') {
+                // peer-unavailable はシグナリング接続後にのみ発生するため、シグナリングはOK扱い
+                viewerDiagState.signaling = 'ok';
+                viewerDiagState.hostFound = 'ng';
+            } else if (VIEWER_SIGNALING_ERR_TYPES.includes(type) && viewerDiagState.signaling !== 'ok') {
+                viewerDiagState.signaling = 'ng';
+                viewerDiagState.signalingErrType = type;
+            }
+            refreshViewerDiagPanel();
+        }
+
+        // シグナリング接続成功（peer.open）を記録
+        function noteViewerSignalingOpenForDiag() {
+            viewerDiagState.signaling = 'ok';
+            viewerDiagState.signalingErrType = null;
+            refreshViewerDiagPanel();
+        }
+
+        // ICE候補の種類（host / srflx / prflx / relay）を取得
+        function getIceCandidateType(candidate) {
+            if (!candidate) return null;
+            if (candidate.type) return candidate.type;
+            const m = /\btyp\s+(host|srflx|prflx|relay)\b/.exec(candidate.candidate || '');
+            return m ? m[1] : null;
+        }
+
+        // DataConnection の RTCPeerConnection に診断用リスナーを追加
+        // ※ onicecandidate 等への代入はPeerJS内部のハンドラ（候補のホスト送信・切断処理）を壊すため、必ず addEventListener を使う
+        function attachViewerIceDiagnostics(conn, currentGen) {
+            viewerDiagState.candidates = { host: 0, srflx: 0, prflx: 0, relay: 0 };
+            viewerDiagState.gatheringDone = false;
+            viewerDiagState.iceState = 'new';
+
+            const pc = conn && conn.peerConnection;
+            if (!pc || typeof pc.addEventListener !== 'function') {
+                console.warn('[Viewer診断] peerConnection が取得できないためICE診断をスキップします。');
+                return;
+            }
+
+            const isStale = () => currentGen !== viewerConnectionGeneration;
+            const markGatheringDone = () => {
+                if (isStale() || viewerDiagState.gatheringDone) return;
+                viewerDiagState.gatheringDone = true;
+                const c = viewerDiagState.candidates;
+                console.log(`[Viewer診断] ICE候補収集完了 host:${c.host} srflx:${c.srflx} prflx:${c.prflx} relay:${c.relay}`);
+                refreshViewerDiagPanel();
+            };
+
+            pc.addEventListener('icecandidate', (e) => {
+                if (isStale()) return;
+                if (!e.candidate) { markGatheringDone(); return; } // null候補 = 収集完了
+                const type = getIceCandidateType(e.candidate);
+                if (type && viewerDiagState.candidates.hasOwnProperty(type)) {
+                    viewerDiagState.candidates[type]++;
+                }
+            });
+
+            pc.addEventListener('icegatheringstatechange', () => {
+                if (!isStale() && pc.iceGatheringState === 'complete') markGatheringDone();
+            });
+
+            pc.addEventListener('signalingstatechange', () => {
+                // ホストからの応答（answer）を受信できた = ホストPC発見済
+                if (!isStale() && pc.remoteDescription) {
+                    viewerDiagState.hostFound = 'ok';
+                    refreshViewerDiagPanel();
+                }
+            });
+
+            pc.addEventListener('iceconnectionstatechange', () => {
+                if (isStale()) return;
+                viewerDiagState.iceState = pc.iceConnectionState;
+                refreshViewerDiagPanel();
+            });
+
+            // iOSでは収集完了イベントが来ない場合があるため10秒で打ち切り判定
+            setTimeout(markGatheringDone, 10000);
+        }
+
+        // 自動診断ステータスのHTMLを生成
+        function buildViewerDiagHtml() {
+            const d = viewerDiagState;
+            const roomId = escapeHtml(currentRoomId || '');
+            const row = (label, html) => `
+                <div class="flex flex-col gap-0.5">
+                    <span class="text-[10px] text-slate-400">${label}</span>
+                    <span class="text-[11px] leading-relaxed">${html}</span>
+                </div>`;
+
+            // ① シグナリング通信
+            let sigHtml;
+            if (d.signaling === 'ok') {
+                sigHtml = '<span class="text-emerald-300 font-bold">✅ OK（ID取得済）</span>';
+            } else if (d.signaling === 'ng') {
+                sigHtml = `<span class="text-rose-300 font-bold">❌ NG（教会Wi-FiまたはVPNが通信を遮断中）</span>${d.signalingErrType ? ` <span class="text-slate-500 font-mono">[${escapeHtml(d.signalingErrType)}]</span>` : ''}`;
+            } else {
+                sigHtml = '<span class="text-amber-300">⏳ 応答待ち（届かない場合は教会Wi-FiまたはVPNによる遮断の可能性）</span>';
+            }
+
+            // ② ホストPCの発見
+            let hostHtml;
+            if (d.signaling !== 'ok') {
+                hostHtml = '<span class="text-slate-500">― シグナリング未接続のため確認できません</span>';
+            } else if (d.hostFound === 'ng') {
+                hostHtml = `<span class="text-rose-300 font-bold">❌ ホストPCのルームID「<span class="font-mono">${roomId}</span>」が見つかりません（PC側が待機中か確認してください）</span>`;
+            } else if (d.hostFound === 'ok') {
+                hostHtml = '<span class="text-emerald-300 font-bold">✅ ホスト発見済</span>';
+            } else {
+                hostHtml = '<span class="text-amber-300">⏳ ホストPCを探しています...</span>';
+            }
+
+            // ③ P2P経路の確立
+            const c = d.candidates;
+            const total = c.host + c.srflx + c.prflx + c.relay;
+            const external = c.srflx + c.prflx + c.relay;
+            const counts = `<span class="text-slate-500 font-mono text-[10px]">host:${c.host} / srflx:${c.srflx} / relay:${c.relay} / ICE:${escapeHtml(d.iceState)}</span>`;
+            let p2pHtml;
+            if (d.signaling !== 'ok') {
+                p2pHtml = '<span class="text-slate-500">― シグナリング未接続のため未実施</span>';
+            } else if (d.iceState === 'connected' || d.iceState === 'completed') {
+                p2pHtml = `<span class="text-emerald-300 font-bold">✅ P2P経路確立</span><br>${counts}`;
+            } else if (!d.gatheringDone && external === 0) {
+                p2pHtml = `<span class="text-amber-300">⏳ 通信経路を探索中...</span><br>${counts}`;
+            } else if (external === 0) {
+                p2pHtml = `<span class="text-rose-300 font-bold">⚠️ 端末のVPN・セキュリティアプリ、またはWi-Fi設定によりWebRTC通信がブロックされています。Wi-FiをOFF（4G/5G）にしてお試しください。</span><br>${counts}`;
+            } else if (d.iceState === 'failed' && c.relay > 0) {
+                p2pHtml = `<span class="text-rose-300 font-bold">❌ 中継サーバー（TURN）経由でも接続できませんでした（中継サーバー混雑またはホストPC側ネットワークの制限）</span><br>${counts}`;
+            } else if (d.iceState === 'failed') {
+                p2pHtml = `<span class="text-rose-300 font-bold">❌ 直接接続に失敗し、中継サーバー（TURN）も取得できませんでした。Wi-FiをOFF（4G/5G）にしてお試しください。</span><br>${counts}`;
+            } else {
+                p2pHtml = `<span class="text-emerald-300">✅ 通信経路の候補を取得済（${total}件）</span><br>${counts}`;
+            }
+
+            return `
+                <div class="font-bold text-sky-300 flex items-center gap-1.5 text-xs">
+                    <span>🔍 自動診断ステータス</span>
+                </div>
+                ${row('① シグナリング通信', sigHtml)}
+                ${row('② ホストPCの発見', hostHtml)}
+                ${row('③ P2P経路の確立', p2pHtml)}`;
+        }
+
+        // 再試行画面に診断パネルが表示中であれば最新状態へ更新
+        function refreshViewerDiagPanel() {
+            const panel = document.getElementById('viewerDiagPanel');
+            if (panel) panel.innerHTML = buildViewerDiagHtml();
+        }
+
         // ==================== 指数バックオフ付き自動再接続 (Viewer) ====================
 
         function initPeerViewer(roomId) {
@@ -13617,6 +13774,8 @@ ${fullText}`;
 
             peer.on('open', function() {
 
+                noteViewerSignalingOpenForDiag();
+
                 connectToHost(roomId);
 
             });
@@ -13626,6 +13785,8 @@ ${fullText}`;
             peer.on('error', function(err) {
 
                 console.error('Viewer Peer Error:', err);
+
+                noteViewerPeerErrorForDiag(err);
 
                 // Peer自体が破壊された場合はインスタンスを再生成してから再接続
 
@@ -13740,6 +13901,7 @@ ${fullText}`;
 
                 peer.on('open', function() {
                     if (currentGen === viewerConnectionGeneration) {
+                        noteViewerSignalingOpenForDiag();
                         connectToHost(roomId);
                     }
                 });
@@ -13747,6 +13909,7 @@ ${fullText}`;
                 peer.on('error', function(err) {
                     if (currentGen !== viewerConnectionGeneration) return;
                     console.error('Viewer Peer Error (reconnect):', err);
+                    noteViewerPeerErrorForDiag(err);
                     scheduleViewerReconnect(true);
                 });
 
@@ -13767,6 +13930,13 @@ ${fullText}`;
                 console.error('Failed to create connection to host');
                 scheduleViewerReconnect(false);
                 return;
+            }
+
+            // ステップ3.33: ICE候補の種類・収集状況・接続状態の自己診断（addEventListenerでPeerJS内部ハンドラを保護）
+            try {
+                attachViewerIceDiagnostics(conn, currentGen);
+            } catch (diagErr) {
+                console.warn('[Viewer診断] ICE診断の初期化に失敗:', diagErr);
             }
 
             // 開始から5秒経過しても未接続（conn && !conn.open）の場合、手動「🔄 今すぐ再接続」ボタンを早期表示
@@ -13840,9 +14010,10 @@ ${fullText}`;
                 startViewerHeartbeatWatchdog(conn, currentGen);
 
                 // フェーズC修正: WebRTC層のICE接続状態を直接監視（サイレント切断即時検知）
-                if (conn.peerConnection) {
+                // ステップ3.33: 代入（oniceconnectionstatechange =）はPeerJS内部の切断処理を上書きしてしまうため addEventListener に変更
+                if (conn.peerConnection && typeof conn.peerConnection.addEventListener === 'function') {
                     try {
-                        conn.peerConnection.oniceconnectionstatechange = function() {
+                        conn.peerConnection.addEventListener('iceconnectionstatechange', function() {
                             if (currentGen !== viewerConnectionGeneration) return;
                             const state = conn.peerConnection.iceConnectionState;
                             console.log(`[ICE State Change] ${state}`);
@@ -13850,7 +14021,7 @@ ${fullText}`;
                                 console.warn(`[ICE State Change] 物理WebRTC切断を検知 (${state})。即時再接続をスケジュールします。`);
                                 scheduleViewerReconnect(false);
                             }
-                        };
+                        });
                     } catch(e) {
                         console.warn('ICE state listener error:', e);
                     }
@@ -14190,6 +14361,9 @@ ${fullText}`;
                         <button id="placeholderReconnectBtn" type="button" class="px-2 py-0.5 bg-amber-500 hover:bg-amber-400 text-slate-900 font-bold rounded text-xs shadow-xs cursor-pointer flex items-center gap-1">
                             <i class="fa-solid fa-rotate-right"></i> 今すぐ再接続
                         </button>
+                    </div>
+                    <div id="viewerDiagPanel" class="text-xs text-slate-300 bg-slate-900/90 p-3.5 rounded-xl border border-sky-500/40 text-left space-y-2 max-w-sm mx-auto shadow-md mb-2">
+                        ${buildViewerDiagHtml()}
                     </div>
                     <div class="text-xs text-slate-300 bg-slate-800/90 p-3.5 rounded-xl border border-amber-500/40 text-left space-y-2 max-w-sm mx-auto shadow-md">
                         <div class="font-bold text-amber-300 flex items-center gap-1.5 text-xs">
