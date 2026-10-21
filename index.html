@@ -13640,10 +13640,82 @@ ${fullText}`;
             setTimeout(markGatheringDone, 10000);
         }
 
+        // コピー完了フィードバック維持用タイムスタンプ（パネル再描画で消えないよう保護）
+        let viewerDiagCopiedUntil = 0;
+
+        // クリップボード送信用・原因特定用のテキスト診断レポートを生成
+        function buildViewerDiagReportText() {
+            const d = viewerDiagState;
+            const c = d.candidates;
+            const nowStr = new Date().toLocaleString('ja-JP');
+            const ua = (typeof navigator !== 'undefined' && navigator.userAgent) ? navigator.userAgent : 'unknown';
+            const online = (typeof navigator !== 'undefined' && typeof navigator.onLine === 'boolean') ? navigator.onLine : 'unknown';
+            const netType = (typeof navigator !== 'undefined' && navigator.connection && navigator.connection.effectiveType) ? ` / net:${navigator.connection.effectiveType}` : '';
+            const peerInfo = (typeof peer !== 'undefined' && peer) ? `open:${!!peer.open}, destroyed:${!!peer.destroyed}, disconnected:${!!peer.disconnected}` : 'none';
+            return [
+                '【LDS字幕 接続診断レポート】',
+                `日時: ${nowStr}`,
+                `ルームID: ${currentRoomId || '未設定'} (試行: ${reconnectAttemptCount}回目 / 世代: #${viewerConnectionGeneration})`,
+                `①シグナリング: ${d.signaling} (err: ${d.signalingErrType || 'none'} / peer: ${peerInfo})`,
+                `②ホスト発見: ${d.hostFound}`,
+                `③P2P経路: host:${c.host} / srflx:${c.srflx} / prflx:${c.prflx} / relay:${c.relay} (収集完了:${d.gatheringDone} / ICE:${d.iceState})`,
+                `回線状態: online=${online}${netType}`,
+                `端末UA: ${ua}`
+            ].join('\n');
+        }
+
+        // 診断レポートをクリップボードにコピー（iOS Safari / アプリ内ブラウザ用フォールバック付き）
+        async function copyViewerDiagReport() {
+            const text = buildViewerDiagReportText();
+            let copied = false;
+            try {
+                if (typeof navigator !== 'undefined' && navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+                    await navigator.clipboard.writeText(text);
+                    copied = true;
+                }
+            } catch (e) {
+                console.warn('[Viewer診断] clipboard.writeText 失敗、フォールバックを試行:', e);
+            }
+            if (!copied && typeof document !== 'undefined') {
+                try {
+                    const ta = document.createElement('textarea');
+                    ta.value = text;
+                    ta.setAttribute('readonly', '');
+                    ta.style.position = 'fixed';
+                    ta.style.top = '-9999px';
+                    document.body.appendChild(ta);
+                    ta.select();
+                    ta.setSelectionRange(0, text.length);
+                    copied = document.execCommand('copy');
+                    document.body.removeChild(ta);
+                } catch (e2) {
+                    console.warn('[Viewer診断] execCommand copy 失敗:', e2);
+                }
+            }
+            if (copied) {
+                viewerDiagCopiedUntil = Date.now() + 2000;
+                refreshViewerDiagPanel();
+                setTimeout(() => {
+                    if (Date.now() >= viewerDiagCopiedUntil) {
+                        refreshViewerDiagPanel();
+                    }
+                }, 2050);
+            }
+            return copied;
+        }
+
         // 自動診断ステータスのHTMLを生成
         function buildViewerDiagHtml() {
             const d = viewerDiagState;
             const roomId = escapeHtml(currentRoomId || '');
+            const isCopied = Date.now() < viewerDiagCopiedUntil;
+            const copyBtnHtml = isCopied
+                ? `<button id="viewerDiagCopyBtn" type="button" class="px-2 py-0.5 bg-emerald-500 text-slate-900 font-bold rounded text-[10px] shadow-xs cursor-pointer flex items-center gap-1">
+                        <i class="fa-solid fa-check"></i> コピー完了！
+                   </button>`
+                : `<button id="viewerDiagCopyBtn" type="button" class="px-2 py-0.5 bg-sky-500/20 hover:bg-sky-500/30 border border-sky-400/50 text-sky-200 font-bold rounded text-[10px] shadow-xs cursor-pointer flex items-center gap-1">
+                        <i class="fa-regular fa-copy"></i> 📋 診断情報をコピー
+                   </button>`;
             const row = (label, html) => `
                 <div class="flex flex-col gap-0.5">
                     <span class="text-[10px] text-slate-400">${label}</span>
@@ -13695,18 +13767,29 @@ ${fullText}`;
             }
 
             return `
-                <div class="font-bold text-sky-300 flex items-center gap-1.5 text-xs">
+                <div class="font-bold text-sky-300 flex items-center justify-between gap-1.5 text-xs">
                     <span>🔍 自動診断ステータス</span>
+                    ${copyBtnHtml}
                 </div>
                 ${row('① シグナリング通信', sigHtml)}
                 ${row('② ホストPCの発見', hostHtml)}
                 ${row('③ P2P経路の確立', p2pHtml)}`;
         }
 
+        // 診断コピーボタンへクリックイベントをバインド
+        function bindViewerDiagCopyBtn() {
+            if (typeof document === 'undefined') return;
+            const copyBtn = document.getElementById('viewerDiagCopyBtn');
+            if (copyBtn) copyBtn.onclick = () => copyViewerDiagReport();
+        }
+
         // 再試行画面に診断パネルが表示中であれば最新状態へ更新
         function refreshViewerDiagPanel() {
             const panel = document.getElementById('viewerDiagPanel');
-            if (panel) panel.innerHTML = buildViewerDiagHtml();
+            if (panel) {
+                panel.innerHTML = buildViewerDiagHtml();
+                bindViewerDiagCopyBtn();
+            }
         }
 
         // ==================== 指数バックオフ付き自動再接続 (Viewer) ====================
@@ -14383,6 +14466,7 @@ ${fullText}`;
                 `;
                 const phBtn = document.getElementById('placeholderReconnectBtn');
                 if (phBtn) phBtn.onclick = () => scheduleViewerReconnect(true, true);
+                bindViewerDiagCopyBtn();
             }
 
             viewerReconnectTimer = setTimeout(() => {
