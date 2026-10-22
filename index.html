@@ -4761,22 +4761,28 @@ function isIncompletePhrase(text) {
 
 
 
-        // WebRTC ICE サーバー設定（ステップ3.33: iOS WebKit 向け順序最適化）
-        // 重いTURNが先頭に複数あるとiOSでICE候補収集が詰まるため、①最速STUNを先頭 ②TURNは1エントリに集約 ③プールサイズ2
+        // WebRTC ICE サーバー設定（ステップ3.34: キャリアNAT救済用 TLS/TCP 443 TURN 独立最適化）
+        // ①最速STUNを先頭維持（通常回線は爆速直接接続）
+        // ②楽天モバイル等のSymmetric NAT救済用 turns:443?transport=tcp を独立エントリとして明示（WebKitスキップ防止・relay確実生成）
+        // ③後続フォールバック用TCP/UDP TURN
         const PEER_CONFIG = {
             pingInterval: 5000,
             config: {
                 iceServers: [
-                    // 1. 最速: 同一Wi-Fi内直接接続・4G回線のNAT越え用STUN
+                    // 1. 最速: 直接P2P接続用STUN（通常Wi-Fi・光回線は遅延ゼロで即時直結）
                     { urls: 'stun:stun.l.google.com:19302' },
                     { urls: 'stun:stun.cloudflare.com:3478' },
-                    // 2. 後続: 厳しい教会Wi-Fi/Symmetric NAT越え用TURN（UDP/TCP/TLS 443）
+                    // 2. 最優先中継: キャリアNAT（楽天モバイル・ドコモ等）救済用 TLS/TCP 443（独立エントリで確実生成）
+                    {
+                        urls: 'turns:openrelay.metered.ca:443?transport=tcp',
+                        username: 'openrelayproject',
+                        credential: 'openrelayproject'
+                    },
+                    // 3. 後続フォールバック中継: 標準TCP/UDP 443
                     {
                         urls: [
-                            'turn:openrelay.metered.ca:80',
-                            'turn:openrelay.metered.ca:443',
                             'turn:openrelay.metered.ca:443?transport=tcp',
-                            'turns:openrelay.metered.ca:443?transport=tcp'
+                            'turn:openrelay.metered.ca:443'
                         ],
                         username: 'openrelayproject',
                         credential: 'openrelayproject'
