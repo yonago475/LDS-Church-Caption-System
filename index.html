@@ -5000,6 +5000,17 @@ function isIncompletePhrase(text) {
 
         // Live API セッション再接続・キープアライブの追跡統計
         const liveReconnectEvents = [];
+
+        // ステップ3.35: ホスト側 PeerJS（スマホ配信用シグナリング）イベント履歴
+        // 「ID解放待ち」等の発生経緯を診断ログで後から追跡できるよう記録する
+        const hostPeerEvents = [];
+        function logHostPeerEvent(type, detail) {
+            const now = new Date();
+            const timeStr = now.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) + '.' + String(now.getMilliseconds()).padStart(3, '0');
+            hostPeerEvents.push({ time: timeStr, type, detail: detail || '' });
+            if (hostPeerEvents.length > 300) hostPeerEvents.shift();
+            console.log(`[Host Peer] ${type} ${detail || ''}`);
+        }
         let liveReconnectStats = {
             amenCount: 0,
             silenceCount: 0,
@@ -7054,7 +7065,7 @@ function isIncompletePhrase(text) {
                         `エクスポート日時: ${now.toLocaleString('ja-JP')}\n` +
                         `==================================================\n` +
                         `【システム稼働サマリー】\n` +
-                        `・総処理チャンク数: ${diagnosticTelemetryLogs.length} 件\n` +
+                        `・総処理チャンク数: ${diagnosticTelemetryLogs.filter(e => e.type !== 'ASR_CORRECTION_CANDIDATE').length} 件（ASR確定訂正候補: ${diagnosticTelemetryLogs.filter(e => e.type === 'ASR_CORRECTION_CANDIDATE').length} 件）\n` +
                         `・AI文脈補正成功: ${aiStats.aiCorrected} 件\n` +
                         `・辞書フォールバック: ${aiStats.dictFallbacks} 件\n` +
                         `・平均AI応答速度: ${avgLatency} ms\n` +
@@ -7074,11 +7085,24 @@ function isIncompletePhrase(text) {
                                        `  └─ 結果: ${e.success ? `✅ 成功 (${e.latencyMs}ms)` : `❌ 失敗 (${e.errorMsg || '接続エラー'})`}\n`;
                               }).join('') + '\n') +
                         `==================================================\n` +
+                        `【スマホ配信（PeerJS シグナリング）イベント履歴】\n` +
+                        (hostPeerEvents.length === 0
+                            ? `・記録なし\n\n`
+                            : hostPeerEvents.map(e => `[${e.time}] ${e.type}${e.detail ? ` - ${e.detail}` : ''}\n`).join('') + '\n') +
+                        `==================================================\n` +
                         `【ミリ秒単位の詳細処理トレース】\n\n`;
 
 
 
                     diagnosticTelemetryLogs.forEach(entry => {
+
+                        // ステップ3.35: ASR確定訂正候補（ステップ3.32）は専用書式で出力（#undefined 表示の修正）
+                        if (entry.type === 'ASR_CORRECTION_CANDIDATE') {
+                            diagText += `[${entry.timestamp}] 📝 ASR確定訂正候補（重複抑制・類似度 ${entry.similarity}%）\n` +
+                                `  ├─ 先行表示(仮): "${entry.interimText}"\n` +
+                                `  └─ 確定テキスト: "${entry.finalText}"\n\n`;
+                            return;
+                        }
 
                         diagText += `[${entry.time}] #${entry.id} (RPM窓: ${entry.rpmCount}/15, 判定: ${entry.action})\n` +
 
@@ -11110,6 +11134,105 @@ ${fullText}`;
         let hostPeerRetryCount = 0;
         let hostSignalingWatchdogTimer = null;
 
+        // ステップ3.35: ホスト固定トークン（ID解放待ちループの根本対策）
+        // PeerJSサーバーは「同じID＋同じトークン」の再接続なら古いセッションが残っていても即座に引き継がせる。
+        // 従来は Peer を作り直すたびにランダムなトークンが生成されたため、通信断の後に古いセッション（自分自身）が
+        // サーバーに残っている間は「ID使用中（unavailable-id）」で弾かれ続けていた。
+        // このブラウザ専用の固定トークンを使うことで、自分の古いセッションには即座に上書き復帰でき、
+        // 別の端末（トークンが違う）からのルームID横取りは従来どおり拒否される。
+        function getHostPeerToken() {
+            let token = safeLocalStorageGet('lds_caption_peer_token');
+            if (!token || !/^[a-z0-9]{8,64}$/.test(token)) {
+                const rand = () => Math.random().toString(36).slice(2);
+                token = (rand() + rand()).replace(/[^a-z0-9]/g, '').slice(0, 24);
+                safeLocalStorageSet('lds_caption_peer_token', token);
+            }
+            return token;
+        }
+
+        // ステップ3.35: 同じブラウザ内の「ホスト画面の二重起動」ガード
+        // 固定トークンにより同一ブラウザの2つ目のタブは1つ目のセッションを奪えるため、
+        // 2つのタブが交互に奪い合わないよう、最後に開いたタブだけがホストを続ける。
+        const HOST_TAB_ID = Math.random().toString(36).slice(2);
+        let hostTabChannel = null;
+        let hostYieldedToOtherTab = false;
+        let hostPeerStuckSince = 0;
+
+        function setupHostTabGuard() {
+            if (hostTabChannel || typeof BroadcastChannel === 'undefined') return;
+            try {
+                hostTabChannel = new BroadcastChannel('lds_caption_host');
+                hostTabChannel.onmessage = (e) => {
+                    const msg = e && e.data;
+                    if (!isHost || !msg || msg.type !== 'host-claim' || msg.tabId === HOST_TAB_ID) return;
+                    yieldHostToOtherTab();
+                };
+            } catch (e) {
+                console.warn('[Host] BroadcastChannel 初期化失敗:', e);
+            }
+        }
+
+        function claimHostTab() {
+            setupHostTabGuard();
+            hostYieldedToOtherTab = false;
+            if (hostTabChannel) {
+                try { hostTabChannel.postMessage({ type: 'host-claim', tabId: HOST_TAB_ID }); } catch (e) {}
+            }
+        }
+
+        // ステップ3.35: PeerJS 1.5.4 の「不死身ゾンビWebSocket」リークを100%防ぐ安全な破棄ヘルパー
+        // 【原因の核心】PeerJS 1.5.4 の destroy() は内部で
+        //   ① this.disconnect()  ➔ この時点では _destroyed === false のまま 'disconnected' イベントを同期発火！
+        //   ② this._cleanup()    ➔ socket.removeAllListeners() だけ実行し、socket.close() を呼ばない！
+        //   ③ this._destroyed = true
+        // という順序で動くため、peer.on('disconnected') 内で !peer.destroyed をチェックして peer.reconnect() を呼ぶと、
+        // destroy() の最中に新しいWebSocketが生成され、直後にリスナーだけ剥がされて5秒ごとにHEARTBEATを送り続ける
+        // 「誰にも止められない不死身のゾンビWebSocket」が誕生し、自分自身のIDを永久にロックしてしまう。
+        // これを防ぐため、destroy() を呼ぶ前に必ず _isDestroying フラグを立て、全イベントリスナーを解除し、
+        // destroy() の後にも内部ソケットを明示的に close() する。
+        function safeDestroyPeer(p) {
+            if (!p) return;
+            p._isDestroying = true;
+            try {
+                if (typeof p.removeAllListeners === 'function') {
+                    p.removeAllListeners('disconnected');
+                    p.removeAllListeners('error');
+                    p.removeAllListeners('open');
+                }
+            } catch (e) {}
+            try {
+                if (!p.destroyed) p.destroy();
+            } catch (e) {
+                console.warn('safeDestroyPeer error:', e);
+            }
+            try {
+                if (p.socket && typeof p.socket.close === 'function') {
+                    p.socket.close();
+                }
+            } catch (e) {}
+        }
+
+        function yieldHostToOtherTab() {
+            if (hostYieldedToOtherTab) return;
+            hostYieldedToOtherTab = true;
+            logHostPeerEvent('TAB_YIELD', '同じブラウザの別タブでホスト画面が開かれたため、このタブの配信を停止');
+            if (hostPeerRetryTimer) { clearTimeout(hostPeerRetryTimer); hostPeerRetryTimer = null; }
+            if (hostSignalingWatchdogTimer) { clearInterval(hostSignalingWatchdogTimer); hostSignalingWatchdogTimer = null; }
+            if (peer) { safeDestroyPeer(peer); }
+            if (roomIdDisplay) {
+                roomIdDisplay.textContent = '⚠️ 別タブで配信中';
+                roomIdDisplay.className = "bg-rose-100 text-rose-900 border border-rose-300 px-3 py-1 rounded text-xs font-mono font-bold block truncate";
+            }
+            updateHostSignalingUI('error', 'このタブは停止中（別タブでホスト画面が開かれました）');
+            alert('同じブラウザの別のタブでホスト画面が開かれたため、このタブのスマホ配信を停止しました。\n\n配信は新しく開いたタブで続いています。このタブは閉じてください。');
+        }
+
+        // 内部リトライ用（別タブに譲った後は自動で再起動しない）
+        function retryInitPeerHost(peerId) {
+            if (hostYieldedToOtherTab || !isHost) return;
+            initPeerHost(peerId, true);
+        }
+
         function updateHostSignalingUI(status, label) {
             const el = document.getElementById('hostSignalingStatus');
             if (!el) return;
@@ -11130,12 +11253,15 @@ ${fullText}`;
 
         function startHostSignalingWatchdog(savedPeerId) {
             if (hostSignalingWatchdogTimer) clearInterval(hostSignalingWatchdogTimer);
+            hostPeerStuckSince = 0;
             hostSignalingWatchdogTimer = setInterval(() => {
-                if (!isHost) return;
+                if (!isHost || hostYieldedToOtherTab) return;
                 // peer が切断状態のまま放置されていないか監視
                 if (peer && !peer.destroyed) {
                     if (peer.disconnected) {
+                        hostPeerStuckSince = 0;
                         console.warn('[Host Watchdog] シグナリング切断を検知。peer.reconnect() を実行します。');
+                        logHostPeerEvent('WATCHDOG_RECONNECT', 'シグナリング切断を検知して再接続');
                         updateHostSignalingUI('reconnecting', 'シグナリング自動復旧中...');
                         try {
                             peer.reconnect();
@@ -11143,24 +11269,34 @@ ${fullText}`;
                             console.warn('Watchdog reconnect error:', e.message);
                         }
                     } else if (peer.open) {
+                        hostPeerStuckSince = 0;
                         updateHostSignalingUI('ready', '新規受付中');
+                    } else {
+                        // ステップ3.35: 再接続を開始したまま20秒以上 open にならない「宙ぶらりん」状態は作り直す
+                        // （固定トークンにより、作り直しても自分の古いセッションに即座に上書き復帰できる）
+                        if (!hostPeerStuckSince) hostPeerStuckSince = Date.now();
+                        if (Date.now() - hostPeerStuckSince > 20000) {
+                            hostPeerStuckSince = 0;
+                            logHostPeerEvent('WATCHDOG_RECREATE', '20秒以上シグナリング未接続のためPeerを再生成');
+                            retryInitPeerHost(savedPeerId);
+                        }
                     }
                 }
             }, 5000);
         }
 
-        function initPeerHost(customPeerId) {
+        function initPeerHost(customPeerId, isInternalRetry = false) {
+            // ユーザー操作・初回起動時はこのタブがホストを担当することを他タブへ宣言
+            if (!isInternalRetry) claimHostTab();
+            if (hostYieldedToOtherTab) return;
+
             if (hostPeerRetryTimer) {
                 clearTimeout(hostPeerRetryTimer);
                 hostPeerRetryTimer = null;
             }
 
-            if (peer && !peer.destroyed) {
-                try {
-                    peer.destroy();
-                } catch (e) {
-                    console.warn('Peer destroy error during re-init:', e);
-                }
+            if (peer) {
+                safeDestroyPeer(peer);
             }
 
             let savedPeerId = customPeerId || safeLocalStorageGet('lds_caption_peer_id');
@@ -11175,10 +11311,15 @@ ${fullText}`;
 
             updateHostSignalingUI('reconnecting', 'シグナリング接続中...');
 
-            peer = new Peer(savedPeerId, PEER_CONFIG);
+            // ステップ3.35: このブラウザ専用の固定トークンを付与（自分の古いセッションへの即時上書き復帰）
+            const currentPeer = new Peer(savedPeerId, { ...PEER_CONFIG, token: getHostPeerToken() });
+            peer = currentPeer;
+            logHostPeerEvent('PEER_CREATE', `ID: ${savedPeerId}${isInternalRetry ? '（自動再試行）' : ''}`);
 
-            peer.on('open', function(id) {
+            currentPeer.on('open', function(id) {
+                if (currentPeer._isDestroying || peer !== currentPeer) return;
                 hostPeerRetryCount = 0;
+                logHostPeerEvent('OPEN', `ID: ${id} 新規受付開始`);
                 safeLocalStorageSet('lds_caption_peer_id', id);
                 if (roomIdDisplay) {
                     roomIdDisplay.textContent = id;
@@ -11190,65 +11331,72 @@ ${fullText}`;
                 startHostHeartbeat();
             });
 
-            peer.on('connection', attachHostConnectionListeners);
+            currentPeer.on('connection', attachHostConnectionListeners);
 
-            peer.on('disconnected', function() {
+            currentPeer.on('disconnected', function() {
+                // ステップ3.35: destroy() の内部で呼ばれる disconnect() からの同期発火を100%遮断（ゾンビWebSocket防止）
+                if (hostYieldedToOtherTab || !currentPeer || currentPeer.destroyed || currentPeer._isDestroying || peer !== currentPeer) return;
                 console.warn('Host Peer disconnected from signaling server. Reconnecting...');
+                logHostPeerEvent('DISCONNECTED', 'シグナリングサーバーとの通信が切断（接続済みスマホのP2P通信は継続）');
                 updateHostSignalingUI('reconnecting', 'シグナリング再接続中...');
-                if (peer && !peer.destroyed) {
-                    try {
-                        peer.reconnect();
-                    } catch(e) {
-                        console.warn('Host peer.reconnect() error:', e.message);
-                    }
+                try {
+                    currentPeer.reconnect();
+                } catch(e) {
+                    console.warn('Host peer.reconnect() error:', e.message);
                 }
             });
 
-            peer.on('error', function(err) {
+            currentPeer.on('error', function(err) {
                 console.error('PeerJS Host Error:', err);
+                if (hostYieldedToOtherTab || currentPeer._isDestroying || peer !== currentPeer) return;
+                logHostPeerEvent('ERROR', `${err.type || 'unknown'}: ${err.message || ''}`);
+
+                if (err.type === 'peer-unavailable') {
+                    // 聴講者側の接続先に関するエラーでありホストのシグナリングには影響しないため無視
+                    return;
+                }
 
                 if (err.type === 'unavailable-id') {
-                    // 【重要改善】勝手にランダムIDに変えて部屋番号を捨てるのを完全廃止！
-                    // 直前のリロード等による残存セッション解放を待ち、元の固定ID（lds-yonago等）を死守して再試行
+                    // ステップ3.35: 固定トークン＋safeDestroyPeer導入後、このエラーは「自分以外の端末・ブラウザ」が同じルームIDで
+                    // ホスト中であることを意味する（自分の古いセッションなら即座に上書き復帰できるため）。
+                    // 相手が閉じられた時に自動で引き継げるよう、間隔を空けて（15秒〜最大60秒）再試行する。
                     hostPeerRetryCount++;
-                    const retryDelaySec = Math.min(3 + hostPeerRetryCount * 2, 10);
-                    console.warn(`[PeerJS] ルームID「${savedPeerId}」は現在一時的に使用中です（直前の接続解放待ち）。${retryDelaySec}秒後に再試行します...`);
+                    const retryDelaySec = Math.min(15 * hostPeerRetryCount, 60);
+                    console.warn(`[PeerJS] ルームID「${savedPeerId}」は別の端末・ブラウザで使用中です。${retryDelaySec}秒後に再試行します...`);
 
                     if (roomIdDisplay) {
-                        roomIdDisplay.textContent = `⏳ ID解放待ち... (${retryDelaySec}秒後に再接続)`;
+                        roomIdDisplay.textContent = `⚠️ 別の端末で使用中 (${retryDelaySec}秒後に再試行)`;
                         roomIdDisplay.className = "bg-amber-100 text-amber-900 border border-amber-300 px-3 py-1 rounded text-xs font-mono select-all font-bold block truncate animate-pulse";
                     }
-                    updateHostSignalingUI('waiting', `ID解放待ち (${retryDelaySec}秒)`);
+                    updateHostSignalingUI('waiting', `別のPC・スマホ・ブラウザで「${savedPeerId}」のホスト画面が開かれていないか確認してください`);
 
-                    if (peer && !peer.destroyed) {
-                        try { peer.destroy(); } catch(e){}
-                    }
+                    safeDestroyPeer(currentPeer);
 
                     hostPeerRetryTimer = setTimeout(() => {
-                        initPeerHost(savedPeerId);
+                        hostPeerRetryTimer = null;
+                        retryInitPeerHost(savedPeerId);
                     }, retryDelaySec * 1000);
                 } else {
                     // H4修正: unavailable-id 以外のネットワーク/サーバーエラーでも自動再接続をスケジュール
+                    // ステップ3.35: まずは既存セッションのまま reconnect（接続済みスマホを切らない）、
+                    // 既に peer.open === true に自然復旧している場合は絶対に destroy しない！
                     hostPeerRetryCount++;
                     const retryDelaySec = Math.min(3 + hostPeerRetryCount * 2, 15);
-                    console.warn(`[PeerJS Host] エラー「${err.type || err.message}」を検知。${retryDelaySec}秒後にシグナリング再試行...`);
+                    console.warn(`[PeerJS Host] エラー「${err.type || err.message}」を検知。${retryDelaySec}秒後にシグナリング状態を確認...`);
                     updateHostSignalingUI('reconnecting', `再接続試行中 (${retryDelaySec}秒後)`);
-
-                    if (peer && !peer.destroyed && peer.disconnected) {
-                        try {
-                            peer.reconnect();
-                            return;
-                        } catch(e){}
-                    }
 
                     if (!hostPeerRetryTimer) {
                         hostPeerRetryTimer = setTimeout(() => {
                             hostPeerRetryTimer = null;
-                            if (peer && !peer.destroyed && peer.disconnected) {
-                                try { peer.reconnect(); } catch(e){ initPeerHost(savedPeerId); }
-                            } else {
-                                initPeerHost(savedPeerId);
+                            if (hostYieldedToOtherTab) return;
+                            if (peer && !peer.destroyed && !peer._isDestroying && peer.open) {
+                                updateHostSignalingUI('ready', '新規受付中');
+                                return; // 既に自然復旧済みなら何もしない（稼働中のPeerを壊さない）
                             }
+                            if (peer && !peer.destroyed && !peer._isDestroying && peer.disconnected) {
+                                try { peer.reconnect(); return; } catch(e){}
+                            }
+                            retryInitPeerHost(savedPeerId);
                         }, retryDelaySec * 1000);
                     }
                 }
@@ -11257,30 +11405,35 @@ ${fullText}`;
 
         // M4修正: ホスト画面終了/リロード時の即時セッション破棄（ID解放通知）
         window.addEventListener('beforeunload', function() {
-            if (isHost && peer && !peer.destroyed) {
-                try { peer.destroy(); } catch(e){}
+            if (isHost && peer) {
+                safeDestroyPeer(peer);
             }
         });
         window.addEventListener('pagehide', function() {
-            if (isHost && peer && !peer.destroyed) {
-                try { peer.destroy(); } catch(e){}
+            if (isHost && peer) {
+                safeDestroyPeer(peer);
             }
         });
 
         // ホスト復帰時のシグナリング即時再接続（タブ復帰・電波回復時）
         document.addEventListener('visibilitychange', function() {
-            if (isHost && !document.hidden && peer && peer.disconnected && !peer.destroyed) {
+            if (isHost && !hostYieldedToOtherTab && !document.hidden && peer && peer.disconnected && !peer.destroyed) {
                 console.log('[Host] タブ復帰を検知。シグナリングサーバーへ即座に再接続します。');
+                logHostPeerEvent('VISIBLE_RECONNECT', 'タブ復帰を検知して再接続');
                 updateHostSignalingUI('reconnecting', 'シグナリング復旧中...');
                 try { peer.reconnect(); } catch(e){}
             }
         });
         window.addEventListener('online', function() {
-            if (isHost && peer && peer.disconnected && !peer.destroyed) {
+            if (isHost && !hostYieldedToOtherTab) logHostPeerEvent('NETWORK_ONLINE', 'PCのネットワーク接続が復帰');
+            if (isHost && !hostYieldedToOtherTab && peer && peer.disconnected && !peer.destroyed) {
                 console.log('[Host] ネットワークオンライン復帰を検知。シグナリングサーバーへ即座に再接続します。');
                 updateHostSignalingUI('reconnecting', 'シグナリング復旧中...');
                 try { peer.reconnect(); } catch(e){}
             }
+        });
+        window.addEventListener('offline', function() {
+            if (isHost && !hostYieldedToOtherTab) logHostPeerEvent('NETWORK_OFFLINE', 'PCのネットワーク接続が切断');
         });
 
         function generateQRCode(peerId) {
@@ -13547,8 +13700,8 @@ ${fullText}`;
                         hostConnection.close();
                     } catch(e){}
                 }
-                if (peer && !peer.destroyed) {
-                    try { peer.destroy(); } catch(e){}
+                if (peer) {
+                    safeDestroyPeer(peer);
                 }
             } else {
                 // ホスト側がリロード・閉じる際の同期セッションバックアップ保護
@@ -13836,8 +13989,11 @@ ${fullText}`;
                 return;
             }
 
+            let currentViewerPeer = null;
             try {
-                peer = new Peer(PEER_CONFIG);
+                if (peer) safeDestroyPeer(peer);
+                currentViewerPeer = new Peer(PEER_CONFIG);
+                peer = currentViewerPeer;
             } catch (peerInitErr) {
                 console.error('Failed to initialize PeerJS:', peerInitErr);
                 if (peerConnectionStatus) {
@@ -13861,8 +14017,8 @@ ${fullText}`;
 
 
 
-            peer.on('open', function() {
-
+            currentViewerPeer.on('open', function() {
+                if (currentViewerPeer._isDestroying || peer !== currentViewerPeer) return;
                 noteViewerSignalingOpenForDiag();
 
                 connectToHost(roomId);
@@ -13871,8 +14027,8 @@ ${fullText}`;
 
 
 
-            peer.on('error', function(err) {
-
+            currentViewerPeer.on('error', function(err) {
+                if (currentViewerPeer._isDestroying || peer !== currentViewerPeer) return;
                 console.error('Viewer Peer Error:', err);
 
                 noteViewerPeerErrorForDiag(err);
@@ -13893,13 +14049,13 @@ ${fullText}`;
 
 
 
-            peer.on('disconnected', function() {
-
+            currentViewerPeer.on('disconnected', function() {
+                if (!currentViewerPeer || currentViewerPeer.destroyed || currentViewerPeer._isDestroying || peer !== currentViewerPeer) return;
                 console.warn('Viewer Peer disconnected from signaling server. Reconnecting...');
 
-                if (!peer.destroyed) {
+                if (!currentViewerPeer.destroyed) {
 
-                    peer.reconnect();
+                    currentViewerPeer.reconnect();
 
                 } else {
 
@@ -14483,9 +14639,9 @@ ${fullText}`;
                 pendingViewerRecreatePeer = false;
 
                 if (shouldRecreate) {
-                    // Peerインスタンスを完全再生成してから接続
-                    if (peer && !peer.destroyed) {
-                        try { peer.destroy(); } catch(e){ console.warn('peer.destroy error:', e.message); }
+                    // Peerインスタンスを安全に完全破棄してから再生成・接続
+                    if (peer) {
+                        safeDestroyPeer(peer);
                     }
                     initPeerViewer(currentRoomId);
                 } else {
