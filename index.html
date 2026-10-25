@@ -1389,6 +1389,9 @@
 
             // --- 2026/09/27 聖餐会実機ログ分析に基づく新用語プリセット ---
             "米国の地": "米子の地",
+            "与那国ワード": "米子ワード",
+            "与那国 ワード": "米子ワード",
+            "与那国": "米子",
 
             // --- 2026/09/01 手動修正ログ分析に基づく新用語プリセット ---
 
@@ -8364,13 +8367,20 @@ function isIncompletePhrase(text) {
 【教会用語・固有名詞の変換知識ベース】
 
 ・聖餐の祈り（Sacrament Prayers）の絶対的定型知識:
-  聖餐の祈りは聖典（モロナイ書4〜5章、教義と聖約20:77, 79）に記された神聖かつ厳格な定型句です。話者が聖餐の祈りを捧げている場合、音声認識の途切れや誤認識（「おおかみよ」「温故」「祝し福し」「血の記念」等）を以下の聖典通りの完全な日本語および公式英語訳へ正確に補正してください。
+  聖餐の祈りは聖典（モロナイ書4〜5章、教義と聖約20:77, 79）に記された神聖かつ厳格な定型句です。話者が聖餐の祈りを捧げている場合、音声認識の途切れや誤認識（「おおかみよ」「温故」「祝し福し」「血の記念」等）を以下の聖典の公式テキストに基づき正確に補正してください。
+  【重要: 入力範囲に対応する部分のみを出力すること】
+  - 話者が祈りを途中で区切って発話している場合、入力されたテキストが該当する祈りのパート（文節）のみを正確に補正して出力してください。
+  - まだ話者が発言していない未来の文節や、すでに言い終わった過去の文節を勝手に巻き込んで全文へ膨らませないでください。
   1. パンの祝福（Blessing on the Bread）:
-     【日本語全文】: 「永遠の父なる神よ、わたしたちは御子イエス・キリストの御名によってあなたに願い求めます。このパンを頂くすべての人々が、御子の体の記念にこれを頂けるように、また、進んで御子の御名を受け、いつも御子を覚え、御子が与えてくださった戒めを守ることを、永遠の父なる神よ、あなたに証明して、いつも御子の御霊を受けられるように、このパンを祝福し、聖めてください。アーメン。」
-     【公式英語訳】: "O God, the Eternal Father, we ask thee in the name of thy Son, Jesus Christ, to bless and sanctify this bread to the souls of all those who partake of it, that they may eat in remembrance of the body of thy Son, and witness unto thee, O God, the Eternal Father, that they are willing to take upon them the name of thy Son, and always remember him and keep his commandments which he has given them; that they may always have his Spirit to be with them. Amen."
+     - 冒頭部: 「永遠の父なる神よ、わたしたちは御子イエス・キリストの御名によってあなたに願い求めます。」
+       ※英語: "O God, the Eternal Father, we ask thee in the name of thy Son, Jesus Christ,"
+     - 本文・結び: 「このパンを頂くすべての人々が、御子の体の記念にこれを頂けるように、また、進んで御子の御名を受け、いつも御子を覚え、御子が与えてくださった戒めを守ることを、永遠の父なる神よ、あなたに証明して、いつも御子の御霊を受けられるように、このパンを祝福し、聖めてください。アーメン。」
+       ※英語: "to bless and sanctify this bread to the souls of all those who partake of it, that they may eat in remembrance of the body of thy Son, and witness unto thee, O God, the Eternal Father, that they are willing to take upon them the name of thy Son, and always remember him and keep his commandments which he has given them; that they may always have his Spirit to be with them. Amen."
   2. 水の祝福（Blessing on the Water）:
-     【日本語全文】: 「永遠の父なる神よ、わたしたちは御子イエス・キリストの御名によってあなたに願い求めます。この水を頂くすべての人々が、この人々のために流された御子の血の記念にこれを頂けるように、また、いつも御子を覚えていることを、永遠の父なる神よ、あなたに証明して、御子の御霊を受けられるように、この水を祝福し、聖めてください。アーメン。」
-     【公式英語訳】: "O God, the Eternal Father, we ask thee in the name of thy Son, Jesus Christ, to bless and sanctify this water to the souls of all those who partake of it, that they may do it in remembrance of the blood of thy Son, which was shed for them; that they may witness unto thee, O God, the Eternal Father, that they do always remember him, that they may have his Spirit to be with them. Amen."
+     - 冒頭部: 「永遠の父なる神よ、わたしたちは御子イエス・キリストの御名によってあなたに願い求めます。」
+       ※英語: "O God, the Eternal Father, we ask thee in the name of thy Son, Jesus Christ,"
+     - 本文・結び: 「この水を頂くすべての人々が、この人々のために流された御子の血の記念にこれを頂けるように、また、いつも御子を覚えていることを、永遠の父なる神よ、あなたに証明して、御子の御霊を受けられるように、この水を祝福し、聖めてください。アーメン。」
+       ※英語: "to bless and sanctify this water to the souls of all those who partake of it, that they may do it in remembrance of the blood of thy Son, which was shed for them; that they may witness unto thee, O God, the Eternal Father, that they do always remember him, that they may have his Spirit to be with them. Amen."
 
 ・賛美歌（Hymns）の日英完全対照知識ベース:
   聖餐会等で司会者（ビショップリック等）が開会・聖餐・中間・閉会の賛美歌を発表した際、音声認識の誤り（「神は要配信」等）を補正して日本語曲名を『』付きで正確に出力し、英語翻訳には教会の公式英語曲名および英語版賛美歌番号（English #XX）を必ず併記してください（※該当する曲の情報はユーザープロンプトに動的に提供されます）。
@@ -12412,6 +12422,15 @@ ${fullText}`;
 
                 const trimmedRaw = rawChunk.trim();
 
+                // 【極小ノイズ・言い淀み単体配信ガード】
+                // 「す」「あむ」「えっと」「はい」等の3文字以下の単体極小フレーズは、直後に続く発話と自動連結されるよう
+                // バッファの末尾アイテムがあればその場連結し、なければ単独カード発行を抑制して未完保留する
+                const isTinyNoise = trimmedRaw.length <= 3 && !/[。！？.!?]/.test(trimmedRaw);
+                if (isTinyNoise && batchBuffer.length === 0) {
+                    console.log(`[Host] 🔇 極小ノイズ/言い淀み（${trimmedRaw}）を保留（単独配信を抑制）`);
+                    return;
+                }
+
                 // 【複数文スマート自動小分け】段落や複数文が届いた場合、1文ずつ分解して先行配信（1対1上書きの保証）
                 const sentences = splitIntoIndividualSentences(trimmedRaw);
                 if (sentences.length > 1) {
@@ -12812,6 +12831,41 @@ ${fullText}`;
                             });
                             updateHostTranscript(item.id, processedChunk, englishText, isAi, translations);
                             finalAction = 'UPDATE_BROADCAST';
+
+                            // 【事後スマート統合: 直前カードの重複・包含クリーンアップ】
+                            // AI補正の結果、直前のカード（最大3件以内）とほぼ同一（類似度70%以上）、
+                            // または直前のカードの文言を包含した完全版全文に昇格した場合、古い直前カードを安全に消去
+                            if (transcriptHistory && transcriptHistory.length >= 2) {
+                                const curIdx = transcriptHistory.findIndex(h => h.id === item.id);
+                                if (curIdx !== -1) {
+                                    const normProcessed = normalizeCaption(processedChunk);
+                                    // 直前のカード（最大2枚遡る）を検査
+                                    for (let back = 1; back <= 2; back++) {
+                                        const prevIdx = curIdx - back;
+                                        if (prevIdx < 0) break;
+                                        const prevItem = transcriptHistory[prevIdx];
+                                        if (!prevItem || !prevItem.text || !prevItem.id) continue;
+                                        const normPrev = normalizeCaption(prevItem.text);
+
+                                        // 短文（10文字未満）の誤消去は防止
+                                        if (normPrev.length < 10 && normProcessed.length < 10) continue;
+
+                                        const sim = calculateTextSimilarity(normProcessed, normPrev);
+                                        const isPrevContained = (normProcessed.length > normPrev.length + 5) && normProcessed.includes(normPrev);
+                                        const isHighSim = sim >= 0.70;
+
+                                        if (isHighSim || isPrevContained) {
+                                            console.log(`[Host] 🧹 事後スマート統合: 直前の重複・包含カード(${prevItem.id})を消去して最新完成版(${item.id})に統合 (類似度: ${(sim * 100).toFixed(1)}%, 包含: ${isPrevContained})`);
+                                            broadcastToViewers({
+                                                type: 'remove_caption',
+                                                id: prevItem.id
+                                            });
+                                            removeHostTranscript(prevItem.id);
+                                            break; // 1件消去したら完了
+                                        }
+                                    }
+                                }
+                            }
                         } else if (isManualMode) {
                             // フェーズ62: 手動配信モードのAI推敲スマート同期
                             const sentInfo = manualBroadcastSentMap.get(item.id);
