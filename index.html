@@ -4764,24 +4764,41 @@ function isIncompletePhrase(text) {
 
 
 
-        // WebRTC ICE サーバー設定（ステップ3.34: キャリアNAT救済用 TLS/TCP 443 TURN 独立最適化）
-        // ①最速STUNを先頭維持（通常回線は爆速直接接続）
-        // ②楽天モバイル等のSymmetric NAT救済用 turns:443?transport=tcp を独立エントリとして明示（WebKitスキップ防止・relay確実生成）
-        // ③後続フォールバック用TCP/UDP TURN
+        // WebRTC ICE サーバー設定（ステップ3.37: 教会専用 Metered TURN による楽天モバイル・Symmetric NAT 100%救済）
+        // ① 最速STUNを先頭維持（通常回線・教会Wi-Fiは中継負荷ゼロの爆速直接接続）
+        // ② 教会専用 Metered TURN (500MB〜50GB/月・永続無料枠) を最優先中継として配備
+        //    最も突破力の高い TLS/TCP 443 (turns:global.relay.metered.ca:443?transport=tcp) を独立エントリとして明示
+        //    世界中の他人に枠を潰されることなく、楽天モバイル等のSymmetric NATでも確実にrelay候補を生成
+        // ③ 後続フォールバック用TCP/UDP TURNおよび共用openrelay
         const PEER_CONFIG = {
             pingInterval: 5000,
             config: {
                 iceServers: [
-                    // 1. 最速: 直接P2P接続用STUN（通常Wi-Fi・光回線は遅延ゼロで即時直結）
+                    // 1. 最速: 直接P2P接続用STUN（通常Wi-Fi・一般キャリアは遅延ゼロで即時直結）
                     { urls: 'stun:stun.l.google.com:19302' },
                     { urls: 'stun:stun.cloudflare.com:3478' },
-                    // 2. 最優先中継: キャリアNAT（楽天モバイル・ドコモ等）救済用 TLS/TCP 443（独立エントリで確実生成）
+                    { urls: 'stun:stun.relay.metered.ca:80' },
+
+                    // 2. 教会専用最優先中継: キャリアNAT（楽天モバイル・ドコモ等）救済用 TLS/TCP 443（暗号化Web通信偽装）
                     {
-                        urls: 'turns:openrelay.metered.ca:443?transport=tcp',
-                        username: 'openrelayproject',
-                        credential: 'openrelayproject'
+                        urls: 'turns:global.relay.metered.ca:443?transport=tcp',
+                        username: '94778af1008c715cb3a0d8f6',
+                        credential: 'NFJ2wx5ryQRw23M0'
                     },
-                    // 3. 後続フォールバック中継: 標準TCP/UDP 443
+
+                    // 3. 教会専用中継: 標準TCP/UDP 443 & 80
+                    {
+                        urls: [
+                            'turn:global.relay.metered.ca:443?transport=tcp',
+                            'turn:global.relay.metered.ca:443',
+                            'turn:global.relay.metered.ca:80?transport=tcp',
+                            'turn:global.relay.metered.ca:80'
+                        ],
+                        username: '94778af1008c715cb3a0d8f6',
+                        credential: 'NFJ2wx5ryQRw23M0'
+                    },
+
+                    // 4. バックアップフォールバック: 共用openrelay
                     {
                         urls: [
                             'turn:openrelay.metered.ca:443?transport=tcp',
