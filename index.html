@@ -7136,7 +7136,7 @@ function isIncompletePhrase(text) {
 
                             (entry.englishText ? `  ├─ [AI英語翻訳]: "${entry.englishText}"\n` : '') +
 
-                            `  └─ [配信ステータス]: ${entry.action === 'DUPLICATE_SUPPRESSED' ? '⚠️ 重複排除により破棄' : (entry.action === 'MANUAL_QUEUED' ? '✍️ 手動キュー格納' : '✅ 配信完了')}\n\n`;
+                            `  └─ [配信ステータス]: ${entry.action === 'DUPLICATE_SUPPRESSED' ? '⚠️ 重複排除により破棄' : (entry.action === 'ABSORBED_INTO_PARENT' ? '🧹 親カードへ吸収・消去' : (entry.action === 'MANUAL_QUEUED' ? '✍️ 手動キュー格納' : '✅ 配信完了'))}\n\n`;
 
                     });
 
@@ -8484,23 +8484,21 @@ function isIncompletePhrase(text) {
 
 
 
-・例7（聖餐の祈り: パンの祝福の途切れ・音声認識誤りの補正）:
+・例7（聖餐の祈り: パンの祝福の途中発話・入力範囲のみ忠実補正し先回りしない例）:
 
   入力: 永遠の父なる神よ 私たちは温故 イエス キリストの皆によってあなたに願い求めます
 ===
-このパンを頂くすべての人々が 御子の体の記念にこれを頂けるように
+パンをいただく全ての人々が 御子の体の記念にこれをいただけるように また 進んで御子の名を受け
+
+  出力: {"sentences": [{"ja": "永遠の父なる神よ、わたしたちは御子イエス・キリストの御名によってあなたに願い求めます。", "en": "O God, the Eternal Father, we ask thee in the name of thy Son, Jesus Christ,"}, {"ja": "このパンを頂くすべての人々が、御子の体の記念にこれを頂けるように、また、進んで御子の御名を受け、", "en": "to bless and sanctify this bread to the souls of all those who partake of it, that they may eat in remembrance of the body of thy Son, and witness unto thee, O God, the Eternal Father, that they are willing to take upon them the name of thy Son,"}]}
+
+
+
+・例8（聖餐の祈り: 水の祝福の1対1パート補正）:
+
+  入力: 永遠の父なる神よ 私たちは御子イエスキリストの皆によってあなたに願い求めます
 ===
-いつも御子の御霊を受けられるように このパンを祝し福し 聖めてください アーメン
-
-  出力: {"sentences": [{"ja": "永遠の父なる神よ、わたしたちは御子イエス・キリストの御名によってあなたに願い求めます。", "en": "O God, the Eternal Father, we ask thee in the name of thy Son, Jesus Christ,"}, {"ja": "このパンを頂くすべての人々が、御子の体の記念にこれを頂けるように、また、進んで御子の御名を受け、いつも御子を覚え、御子が与えてくださった戒めを守ることを、永遠の父なる神よ、あなたに証明して、いつも御子の御霊を受けられるように、このパンを祝福し、聖めてください。アーメン。", "en": "to bless and sanctify this bread to the souls of all those who partake of it, that they may eat in remembrance of the body of thy Son, and witness unto thee, O God, the Eternal Father, that they are willing to take upon them the name of thy Son, and always remember him and keep his commandments which he has given them; that they may always have his Spirit to be with them. Amen."}]}
-
-
-
-・例8（聖餐の祈り: 水の祝福の補正）:
-
-  入力: 永遠の父なる神よ 私たちは御子イエスキリストの皆によってあなたに願い求めます この水を頂くすべての人々が この人々のために流された御子の地の記念にこれを頂けるように
-===
-いつも御子を覚えていることを 永遠の父なる神よあなたに証明して 御子の御霊を受けられるように この水を祝福し 聖めてください アーメン
+この水を頂くすべての人々が この人々のために流された御子の地の記念にこれを頂けるように また いつも御子を覚えていることを 永遠の父なる神よあなたに証明して 御子の御霊を受けられるように この水を祝福し 清めてください アーメン
 
   出力: {"sentences": [{"ja": "永遠の父なる神よ、わたしたちは御子イエス・キリストの御名によってあなたに願い求めます。", "en": "O God, the Eternal Father, we ask thee in the name of thy Son, Jesus Christ,"}, {"ja": "この水を頂くすべての人々が、この人々のために流された御子の血の記念にこれを頂けるように、また、いつも御子を覚えていることを、永遠の父なる神よ、あなたに証明して、御子の御霊を受けられるように、この水を祝福し、聖めてください。アーメン。", "en": "to bless and sanctify this water to the souls of all those who partake of it, that they may do it in remembrance of the blood of thy Son, which was shed for them; that they may witness unto thee, O God, the Eternal Father, that they do always remember him, that they may have his Spirit to be with them. Amen."}]}
 
@@ -8536,7 +8534,7 @@ function isIncompletePhrase(text) {
 
 【厳格な出力ルール】
 
-1. 【文の自然な完結と捏造厳禁（最重要）】: "sentences" の各要素は、話者が口にした言葉に基づき自然に意味が通る1文にしてください。特に、話者が述語を言っていない「〜と」「〜を」「〜皆さんと」のような助詞止めの未完文節に対し、架空の感謝文（例: 『〜心から感謝いたします』等）や述語を勝手に創作して文を完結させることを【厳禁】とします。未完の文節は、前後の文に自然に結合・吸収してください。
+1. 【文の自然な完結と捏造厳禁（最重要）】: "sentences" の各要素は、話者が口にした言葉に基づき自然に意味が通る1文にしてください。特に、話者が述語を言っていない「〜と」「〜を」「〜皆さんと」のような助詞止めの未完文節に対し、架空の感謝文（例: 『〜心から感謝いたします』等）や述語を勝手に創作して文を完結させることを【厳禁】とします。また、祈りや証の途中で話者がまだ「御名によって」「アーメン」と発話していない段階（例: 「〜お導きください。」「〜祝福してください。」「〜感謝いたします。」のみの入力）では、勝手に結びの句（「イエス・キリストの聖なる御名により、アーメン。」等）を先回りして付け足さないでください。未完の文節は、前後の文に自然に結合・吸収してください。
 
 2. 【途切れ文節の吸収・結合】: 息継ぎで分断された短い文節（「そして」「また」「その時に」「私は」等）は、前後の文に自然に結合・吸収して意味の通る格調高い1文にしてください。
 
@@ -8763,9 +8761,14 @@ function isIncompletePhrase(text) {
 
 
             // 全アイテムが短文（日本語<8文字、英字/タガログ語<12文字）のみの場合はスキップ
+            // ※ただし祈り・儀式の神聖な固有語彙（「聖めてください」等）を含む短文は誤訳（"Sanctify me."等）防止のためAI文脈補正を通す
             const inputLang = currentInputLanguage || 'ja';
             const minLen = (inputLang === 'en' || inputLang === 'tl') ? 12 : 8;
-            const longItems = items.filter(item => item.preCorrected.replace(/[\s\u3000、。！？.,!?]+/g, '').length >= minLen);
+            const sacredShortTermRegex = /(聖めて|清めて|祝福し|御名|贖罪|聖餐|按手|御霊|聖霊)/;
+            const longItems = items.filter(item => {
+                const clean = item.preCorrected.replace(/[\s\u3000、。！？.,!?]+/g, '');
+                return clean.length >= minLen || sacredShortTermRegex.test(clean);
+            });
 
             if (longItems.length === 0 && !isTest) {
 
@@ -11136,6 +11139,171 @@ ${fullText}`;
             return false;
         }
 
+        // 事後・事前スマート統合用のカノニカル正規化（清め/聖め、私たち/わたしたち等の表記ゆれを統一）
+        function canonicalizeForConsolidation(str) {
+            if (!str) return '';
+            return String(str)
+                .replace(/[\s\u3000、。！？!?,.・…「」『』（）()]+/g, '')
+                .toLowerCase()
+                .replace(/清め/g, '聖め')
+                .replace(/私(たち|達)/g, 'わたしたち')
+                .replace(/全て/g, 'すべて')
+                .replace(/いただ([きくけ])/g, '頂$1')
+                .replace(/あーめん/g, 'アーメン');
+        }
+
+        // 直近カード群との親子・包含・末尾エコー関係を判定し、最適なスマート統合アクション（REMOVE_CURRENT / REMOVE_PREV / KEEP_BOTH）を返す
+        function decideSmartConsolidation(newText, prevItems, options = {}) {
+            if (!newText || !prevItems || !Array.isArray(prevItems) || prevItems.length === 0) {
+                return { action: 'KEEP_BOTH' };
+            }
+
+            const mode = options.mode || 'post'; // 'entry'（仮配信前の入口判定） | 'post'（AI確定後の出口判定）
+            const now = typeof options.now === 'number' ? options.now : Date.now();
+            const maxAgeMs = typeof options.maxAgeMs === 'number' ? options.maxAgeMs : 25000;
+            const shortEchoMaxAgeMs = typeof options.shortEchoMaxAgeMs === 'number' ? options.shortEchoMaxAgeMs : 15000;
+            const maxLookback = typeof options.maxLookback === 'number' ? options.maxLookback : 4;
+
+            const normNew = canonicalizeForConsolidation(newText);
+            if (normNew.length <= 3) {
+                return { action: 'KEEP_BOTH' };
+            }
+
+            // 特別保護ルール：「アーメン」単体は、直前の確定カードがすでに「アーメン」を含んでいる場合のみ重複吸収し、
+            // 含んでいなければ（祈りの結びに対する正当な「アーメン。」）絶対に消去せず保護する
+            if (/^(アーメン|amen)$/.test(normNew)) {
+                const immediatePrev = prevItems[0];
+                if (!immediatePrev) return { action: 'KEEP_BOTH', reason: 'standalone_amen_protected' };
+
+                const prevObj = typeof immediatePrev === 'string' ? { id: null, text: immediatePrev } : immediatePrev;
+                if (mode === 'entry' && prevObj.isProvisional) {
+                    return { action: 'KEEP_BOTH', reason: 'provisional_parent_skip' };
+                }
+                const prevTime = prevObj.updatedAt || prevObj.createdAt;
+                if (typeof prevTime === 'number' && (now - prevTime) > shortEchoMaxAgeMs) {
+                    return { action: 'KEEP_BOTH', reason: 'standalone_amen_protected' };
+                }
+                const normImmediatePrev = canonicalizeForConsolidation(prevObj.text || '');
+                if (/(アーメン|amen)/.test(normImmediatePrev) && normImmediatePrev.length > normNew.length) {
+                    return {
+                        action: 'REMOVE_CURRENT',
+                        parentId: prevObj.id || null,
+                        reason: 'duplicate_amen_in_parent'
+                    };
+                }
+                return { action: 'KEEP_BOTH', reason: 'standalone_amen_protected' };
+            }
+
+            const normNewCore = normNew.replace(/(アーメン|amen)$/, '');
+            const removePrevTargets = [];
+            const scanCount = Math.min(prevItems.length, maxLookback);
+
+            for (let idx = 0; idx < scanCount; idx++) {
+                const rawPrev = prevItems[idx];
+                if (!rawPrev) continue;
+                const prevObj = typeof rawPrev === 'string' ? { id: `prev_${idx}`, text: rawPrev } : rawPrev;
+                if (!prevObj.text) continue;
+
+                // 入口モード時は、AI補正が完了した確定カードのみを親として参照する
+                if (mode === 'entry' && prevObj.isProvisional) continue;
+
+                const prevTime = prevObj.updatedAt || prevObj.createdAt;
+                const elapsed = typeof prevTime === 'number' ? (now - prevTime) : 0;
+                if (elapsed > maxAgeMs) continue;
+
+                const normPrev = canonicalizeForConsolidation(prevObj.text);
+                if (!normPrev) continue;
+                const normPrevCore = normPrev.replace(/(アーメン|amen)$/, '');
+
+                // 判定①：後方断片の吸収（REMOVE_CURRENT）— 先に完成した長い親カードを100%保護し、後から届いた末尾断片・エコーを消去
+                // 1-A: 短文末尾エコー（5〜9文字: 「聖めてください。」「按手をしました。」等）
+                if (normNew.length >= 5 && normNew.length <= 9) {
+                    const isLongPrayerParent = normPrev.length >= 45;
+                    const allowedEchoAge = isLongPrayerParent ? maxAgeMs : shortEchoMaxAgeMs;
+                    const allowedLookback = isLongPrayerParent ? scanCount : 2;
+
+                    if (idx < allowedLookback && elapsed <= allowedEchoAge && normPrev.length >= normNew.length + 5) {
+                        const isExactSuffix = normPrev.endsWith(normNew) ||
+                            (normNewCore.length >= 5 && normPrevCore.endsWith(normNewCore));
+                        if (isExactSuffix) {
+                            return {
+                                action: 'REMOVE_CURRENT',
+                                parentId: prevObj.id || null,
+                                reason: 'short_tail_echo'
+                            };
+                        }
+                    }
+                    continue;
+                }
+
+                // 1-B: 中〜長文の部分断片・後半引きずり（10文字以上）
+                if (normNew.length >= 10 && normPrev.length >= normNew.length + 4) {
+                    const isDirectSubstring = normPrev.includes(normNew) ||
+                        (normNewCore.length >= 10 && normPrevCore.includes(normNewCore));
+
+                    if (isDirectSubstring) {
+                        return {
+                            action: 'REMOVE_CURRENT',
+                            parentId: prevObj.id || null,
+                            reason: 'contained_in_longer_parent'
+                        };
+                    }
+
+                    // 出口モード時：表記ゆれ・助詞補完を伴う後半断片のファジー包含判定（先頭4文字アンカー一致を必須として別文誤吸収を防止）
+                    if (mode !== 'entry') {
+                        const targetNeedle = normNewCore.length >= 10 ? normNewCore : normNew;
+                        const headAnchor = targetNeedle.slice(0, 4);
+                        if (headAnchor.length === 4 && normPrev.includes(headAnchor)) {
+                            const cov = calculateBigramCoverage(targetNeedle, normPrev);
+                            if (cov >= 0.80) {
+                                return {
+                                    action: 'REMOVE_CURRENT',
+                                    parentId: prevObj.id || null,
+                                    reason: 'fuzzy_contained_in_longer_parent'
+                                };
+                            }
+                        }
+                    }
+                    // 親カードの方が明確に長い場合、絶対に親カードを消去（REMOVE_PREV）してはならないため次へ
+                    continue;
+                }
+
+                // 判定②：前方途中カードの昇格統合（REMOVE_PREV）※出口モードのみ
+                if (mode !== 'entry' && idx < 3 && normPrev.length >= 8 && normNew.length >= 10 && normNew.length >= normPrev.length - 3) {
+                    const sim = calculateTextSimilarity(normNew, normPrev);
+                    const isPrevDirectlyContained = (normNew.length >= normPrev.length + 4) &&
+                        (normNew.includes(normPrev) || (normPrevCore.length >= 8 && normNewCore.includes(normPrevCore)));
+
+                    let isPrevFuzzyContained = false;
+                    if (!isPrevDirectlyContained && normNew.length >= normPrev.length + 4) {
+                        const prevTarget = normPrevCore.length >= 8 ? normPrevCore : normPrev;
+                        const prevHead = prevTarget.slice(0, 4);
+                        if (prevHead.length === 4 && normNew.includes(prevHead)) {
+                            isPrevFuzzyContained = calculateBigramCoverage(prevTarget, normNew) >= 0.85;
+                        }
+                    }
+
+                    if (sim >= 0.72 || isPrevDirectlyContained || isPrevFuzzyContained) {
+                        if (prevObj.id) {
+                            removePrevTargets.push(prevObj.id);
+                        } else {
+                            removePrevTargets.push(`prev_${idx}`);
+                        }
+                    }
+                }
+            }
+
+            if (removePrevTargets.length > 0) {
+                return {
+                    action: 'REMOVE_PREV',
+                    targetIds: removePrevTargets,
+                    reason: 'upgraded_complete_sentence'
+                };
+            }
+
+            return { action: 'KEEP_BOTH' };
+        }
+
 
 
 
@@ -12763,7 +12931,7 @@ ${fullText}`;
                                 isProvisional: true,
                                 isAiApplied: false
                             });
-                            updateHostTranscript(lastItem.id, combinedPreCorrected, null, false);
+                            updateHostTranscript(lastItem.id, combinedPreCorrected, null, false, null, true);
                         } else {
                             // フェーズ62: 手動配信モード時のスマートアペンド同期
                             if (currentManualCaptionId === lastItem.id && manualCaptionInput) {
@@ -12809,6 +12977,23 @@ ${fullText}`;
                 // 第1段: ローカル辞書＋聖典補正（即時 0ms）
                 const preCorrected = fixScriptureReferences(replaceChurchTerms(trimmedRaw));
                 const dictChanged = (preCorrected !== trimmedRaw);
+
+                // 【入口ガード: 確定済み親カードに対する末尾断片・文末エコーの先行吸収】
+                // 全自動配信モードかつ先行未完バッファが空のとき、すでにAI確定済みの直近カード（20秒以内・最大4件）に
+                // 完全包含または末尾エコー一致する断片（「この水を祝福し、清めてください。」「聖めてください。」「按手をしました。」等）は
+                // 仮カード自体を発行せず静かに吸収し、聴講者画面の一瞬のチラつきすら防止する
+                if (!isManualMode && batchBuffer.length === 0 && transcriptHistory && transcriptHistory.length > 0) {
+                    const recentConfirmedCandidates = transcriptHistory.slice(-4).reverse();
+                    const entryDecision = decideSmartConsolidation(preCorrected, recentConfirmedCandidates, {
+                        mode: 'entry',
+                        now: now,
+                        maxAgeMs: 20000
+                    });
+                    if (entryDecision.action === 'REMOVE_CURRENT') {
+                        console.log(`[末尾断片ガード] 確定済み親カード(${entryDecision.parentId || 'recent'})に包含される断片を先行吸収 (${entryDecision.reason}): "${preCorrected}"`);
+                        return;
+                    }
+                }
 
                 // グローバル一意な ID 採番（セッション通算で重複しない）
                 const uniqueCaptionId = 'cap_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
@@ -13084,36 +13269,44 @@ ${fullText}`;
                             updateHostTranscript(item.id, processedChunk, englishText, isAi, translations);
                             finalAction = 'UPDATE_BROADCAST';
 
-                            // 【事後スマート統合: 直前カードの重複・包含クリーンアップ】
-                            // AI補正の結果、直前のカード（最大3件以内）とほぼ同一（類似度70%以上）、
-                            // または直前のカードの文言を包含した完全版全文に昇格した場合、古い直前カードを安全に消去
+                            // 【事後スマート統合: 親カード100%保護付き双方向包含・末尾エコー吸収】
+                            // AI補正の結果、
+                            // ① 今回のカードが直前の長い親カード（最大4件・25秒以内）に包含される末尾断片・文末エコーである場合 ➔ 親カードを残し、今回の断片カードを即消去（REMOVE_CURRENT）
+                            // ② 今回のカードが直前の短い途中経過カードを包含して完成版に昇格した場合 ➔ 古い途中経過カードを消去し、今回の完成版カードを残す（REMOVE_PREV）
                             if (transcriptHistory && transcriptHistory.length >= 2) {
                                 const curIdx = transcriptHistory.findIndex(h => h.id === item.id);
-                                if (curIdx !== -1) {
-                                    const normProcessed = normalizeCaption(processedChunk);
-                                    // 直前のカード（最大2枚遡る）を検査
-                                    for (let back = 1; back <= 2; back++) {
+                                if (curIdx > 0) {
+                                    const prevCandidates = [];
+                                    for (let back = 1; back <= 4; back++) {
                                         const prevIdx = curIdx - back;
                                         if (prevIdx < 0) break;
-                                        const prevItem = transcriptHistory[prevIdx];
-                                        if (!prevItem || !prevItem.text || !prevItem.id) continue;
-                                        const normPrev = normalizeCaption(prevItem.text);
+                                        if (transcriptHistory[prevIdx]) {
+                                            prevCandidates.push(transcriptHistory[prevIdx]);
+                                        }
+                                    }
 
-                                        // 短文（10文字未満）の誤消去は防止
-                                        if (normPrev.length < 10 && normProcessed.length < 10) continue;
+                                    const decision = decideSmartConsolidation(processedChunk, prevCandidates, {
+                                        mode: 'post',
+                                        now: Date.now(),
+                                        maxAgeMs: 25000
+                                    });
 
-                                        const sim = calculateTextSimilarity(normProcessed, normPrev);
-                                        const isPrevContained = (normProcessed.length > normPrev.length + 5) && normProcessed.includes(normPrev);
-                                        const isHighSim = sim >= 0.70;
-
-                                        if (isHighSim || isPrevContained) {
-                                            console.log(`[Host] 🧹 事後スマート統合: 直前の重複・包含カード(${prevItem.id})を消去して最新完成版(${item.id})に統合 (類似度: ${(sim * 100).toFixed(1)}%, 包含: ${isPrevContained})`);
+                                    if (decision.action === 'REMOVE_CURRENT') {
+                                        console.log(`[Host] 🧹 事後スマート統合(後方断片吸収): 親カード(${decision.parentId || 'prev'})を保護し、末尾断片カード(${item.id})を吸収消去 (${decision.reason}): "${processedChunk}"`);
+                                        broadcastToViewers({
+                                            type: 'remove_caption',
+                                            id: item.id
+                                        });
+                                        removeHostTranscript(item.id);
+                                        finalAction = 'ABSORBED_INTO_PARENT';
+                                    } else if (decision.action === 'REMOVE_PREV' && Array.isArray(decision.targetIds)) {
+                                        for (const targetPrevId of decision.targetIds) {
+                                            console.log(`[Host] 🧹 事後スマート統合(完成版昇格): 直前の途中経過カード(${targetPrevId})を消去して最新完成版(${item.id})に統合 (${decision.reason})`);
                                             broadcastToViewers({
                                                 type: 'remove_caption',
-                                                id: prevItem.id
+                                                id: targetPrevId
                                             });
-                                            removeHostTranscript(prevItem.id);
-                                            break; // 1件消去したら完了
+                                            removeHostTranscript(targetPrevId);
                                         }
                                     }
                                 }
@@ -13263,6 +13456,29 @@ ${fullText}`;
                             });
                             updateHostTranscript(item.id, processedChunk, null, false);
                             finalAction = 'UPDATE_BROADCAST';
+
+                            // フォールバック確定時にも親カードへの末尾断片吸収を適用
+                            if (transcriptHistory && transcriptHistory.length >= 2) {
+                                const curIdx = transcriptHistory.findIndex(h => h.id === item.id);
+                                if (curIdx > 0) {
+                                    const prevCandidates = [];
+                                    for (let back = 1; back <= 4; back++) {
+                                        const prevIdx = curIdx - back;
+                                        if (prevIdx < 0) break;
+                                        if (transcriptHistory[prevIdx]) prevCandidates.push(transcriptHistory[prevIdx]);
+                                    }
+                                    const fbDecision = decideSmartConsolidation(processedChunk, prevCandidates, {
+                                        mode: 'post',
+                                        now: Date.now(),
+                                        maxAgeMs: 25000
+                                    });
+                                    if (fbDecision.action === 'REMOVE_CURRENT') {
+                                        broadcastToViewers({ type: 'remove_caption', id: item.id });
+                                        removeHostTranscript(item.id);
+                                        finalAction = 'ABSORBED_INTO_PARENT';
+                                    }
+                                }
+                            }
                         } else if (isManualMode) {
                             const sentInfo = manualBroadcastSentMap.get(item.id);
                             if (sentInfo) {
@@ -13916,9 +14132,12 @@ ${fullText}`;
                 const isProvisional = !!(meta && meta.isProvisional);
                 const translations = (meta && meta.translations && typeof meta.translations === 'object') ? meta.translations : null;
 
+                const nowTs = Date.now();
                 const itemData = {
                     id: captionId,
                     time: timeStr,
+                    createdAt: nowTs,
+                    updatedAt: nowTs,
                     text: text,
                     original: rawOriginal,
                     isEdited: isEdited,
@@ -13948,7 +14167,7 @@ ${fullText}`;
         }
 
         // ホスト側ログの差分上書き更新（AI補正結果が届いた際にカードを格調高く更新）
-        function updateHostTranscript(id, text, englishText, isAi, translations = null) {
+        function updateHostTranscript(id, text, englishText, isAi, translations = null, isProvisional = false) {
             if (!id || !hostTranscriptLog) return;
             const item = hostTranscriptLog.querySelector(`[data-caption-id="${id}"]`);
             if (item) {
@@ -13979,6 +14198,8 @@ ${fullText}`;
                 if (englishText) histItem.englishText = englishText.trim();
                 if (translations && typeof translations === 'object') histItem.translations = translations;
                 if (isAi !== undefined) histItem.isAi = isAi;
+                histItem.isProvisional = !!isProvisional;
+                histItem.updatedAt = Date.now();
             }
 
             // セッション自動保護保存
