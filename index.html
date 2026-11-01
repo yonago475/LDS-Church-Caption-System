@@ -10920,12 +10920,38 @@ ${fullText}`;
             return (2.0 * intersection) / totalBigrams;
         }
 
+        // 被検文（needle）の文字 Bi-gram のうち、対象テキスト（haystack）に含まれる割合（0.0 〜 1.0）
+        function calculateBigramCoverage(needle, haystack) {
+            if (!needle || !haystack) return 0;
+            const n = needle.replace(/[\s\u3000、。！？!?,.]+/g, '').toLowerCase();
+            const h = haystack.replace(/[\s\u3000、。！？!?,.]+/g, '').toLowerCase();
+            if (n.length === 0 || h.length === 0) return 0;
+            if (n.length === 1) return h.includes(n) ? 1.0 : 0;
+            if (h.includes(n)) return 1.0;
+
+            const haystackBigrams = new Set();
+            for (let i = 0; i < h.length - 1; i++) {
+                haystackBigrams.add(h.substr(i, 2));
+            }
+
+            let hit = 0;
+            const total = n.length - 1;
+            for (let i = 0; i < total; i++) {
+                if (haystackBigrams.has(n.substr(i, 2))) {
+                    hit++;
+                }
+            }
+            return total > 0 ? (hit / total) : 0;
+        }
+
         // 未確定（interim）音声および確定（final）音声から、すでに分割送信した文節プレフィックスをファジー除外
+        // 途中アンカー再同期ストリップ機能付き
         function stripCommittedChunks(fullText, currentCommittedChunks) {
             if (!currentCommittedChunks || currentCommittedChunks.length === 0 || !fullText) return fullText;
 
             let remaining = fullText.trim();
-            for (const chunk of currentCommittedChunks) {
+            for (let i = 0; i < currentCommittedChunks.length; i++) {
+                const chunk = currentCommittedChunks[i];
                 const normChunk = chunk.replace(/[\s\u3000、。！？]+/g, '').toLowerCase();
                 if (!normChunk) continue;
 
@@ -10964,9 +10990,150 @@ ${fullText}`;
                         rawIdx++;
                     }
                     remaining = remaining.substring(rawIdx).replace(/^[\s\u3000、。！？!?,.]+/, '').trim();
+                } else if (normChunk.length >= 8) {
+                    // 【途中アンカー再同期ストリップ】
+                    // 先頭では一致しなかったが、このチャンクが remaining の前半（最大150文字以内）にアンカーとして存在する場合
+                    const anchorIdx = normRemaining.indexOf(normChunk);
+                    if (anchorIdx > 0 && anchorIdx < 150) {
+                        const targetNormLen = anchorIdx + normChunk.length;
+                        let normCount = 0;
+                        let rawIdx = 0;
+                        while (rawIdx < remaining.length && normCount < targetNormLen) {
+                            if (!/[\s\u3000、。！？]/.test(remaining[rawIdx])) {
+                                normCount++;
+                            }
+                            rawIdx++;
+                        }
+                        remaining = remaining.substring(rawIdx).replace(/^[\s\u3000、。！？!?,.]+/, '').trim();
+                    }
                 }
             }
+
+            // 【最新アンカーによる最終ストリップガード】
+            // ループ終了後に remaining が残っている場合でも、コミット済みチャンクの直近15件の中に
+            // remaining の中に出現する十分な長さ（8文字以上）のチャンク（完全一致または末尾10文字サフィックス）があれば、その末尾まで削ぎ落とす
+            if (remaining.length > 0 && currentCommittedChunks.length > 0) {
+                const normRemaining = remaining.replace(/[\s\u3000、。！？]+/g, '').toLowerCase();
+                const recentChunks = currentCommittedChunks.slice(-15);
+                for (let i = recentChunks.length - 1; i >= 0; i--) {
+                    const rc = recentChunks[i].replace(/[\s\u3000、。！？]+/g, '').toLowerCase();
+                    if (rc.length >= 8) {
+                        let idx = normRemaining.indexOf(rc);
+                        let matchedLen = rc.length;
+
+                        // 表記揺れ対応：チャンク末尾10文字のサフィックスアンカー
+                        if (idx === -1 && rc.length >= 14) {
+                            const suffix = rc.slice(-10);
+                            const sIdx = normRemaining.indexOf(suffix);
+                            if (sIdx !== -1) {
+                                idx = sIdx;
+                                matchedLen = suffix.length;
+                            }
+                        }
+
+                        if (idx !== -1) {
+                            const targetNormLen = idx + matchedLen;
+                            let normCount = 0;
+                            let rawIdx = 0;
+                            while (rawIdx < remaining.length && normCount < targetNormLen) {
+                                if (!/[\s\u3000、。！？]/.test(remaining[rawIdx])) {
+                                    normCount++;
+                                }
+                                rawIdx++;
+                            }
+                            remaining = remaining.substring(rawIdx).replace(/^[\s\u3000、。！？!?,.]+/, '').trim();
+                            break;
+                        }
+                    }
+                }
+            }
+
             return remaining;
+        }
+
+        // 新しく切り出された文が、過去の既コミットチャンク群（単一・結合・部分）と重複または巻き戻り再送であるかを判定
+        function isRewoundOrMergedDuplicate(sentence, committedChunks) {
+            if (!sentence || !committedChunks || committedChunks.length === 0) return false;
+            const cleanS = sentence.trim();
+            if (!cleanS) return false;
+
+            const normS = cleanS.replace(/[\s\u3000、。！？!?,.]+/g, '').toLowerCase();
+            if (normS.length === 0) return false;
+
+            // 1. 短文・定型句の保護
+            // 「アーメン」「ありがとうございます」「感謝します」「おはようございます」等の短い祈り・挨拶は
+            // 別話者の登壇時や離れた位置で正当に発話されるため、直前直近2件以内の完全一致以外はブロックしない
+            const isProtectedPhrase = normS.length < 8 ||
+                /^(アーメン|あーめん|amen|おはようございます|ありがとうございます|感謝いたします|感謝します|証します|イエスキリストの御名により|イエスキリストの御名によって証します|イエスキリストのみ名によって証します)/.test(normS);
+
+            if (isProtectedPhrase) {
+                const recentWindow = normS.length <= 4 ? 2 : 3;
+                const recent = committedChunks.slice(-recentWindow);
+                return recent.some(c => {
+                    const normC = c.replace(/[\s\u3000、。！？!?,.]+/g, '').toLowerCase();
+                    return normS === normC;
+                });
+            }
+
+            // 2. 単一チャンクとの1対1比較（直近から最大80件走査）
+            const searchLimit = Math.min(committedChunks.length, 80);
+            const startIndex = committedChunks.length - 1;
+            for (let i = startIndex; i >= committedChunks.length - searchLimit; i--) {
+                const c = committedChunks[i];
+                const normC = c.replace(/[\s\u3000、。！？!?,.]+/g, '').toLowerCase();
+                if (!normC) continue;
+
+                if (normS === normC) return true;
+
+                // Dice 係数による高類似度チェック
+                const sim = calculateTextSimilarity(normS, normC);
+                if (sim >= 0.72) return true;
+
+                // 一方が他方を包含し、かつ長さが近い場合
+                if (normS.length >= 10 && normC.length >= 10) {
+                    if (normS.includes(normC) && normC.length / normS.length >= 0.75) return true;
+                    if (normC.includes(normS) && normS.length / normC.length >= 0.75) return true;
+                }
+            }
+
+            // 3. 結合ウィンドウ（先行時に2〜4分割されたチャンクが1文に結合されたケース）の検知
+            const windowChunksLimit = Math.min(committedChunks.length, 40);
+            const recentChunks = committedChunks.slice(-windowChunksLimit);
+            for (let windowSize = 2; windowSize <= 4; windowSize++) {
+                for (let i = 0; i <= recentChunks.length - windowSize; i++) {
+                    let merged = '';
+                    for (let w = 0; w < windowSize; w++) {
+                        merged += recentChunks[i + w];
+                    }
+                    const normMerged = merged.replace(/[\s\u3000、。！？!?,.]+/g, '').toLowerCase();
+                    if (normMerged.length < 10) continue;
+
+                    const sim = calculateTextSimilarity(normS, normMerged);
+                    if (sim >= 0.72) return true;
+
+                    // 包含関係のチェック
+                    if (normMerged.includes(normS) && normS.length >= 10) return true;
+                    if (normS.includes(normMerged) && normMerged.length / normS.length >= 0.75) return true;
+
+                    // Bi-gram 包含率チェック（新文 normS の Bi-gram の 82% 以上が merged に含まれるか）
+                    if (normS.length >= 12) {
+                        const cov = calculateBigramCoverage(normS, normMerged);
+                        if (cov >= 0.82) return true;
+                    }
+                }
+            }
+
+            // 4. 全体テキストプールに対する高包含率（過去テキストのパッチワーク・再構成）の検知
+            if (normS.length >= 14) {
+                const poolChunks = committedChunks.slice(-50);
+                const corpus = poolChunks.join('').replace(/[\s\u3000、。！？!?,.]+/g, '').toLowerCase();
+                const cov = calculateBigramCoverage(normS, corpus);
+                if (cov >= 0.85) {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
 
@@ -11764,7 +11931,7 @@ ${fullText}`;
             }
 
             const cleaned = cleanLiveTranscribeJapanese(text);
-            // 既に先行確定済みのチャンクが前方にあれば除去
+            // 既に先行確定済みのチャンクが前方にあれば除去（途中アンカー再同期ストリップ）
             const uncommitted = stripCommittedChunks(cleaned, liveCommittedChunks);
 
             if (interimText) {
@@ -11780,11 +11947,17 @@ ${fullText}`;
                 for (let i = 0; i < parts.length - 1; i++) {
                     const sentence = parts[i].trim();
                     if (sentence && sentence.length >= 2) {
+                        const isDup = isRewoundOrMergedDuplicate(sentence, liveCommittedChunks);
                         liveCommittedChunks.push(sentence);
-                        if (liveCommittedChunks.length > 30) liveCommittedChunks.shift();
+                        if (liveCommittedChunks.length > 150) liveCommittedChunks.shift();
                         liveInterimLastCommitTime = now;
-                        console.log(`[Gemini 3.5 Live] ⚡ Interim句点先行コミット: "${sentence.slice(0, 30)}..."`);
-                        enqueueLiveSentenceOrDispatch(sentence, true);
+
+                        if (isDup) {
+                            console.log(`[Gemini 3.5 Live] 🛡️ Interim過去文再送ガード（先行重複抑制）: "${sentence.slice(0, 30)}..."`);
+                        } else {
+                            console.log(`[Gemini 3.5 Live] ⚡ Interim句点先行コミット: "${sentence.slice(0, 30)}..."`);
+                            enqueueLiveSentenceOrDispatch(sentence, true);
+                        }
                     }
                 }
                 const remainder = parts[parts.length - 1].trim();
@@ -11801,11 +11974,17 @@ ${fullText}`;
                 if (splitIdx > 8 && splitIdx < uncommitted.length) {
                     const sentence = uncommitted.slice(0, splitIdx).trim();
                     if (sentence && sentence.length >= 2) {
+                        const isDup = isRewoundOrMergedDuplicate(sentence, liveCommittedChunks);
                         liveCommittedChunks.push(sentence);
-                        if (liveCommittedChunks.length > 30) liveCommittedChunks.shift();
+                        if (liveCommittedChunks.length > 150) liveCommittedChunks.shift();
                         liveInterimLastCommitTime = now;
-                        console.log(`[Gemini 3.5 Live] ⚡ Interimスマート先行コミット: "${sentence.slice(0, 30)}..."`);
-                        enqueueLiveSentenceOrDispatch(sentence, true);
+
+                        if (isDup) {
+                            console.log(`[Gemini 3.5 Live] 🛡️ Interimスマート過去文再送ガード（先行重複抑制）: "${sentence.slice(0, 30)}..."`);
+                        } else {
+                            console.log(`[Gemini 3.5 Live] ⚡ Interimスマート先行コミット: "${sentence.slice(0, 30)}..."`);
+                            enqueueLiveSentenceOrDispatch(sentence, true);
+                        }
                         return;
                     }
                 }
@@ -11818,11 +11997,17 @@ ${fullText}`;
                     const splitPos = 8 + endingMatch + matchLen;
                     const sentence = uncommitted.slice(0, splitPos).trim();
                     if (sentence && sentence.length >= 2) {
+                        const isDup = isRewoundOrMergedDuplicate(sentence, liveCommittedChunks);
                         liveCommittedChunks.push(sentence);
-                        if (liveCommittedChunks.length > 30) liveCommittedChunks.shift();
+                        if (liveCommittedChunks.length > 150) liveCommittedChunks.shift();
                         liveInterimLastCommitTime = now;
-                        console.log(`[Gemini 3.5 Live] ⚡ Interim文末先行コミット: "${sentence.slice(0, 30)}..."`);
-                        enqueueLiveSentenceOrDispatch(sentence, true);
+
+                        if (isDup) {
+                            console.log(`[Gemini 3.5 Live] 🛡️ Interim文末過去文再送ガード（先行重複抑制）: "${sentence.slice(0, 30)}..."`);
+                        } else {
+                            console.log(`[Gemini 3.5 Live] ⚡ Interim文末先行コミット: "${sentence.slice(0, 30)}..."`);
+                            enqueueLiveSentenceOrDispatch(sentence, true);
+                        }
                         return;
                     }
                 }
@@ -11841,7 +12026,7 @@ ${fullText}`;
             }
 
             const cleaned = cleanLiveTranscribeJapanese(text);
-            // 既に先行コミット済みのチャンクを除去
+            // 既に先行コミット済みのチャンクを除去（途中アンカー再同期ストリップ）
             const uncommitted = stripCommittedChunks(cleaned, liveCommittedChunks);
 
             if (uncommitted && uncommitted.trim().length >= 2) {
@@ -11852,7 +12037,7 @@ ${fullText}`;
                 parts.forEach((p, idx) => {
                     const s = p.trim();
                     if (s && s.length >= 2) {
-                        // 先行コミット済み文とのファジー重複判定（確定推敲テキストの検知）
+                        // 先行コミット済み文とのファジー重複判定（確定推敲テキストおよび結合・巻き戻り検知）
                         let isSimilarToCommitted = false;
                         let matchedCommittedChunk = null;
                         let maxSim = 0;
@@ -11869,6 +12054,15 @@ ${fullText}`;
                             }
                         }
 
+                        // 新関数 isRewoundOrMergedDuplicate による多層包含・結合判定
+                        if (!isSimilarToCommitted && isRewoundOrMergedDuplicate(s, liveCommittedChunks)) {
+                            isSimilarToCommitted = true;
+                            if (!matchedCommittedChunk && liveCommittedChunks.length > 0) {
+                                matchedCommittedChunk = liveCommittedChunks[liveCommittedChunks.length - 1];
+                            }
+                            if (maxSim === 0) maxSim = 0.85;
+                        }
+
                         if (isSimilarToCommitted) {
                             // 先行排出済みの文と同一・推敲文のため二重発行は抑制し、テレメトリに訂正候補として記録
                             console.log(`[Gemini 3.5 Live] 📝 ASR確定訂正候補（重複抑制）: 仮="${matchedCommittedChunk}" ➔ 確定="${s}" (類似度: ${(maxSim * 100).toFixed(1)}%)`);
@@ -11883,10 +12077,10 @@ ${fullText}`;
                                 if (diagnosticTelemetryLogs.length > 200) diagnosticTelemetryLogs.shift();
                             }
                             liveCommittedChunks.push(s);
-                            if (liveCommittedChunks.length > 30) liveCommittedChunks.shift();
+                            if (liveCommittedChunks.length > 150) liveCommittedChunks.shift();
                         } else {
                             liveCommittedChunks.push(s);
-                            if (liveCommittedChunks.length > 30) liveCommittedChunks.shift();
+                            if (liveCommittedChunks.length > 150) liveCommittedChunks.shift();
                             console.log(`[Gemini 3.5 Live] 📥 Final確定コミット: "${s.slice(0, 30)}..."`);
                             enqueueLiveSentenceOrDispatch(s, idx === 0);
                             dispatchedAny = true;
@@ -11910,6 +12104,15 @@ ${fullText}`;
                             break;
                         }
                     }
+
+                    if (!isSimilarToCommitted && isRewoundOrMergedDuplicate(s, liveCommittedChunks)) {
+                        isSimilarToCommitted = true;
+                        if (!matchedCommittedChunk && liveCommittedChunks.length > 0) {
+                            matchedCommittedChunk = liveCommittedChunks[liveCommittedChunks.length - 1];
+                        }
+                        if (maxSim === 0) maxSim = 0.85;
+                    }
+
                     if (isSimilarToCommitted) {
                         console.log(`[Gemini 3.5 Live] 📝 ASR確定訂正候補（重複抑制）: 仮="${matchedCommittedChunk}" ➔ 確定="${s}" (類似度: ${(maxSim * 100).toFixed(1)}%)`);
                         if (typeof diagnosticTelemetryLogs !== 'undefined' && Array.isArray(diagnosticTelemetryLogs)) {
@@ -11923,10 +12126,10 @@ ${fullText}`;
                             if (diagnosticTelemetryLogs.length > 200) diagnosticTelemetryLogs.shift();
                         }
                         liveCommittedChunks.push(s);
-                        if (liveCommittedChunks.length > 30) liveCommittedChunks.shift();
+                        if (liveCommittedChunks.length > 150) liveCommittedChunks.shift();
                     } else {
                         liveCommittedChunks.push(s);
-                        if (liveCommittedChunks.length > 30) liveCommittedChunks.shift();
+                        if (liveCommittedChunks.length > 150) liveCommittedChunks.shift();
                         console.log(`[Gemini 3.5 Live] 📥 Final確定コミット: "${s.slice(0, 30)}..."`);
                         enqueueLiveSentenceOrDispatch(s, true);
                     }
@@ -12087,6 +12290,18 @@ ${fullText}`;
                 const latencyMs = Date.now() - startTime;
                 lastLiveSpeechTimestamp = Date.now();
                 isRefreshingLiveWs = false;
+
+                // 新セッション確立に伴い、Google側の累積ストリームもクリアされるため、
+                // コミット済みチャンク履歴を新セッション向けにリセット（話者交代時の誤ブロックを完全防止）
+                liveCommittedChunks = [];
+                liveInterimLastCommitTime = 0;
+                lastDispatchedLiveSentence = '';
+                if (reason === 'AMEN' || reason === 'SILENCE_KEEPALIVE') {
+                    if (typeof resetRecentBatchHistoryForNewSpeaker === 'function') {
+                        resetRecentBatchHistoryForNewSpeaker();
+                    }
+                }
+
                 logLiveReconnectEvent(reason, latencyMs, true);
                 console.log(`[Gemini 3.5 Live] ✅ セッション再接続完了 [理由: ${reason}] (${latencyMs}ms)`);
 
@@ -12413,7 +12628,13 @@ ${fullText}`;
 
             let incompleteHoldTimer = null; // 未完フレーズ孤立防止タイマー（最大7秒待機）
 
-            const recentBatchInputHistory = []; // 直近バッチ投入履歴（1ミリ秒二重投入防止用）
+            const recentBatchInputHistory = []; // 直近バッチ投入履歴（多層巻き戻り・二重投入防止用）
+
+            // 新話者交代時（アーメン等）のバッチ履歴リフレッシュ
+            function resetRecentBatchHistoryForNewSpeaker() {
+                recentBatchInputHistory.length = 0;
+            }
+            window.resetRecentBatchHistoryForNewSpeaker = resetRecentBatchHistoryForNewSpeaker;
 
 
 
@@ -12466,37 +12687,51 @@ ${fullText}`;
                     incompleteHoldTimer = null;
                 }
 
-                const isShortPhrase = normChunk.length <= 5;
-                const windowMs = isShortPhrase ? 4000 : 25000;
+                const isShortPhrase = normChunk.length <= 5 ||
+                    /^(アーメン|あーめん|amen|おはようございます|ありがとうございます|感謝いたします|感謝します|証します)/.test(normChunk);
+                const windowMs = isShortPhrase ? 4000 : 300000; // 短文・定型句は4秒、通常文は同一話者区間（5分間）
 
-                // 重複投入ガードのクリーンアップ（最大25秒）
-                while (recentBatchInputHistory.length > 0 && (now - recentBatchInputHistory[0].time > 25000)) {
+                // 重複投入ガードのクリーンアップ（最大5分、最大150件）
+                while (recentBatchInputHistory.length > 0 && (now - recentBatchInputHistory[0].time > 300000 || recentBatchInputHistory.length > 150)) {
                     recentBatchInputHistory.shift();
                 }
 
-                // 重複判定（完全一致に加え、長文の包含・部分一致を抑制）
-                const isDuplicate = recentBatchInputHistory.some(item => {
+                // 重複判定（完全一致に加え、長文の包含・結合・ファジー類似度を抑制）
+                let isDuplicate = false;
+                for (let i = recentBatchInputHistory.length - 1; i >= 0; i--) {
+                    const item = recentBatchInputHistory[i];
                     const elapsed = now - item.time;
-                    if (elapsed > windowMs) return false;
-                    if (item.norm === normChunk) return true;
+                    if (elapsed > windowMs) continue;
+                    if (item.norm === normChunk) {
+                        isDuplicate = true;
+                        break;
+                    }
                     // 短文は完全一致のみ（「はい」「アーメン」等での誤判定を防止）
-                    if (isShortPhrase || item.norm.length <= 5) return false;
+                    if (isShortPhrase || item.norm.length <= 5) continue;
 
-                    // 10文字以上の文における前方一致・後方一致・または85%以上の部分一致（一方が他方を含み文字数差5文字以内）
+                    // 10文字以上の文における前方一致・後方一致・または80%以上の部分一致
                     const lenA = item.norm.length;
                     const lenB = normChunk.length;
                     if (lenA >= 10 && lenB >= 10) {
-                        if (item.norm.startsWith(normChunk) || item.norm.endsWith(normChunk)) return true;
-                        if (normChunk.startsWith(item.norm) || normChunk.endsWith(item.norm)) return true;
-                        if (Math.abs(lenA - lenB) <= 5 && (item.norm.includes(normChunk) || normChunk.includes(item.norm))) return true;
+                        if (item.norm.startsWith(normChunk) || item.norm.endsWith(normChunk)) { isDuplicate = true; break; }
+                        if (normChunk.startsWith(item.norm) || normChunk.endsWith(item.norm)) { isDuplicate = true; break; }
+                        if (Math.abs(lenA - lenB) <= 8 && (item.norm.includes(normChunk) || normChunk.includes(item.norm))) { isDuplicate = true; break; }
                     }
-                    // 8文字以上の文におけるファジー類似度チェック（75%以上の一致で重複抑制）
-                    if (lenA >= 8 && lenB >= 8 && Math.abs(lenA - lenB) <= 8) {
+                    // 8文字以上の文におけるファジー類似度チェック（72%以上の一致で重複抑制）
+                    if (lenA >= 8 && lenB >= 8) {
                         const sim = calculateTextSimilarity(item.norm, normChunk);
-                        if (sim >= 0.75) return true;
+                        if (sim >= 0.72) { isDuplicate = true; break; }
                     }
-                    return false;
-                });
+                }
+
+                // 結合ウィンドウ（直近2アイテムの合体）に対する類似度・包含率チェック
+                if (!isDuplicate && !isShortPhrase && normChunk.length >= 12 && recentBatchInputHistory.length >= 2) {
+                    const last2 = recentBatchInputHistory.slice(-2);
+                    const mergedLast2 = last2[0].norm + last2[1].norm;
+                    if (calculateTextSimilarity(normChunk, mergedLast2) >= 0.72 || calculateBigramCoverage(normChunk, mergedLast2) >= 0.82) {
+                        isDuplicate = true;
+                    }
+                }
 
                 if (isDuplicate) {
                     console.log(`[重複ガード] 重複発話を抑制: "${normChunk}"`);
